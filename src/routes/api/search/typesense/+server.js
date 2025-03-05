@@ -22,7 +22,8 @@ export async function GET({ url }) {
   const searchKey = url.searchParams.get('searchKey') || '';
 
   if (!query || !index) {
-    return json({ hits: [] });
+    console.log(`Missing required parameters: query=${query}, index=${index}`);
+    return json({ hits: [], error: 'Missing required parameters' }, { status: 400 });
   }
 
   try {
@@ -56,10 +57,31 @@ export async function GET({ url }) {
       sort_by: '_text_match:desc'
     };
 
+    console.log(`Searching ${index} for "${query}" with type=${type}`);
     const response = await searchClient.collections(index).documents().search(searchParameters);
+    console.log(`Search successful: Found ${response.hits?.length || 0} results`);
     return json({ hits: response.hits || [] });
   } catch (error) {
-    console.error('Typesense search error:', error);
-    return json({ hits: [], error: error.message }, { status: 500 });
+    // More detailed error logging
+    console.error(`Typesense search error for query "${query}" in index "${index}":`);
+    console.error(`Error name: ${error.name}`);
+    console.error(`Error message: ${error.message}`);
+    console.error(`Error stack: ${error.stack}`);
+
+    // Additional logging for network errors
+    if (error.response) {
+      console.error(`Status code: ${error.response.status}`);
+      console.error(`Response data:`, error.response.data);
+    }
+
+    // Return a more informative error response
+    return json({
+      hits: [],
+      error: error.message,
+      errorType: error.name,
+      query,
+      index,
+      type
+    }, { status: 500 });
   }
 }
