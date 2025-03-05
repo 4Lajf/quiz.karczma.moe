@@ -19,6 +19,9 @@ Thumbs.db
 !package.json
 !jsconfig.json
 !components.json
+!transformed_anime_names.json
+!transformed_artists.json
+!transformed_song_names.json
 
 # Vite
 vite.config.js.timestamp-*

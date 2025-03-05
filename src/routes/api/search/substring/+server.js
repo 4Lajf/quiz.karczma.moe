@@ -1,50 +1,16 @@
 // src/routes/api/search/substring/+server.js
 import { json } from '@sveltejs/kit';
-import fs from 'fs/promises';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-// Get the directory path for the current file
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-let songCache = null;
-let artistCache = null;
-let animeCache = null;
-
-async function loadData() {
-    if (!songCache || !artistCache || !animeCache) {
-        try {
-            const songsPath = path.join(__dirname, 'transformed_song_names.json');
-            const artistsPath = path.join(__dirname, 'transformed_artists.json');
-            const animePath = path.join(__dirname, 'transformed_anime_names.json');
-            
-            const songsData = await fs.readFile(songsPath, 'utf-8');
-            const artistsData = await fs.readFile(artistsPath, 'utf-8');
-            const animeData = await fs.readFile(animePath, 'utf-8');
-            
-            songCache = JSON.parse(songsData);
-            artistCache = JSON.parse(artistsData);
-            animeCache = JSON.parse(animeData);
-            
-            console.log(`Loaded ${songCache.length} songs, ${artistCache.length} artists, and ${animeCache.length} anime titles`);
-        } catch (error) {
-            console.error('Error loading data files:', error);
-            throw new Error('Failed to load search data');
-        }
-    }
-    return { songs: songCache, artists: artistCache, anime: animeCache };
-}
+import { loadData } from '$lib/staticData';
 
 function substringMatch(query, item, type = 'songs') {
     const normalizedQuery = query.toLowerCase();
-    
+
     // Handle different data structures based on type
     if (type === 'anime') {
         // Check all normalized title fields for anime
         const matchInRomaji = item.normalizedRomajiTitle && item.normalizedRomajiTitle.includes(normalizedQuery);
         const matchInEnglish = item.normalizedEnglishTitle && item.normalizedEnglishTitle.includes(normalizedQuery);
-        
+
         // Check in all normalized alt titles
         let matchInAlt = false;
         let matchedAltIndex = -1;
@@ -63,17 +29,17 @@ function substringMatch(query, item, type = 'songs') {
             const exactMatchRomaji = item.normalizedRomajiTitle === normalizedQuery;
             const exactMatchEnglish = item.normalizedEnglishTitle === normalizedQuery;
             const exactMatchAlt = matchedAltIndex >= 0 && item.normalizedAltTitles[matchedAltIndex] === normalizedQuery;
-            
+
             // Determine which title starts with the query
             const startsWithRomaji = item.normalizedRomajiTitle && item.normalizedRomajiTitle.startsWith(normalizedQuery);
             const startsWithEnglish = item.normalizedEnglishTitle && item.normalizedEnglishTitle.startsWith(normalizedQuery);
             const startsWithAlt = matchedAltIndex >= 0 && item.normalizedAltTitles[matchedAltIndex].startsWith(normalizedQuery);
-            
+
             // Find the best matching title (exact > starts with > contains)
             let bestMatchType = '';
             let bestMatchTitle = '';
             let bestMatchNormalizedTitle = '';
-            
+
             if (exactMatchEnglish) {
                 bestMatchType = 'english';
                 bestMatchTitle = item.englishTitle;
@@ -111,7 +77,7 @@ function substringMatch(query, item, type = 'songs') {
                 bestMatchTitle = item.altTitles[matchedAltIndex];
                 bestMatchNormalizedTitle = item.normalizedAltTitles[matchedAltIndex];
             }
-            
+
             const matchInfo = {
                 exactMatch: exactMatchRomaji || exactMatchEnglish || exactMatchAlt,
                 startsWith: startsWithRomaji || startsWithEnglish || startsWithAlt,
@@ -130,15 +96,15 @@ function substringMatch(query, item, type = 'songs') {
             if (matchInfo.exactMatch) score = 100;
             else if (matchInfo.startsWith) score = 90;
             else score = 80;
-            
+
             // Prioritize matches by title type (preference: English > Romaji > Alt)
             if (matchInEnglish) score += 3;
             if (matchInRomaji) score += 2;
             if (matchInAlt) score += 1;
-            
+
             // Bonus for matching in multiple fields
-            if ((matchInRomaji && matchInEnglish) || 
-                (matchInRomaji && matchInAlt) || 
+            if ((matchInRomaji && matchInEnglish) ||
+                (matchInRomaji && matchInAlt) ||
                 (matchInEnglish && matchInAlt)) {
                 score += 5;
             }
@@ -152,7 +118,7 @@ function substringMatch(query, item, type = 'songs') {
     } else {
         // Original logic for songs and artists
         const searchKey = type === 'songs' ? 'songName' : 'artist';
-        
+
         // Check original value
         const originalMatch = item[searchKey].toLowerCase().includes(normalizedQuery);
         // Check normalized value
@@ -161,8 +127,8 @@ function substringMatch(query, item, type = 'songs') {
         if (originalMatch || normalizedMatch) {
             const matchInfo = {
                 exactMatch: item[searchKey].toLowerCase() === normalizedQuery,
-                startsWith: item[searchKey].toLowerCase().startsWith(normalizedQuery) || 
-                          item.normalizedName.startsWith(normalizedQuery),
+                startsWith: item[searchKey].toLowerCase().startsWith(normalizedQuery) ||
+                    item.normalizedName.startsWith(normalizedQuery),
                 isSubstring: originalMatch || normalizedMatch,
                 matchedInNormalized: normalizedMatch,
                 matchedInOriginal: originalMatch
@@ -194,10 +160,10 @@ function formatTypesenseResult(hit, type) {
         let bestMatchType = '';
         let bestMatchTitle = '';
         let bestMatchNormalizedTitle = '';
-        
+
         // Check which field was highlighted
         const highlightedField = highlights.length > 0 ? highlights[0].field : '';
-        
+
         if (highlightedField.includes('normalizedEnglishTitle')) {
             bestMatchType = 'english';
             bestMatchTitle = hit.document.englishTitle;
@@ -227,12 +193,12 @@ function formatTypesenseResult(hit, type) {
                 bestMatchNormalizedTitle = hit.document.normalizedAltTitles[0];
             }
         }
-        
+
         // Return a standardized format
         return {
             document: {
                 id: hit.document.id,
-                animeTitle: bestMatchTitle, 
+                animeTitle: bestMatchTitle,
                 matchType: bestMatchType,
                 displayTitle: bestMatchTitle,
                 romajiTitle: hit.document.romajiTitle,
@@ -243,17 +209,17 @@ function formatTypesenseResult(hit, type) {
                 normalizedAltTitles: hit.document.normalizedAltTitles
             },
             highlight: {
-                [bestMatchType === 'english' ? 'normalizedEnglishTitle' : 
-                  bestMatchType === 'romaji' ? 'normalizedRomajiTitle' : 'normalizedAltTitle']: {
-                    matched_tokens: hit.highlights && hit.highlights.length > 0 
-                      ? hit.highlights[0].matched_tokens 
-                      : [],
-                    snippet: hit.highlights && hit.highlights.length > 0 
-                      ? hit.highlights[0].snippet 
-                      : '',
-                    value: hit.highlights && hit.highlights.length > 0 
-                      ? hit.highlights[0].value 
-                      : ''
+                [bestMatchType === 'english' ? 'normalizedEnglishTitle' :
+                    bestMatchType === 'romaji' ? 'normalizedRomajiTitle' : 'normalizedAltTitle']: {
+                    matched_tokens: hit.highlights && hit.highlights.length > 0
+                        ? hit.highlights[0].matched_tokens
+                        : [],
+                    snippet: hit.highlights && hit.highlights.length > 0
+                        ? hit.highlights[0].snippet
+                        : '',
+                    value: hit.highlights && hit.highlights.length > 0
+                        ? hit.highlights[0].value
+                        : ''
                 }
             },
             text_match: hit.text_match,
@@ -261,9 +227,9 @@ function formatTypesenseResult(hit, type) {
                 best_field_score: hit.text_match_info?.best_field_score || 0,
                 best_field_weight: hit.text_match_info?.best_field_weight || 0,
                 fields_matched: hit.text_match_info?.fields_matched || 0,
-                tokens_matched: hit.highlights && hit.highlights.length > 0 
-                  ? hit.highlights[0].matched_tokens.length 
-                  : 0,
+                tokens_matched: hit.highlights && hit.highlights.length > 0
+                    ? hit.highlights[0].matched_tokens.length
+                    : 0,
                 typo_prefix_score: hit.text_match_info?.typo_prefix_score || 0,
                 bestMatchType: bestMatchType,
                 bestMatchTitle: bestMatchTitle
@@ -284,9 +250,10 @@ export async function GET({ url }) {
     }
 
     try {
+        // Use the loadData function from the staticData module
         const { songs, artists, anime } = await loadData();
         let data;
-        
+
         if (type === 'anime') {
             data = anime;
         } else if (type === 'artists') {
@@ -309,20 +276,20 @@ export async function GET({ url }) {
                 return null;
             })
             .filter(Boolean);
-            
+
         // Sort by match type first (exact > prefix > substring) and then by score
         matches.sort((a, b) => {
             const infoA = a.text_match_info;
             const infoB = b.text_match_info;
-            
+
             // First, prioritize exact matches
             if (infoA.exactMatch && !infoB.exactMatch) return -1;
             if (!infoA.exactMatch && infoB.exactMatch) return 1;
-            
+
             // Then prioritize prefix matches
             if (infoA.startsWith && !infoB.startsWith) return -1;
             if (!infoA.startsWith && infoB.startsWith) return 1;
-            
+
             // Within the same match type, sort by score
             return b.text_match - a.text_match;
         });
@@ -337,7 +304,7 @@ export async function GET({ url }) {
                     // Use the best matching title based on the query
                     const matchInfo = item.text_match_info;
                     const displayTitle = matchInfo.bestMatchTitle;
-                    
+
                     // Create a document structure with all title information but highlighting the best match
                     const document = {
                         id: item.id,
@@ -351,7 +318,7 @@ export async function GET({ url }) {
                         normalizedEnglishTitle: item.normalizedEnglishTitle,
                         normalizedAltTitles: item.normalizedAltTitles
                     };
-                    
+
                     // Create a custom highlight object for the best matching title
                     const highlight = {};
                     if (matchInfo.bestMatchType === 'romaji') {
@@ -374,7 +341,7 @@ export async function GET({ url }) {
                             value: document.normalizedAltTitles[altIdx] || ''
                         };
                     }
-                    
+
                     return {
                         document,
                         highlight,
