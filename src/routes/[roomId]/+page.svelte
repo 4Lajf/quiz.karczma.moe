@@ -12,6 +12,12 @@
 	let handRaised = false;
 	let handRaiseResults = null;
 	let playerPositions = [];
+	let networkLatency = 0;
+	let latencyMeasured = false;
+	let latencyInterval = null;
+	let latencyHistory = [];
+	let displayLatency = 0;
+	let measuringLatency = false;
 
 	// Replacement rules for easier text matching
 	const ANIME_REGEX_REPLACE_RULES = [
@@ -307,12 +313,19 @@
 		}
 	}
 
-	function enterTakeoverMode() {
+	async function enterTakeoverMode() {
 		inTakeoverMode = true;
+		// Start monitoring latency
+		setupLatencyMonitoring();
 	}
 
 	async function raiseHand() {
 		if (handRaised) return;
+
+		// Force a fresh latency measurement before submission
+		if (!measuringLatency) {
+			await measureNetworkLatency();
+		}
 
 		const clientTimestamp = Date.now();
 		handRaised = true;
@@ -321,7 +334,8 @@
 			const { error } = await supabase.from('hand_raises').insert({
 				room_id: room.id,
 				player_name: playerName,
-				client_timestamp: clientTimestamp
+				client_timestamp: clientTimestamp,
+				measured_latency: networkLatency // Use the latest latency measurement
 			});
 
 			if (error) {
@@ -346,6 +360,8 @@
 		inTakeoverMode = false;
 		handRaised = false;
 		handRaiseResults = null;
+		// Stop monitoring latency
+		cleanupLatencyMonitoring();
 	}
 
 	async function loadHandRaiseResults() {
@@ -365,27 +381,42 @@
 				if (playerIndex >= 0) {
 					const position = playerIndex + 1;
 
-					// Calculate time differences
+					// Calculate time differences with latency correction
 					const firstTimestamp = new Date(data[0].server_timestamp).getTime();
+					const firstLatency = data[0].measured_latency || 0;
+
 					const playerTimestamp = new Date(data[playerIndex].server_timestamp).getTime();
-					const timeDifferenceMs = playerTimestamp - firstTimestamp;
+					const playerLatency = data[playerIndex].measured_latency || 0;
+
+					// Adjust timestamps by subtracting latency
+					const adjustedFirstTime = firstTimestamp - firstLatency;
+					const adjustedPlayerTime = playerTimestamp - playerLatency;
+
+					const timeDifferenceMs = adjustedPlayerTime - adjustedFirstTime;
 
 					handRaiseResults = {
 						position,
-						timeDifferenceMs
+						timeDifferenceMs,
+						latency: playerLatency
 					};
 				}
 
-				// Always update the full leaderboard
+				// Update the full leaderboard with latency-corrected times
 				const firstTimestamp = new Date(data[0].server_timestamp).getTime();
+				const firstLatency = data[0].measured_latency || 0;
+				const adjustedFirstTime = firstTimestamp - firstLatency;
+
 				playerPositions = data.map((d, index) => {
 					const timestamp = new Date(d.server_timestamp).getTime();
-					const timeDifferenceMs = index === 0 ? 0 : timestamp - firstTimestamp;
+					const latency = d.measured_latency || 0;
+					const adjustedTime = timestamp - latency;
+					const timeDifferenceMs = index === 0 ? 0 : adjustedTime - adjustedFirstTime;
 
 					return {
 						name: d.player_name,
 						position: index + 1,
-						timeDifferenceMs
+						timeDifferenceMs,
+						latency
 					};
 				});
 			} else {
@@ -399,9 +430,82 @@
 		}
 	}
 
+	async function measureNetworkLatency(continuous = false) {
+		if (measuringLatency) return networkLatency;
+
+		measuringLatency = true;
+
+		try {
+			const startTime = Date.now();
+			// Make a lightweight ping request to the server
+			const { data } = await supabase.rpc('ping');
+			const endTime = Date.now();
+			const currentLatency = endTime - startTime;
+
+			// Add to history (keep last 5 measurements)
+			latencyHistory.push(currentLatency);
+			if (latencyHistory.length > 5) {
+				latencyHistory.shift();
+			}
+
+			// Calculate average latency
+			const sortedLatencies = [...latencyHistory].sort((a, b) => a - b);
+
+			// Remove outliers (highest and lowest if we have enough samples)
+			let validMeasurements = sortedLatencies;
+			if (sortedLatencies.length >= 4) {
+				validMeasurements = sortedLatencies.slice(1, -1);
+			}
+
+			networkLatency = Math.round(
+				validMeasurements.reduce((sum, val) => sum + val, 0) / validMeasurements.length
+			);
+
+			// Update displayed latency with color indicator
+			displayLatency = networkLatency;
+			latencyMeasured = true;
+
+			console.log(`Current network latency: ${networkLatency}ms`);
+		} catch (error) {
+			console.error('Error measuring latency:', error);
+		} finally {
+			measuringLatency = false;
+		}
+
+		return networkLatency;
+	}
+
+	function setupLatencyMonitoring() {
+		if (latencyInterval) {
+			clearInterval(latencyInterval);
+		}
+
+		// Take initial measurement
+		measureNetworkLatency();
+
+		// Then set up interval for continuous monitoring
+		latencyInterval = setInterval(async () => {
+			await measureNetworkLatency(true);
+		}, 1000); // Check every 3 seconds
+	}
+
+	function cleanupLatencyMonitoring() {
+		if (latencyInterval) {
+			clearInterval(latencyInterval);
+			latencyInterval = null;
+		}
+	}
+
 	onDestroy(() => {
+		cleanupLatencyMonitoring();
 		if (channel) channel.unsubscribe();
 	});
+
+	function getLatencyColorClass(latency) {
+		if (latency < 50) return 'text-green-400';
+		if (latency < 150) return 'text-yellow-400';
+		return 'text-red-400';
+	}
 </script>
 
 <div class="min-h-screen bg-gray-950">
@@ -501,6 +605,22 @@
 		{#if inTakeoverMode}
 			<div class="fixed inset-0 z-50 flex flex-col items-center justify-center bg-gray-900">
 				{#if !handRaised}
+					<div class="absolute right-4 top-4 flex items-center gap-2 rounded-lg bg-gray-800 p-3">
+						<span class="text-gray-300">Twój ping:</span>
+						<span class={getLatencyColorClass(displayLatency)}>
+							{displayLatency}ms
+							<span class="text-xs">
+								{#if displayLatency < 50}
+									(Doskonały)
+								{:else if displayLatency < 150}
+									(Dobry)
+								{:else}
+									(Wysoki)
+								{/if}
+							</span>
+						</span>
+					</div>
+
 					<button
 						on:click={raiseHand}
 						class="flex h-full w-full items-center justify-center bg-blue-600 text-4xl font-bold text-white active:bg-blue-800"
@@ -514,11 +634,21 @@
 						</h2>
 
 						{#if handRaiseResults.position > 1}
-							<p class="mb-6 text-xl text-white">
+							<p class="mb-2 text-xl text-white">
 								{(handRaiseResults.timeDifferenceMs / 1000).toFixed(3)}s za pierwszym miejscem
 							</p>
+							<p class="mb-6 text-sm text-gray-400">
+								Twój ping: <span class={getLatencyColorClass(handRaiseResults.latency)}
+									>{handRaiseResults.latency}ms</span
+								>
+							</p>
 						{:else}
-							<p class="mb-6 text-xl text-green-400">Jesteś pierwszy!</p>
+							<p class="mb-2 text-xl text-green-400">Jesteś pierwszy!</p>
+							<p class="mb-6 text-sm text-gray-400">
+								Twój ping: <span class={getLatencyColorClass(handRaiseResults.latency)}
+									>{handRaiseResults.latency}ms</span
+								>
+							</p>
 						{/if}
 
 						<h3 class="mb-2 text-xl font-semibold text-white">Kto był pierwszy?</h3>
@@ -529,6 +659,7 @@
 										<th class="px-4 py-2 text-gray-300">Pozycja</th>
 										<th class="px-4 py-2 text-gray-300">Gracz</th>
 										<th class="px-4 py-2 text-gray-300">Czas</th>
+										<th class="px-4 py-2 text-gray-300">Ping</th>
 									</tr>
 								</thead>
 								<tbody>
@@ -540,6 +671,11 @@
 												{player.position === 1
 													? '-'
 													: `+${(player.timeDifferenceMs / 1000).toFixed(3)}s`}
+											</td>
+											<td class="px-4 py-2">
+												<span class={getLatencyColorClass(player.latency)}>
+													{player.latency || 0}ms
+												</span>
 											</td>
 										</tr>
 									{/each}

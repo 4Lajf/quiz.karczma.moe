@@ -335,16 +335,21 @@
 
 			if (data && data.length > 0) {
 				const firstTimestamp = new Date(data[0].server_timestamp).getTime();
+				const firstLatency = data[0].measured_latency || 0;
+				const adjustedFirstTime = firstTimestamp - firstLatency;
 
 				handRaiseResults = data.map((result, index) => {
 					const timestamp = new Date(result.server_timestamp).getTime();
-					const timeDifferenceMs = index === 0 ? 0 : timestamp - firstTimestamp;
+					const latency = result.measured_latency || 0;
+					const adjustedTime = timestamp - latency;
+					const timeDifferenceMs = index === 0 ? 0 : adjustedTime - adjustedFirstTime;
 
 					return {
 						name: result.player_name,
 						position: index + 1,
 						timestamp: result.server_timestamp,
-						timeDifferenceMs
+						timeDifferenceMs,
+						latency
 					};
 				});
 			} else {
@@ -783,11 +788,11 @@
 						<Table.Root>
 							<Table.Header>
 								<Table.Row class="border-gray-800">
-									<Table.Head class="text-gray-300">Team</Table.Head>
-									<Table.Head class="text-gray-300">Score</Table.Head>
+									<Table.Head class="text-gray-300">Drużyna</Table.Head>
+									<Table.Head class="text-gray-300">Wynik</Table.Head>
 									<Table.Head class="text-gray-300">Tiebreaker</Table.Head>
 									<Table.Head class="text-gray-300">Status</Table.Head>
-									<Table.Head class="text-gray-300">Actions</Table.Head>
+									<Table.Head class="text-gray-300">Akcje</Table.Head>
 								</Table.Row>
 							</Table.Header>
 							<Table.Body>
@@ -848,6 +853,7 @@
 										<Table.Head class="text-gray-300">Gracz</Table.Head>
 										<Table.Head class="text-gray-300">Czas</Table.Head>
 										<Table.Head class="text-gray-300">Różnica</Table.Head>
+										<Table.Head class="text-gray-300">Ping</Table.Head>
 									</Table.Row>
 								</Table.Header>
 								<Table.Body>
@@ -870,12 +876,15 @@
 													? '-'
 													: `+${(result.timeDifferenceMs / 1000).toFixed(3)}s`}
 											</Table.Cell>
+											<Table.Cell class="text-gray-200">
+												{result.latency || 0}ms
+											</Table.Cell>
 										</Table.Row>
 									{/each}
 
 									{#if handRaiseResults.length === 0}
 										<Table.Row class="border-gray-800">
-											<Table.Cell colspan="4" class="py-8 text-center text-gray-400">
+											<Table.Cell colspan="5" class="py-8 text-center text-gray-400">
 												Brak przejęć
 											</Table.Cell>
 										</Table.Row>
