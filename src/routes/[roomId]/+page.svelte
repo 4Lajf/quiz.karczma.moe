@@ -126,7 +126,7 @@
 				async (payload) => {
 					console.log('Room change detected:', payload);
 					if (payload.new.current_round !== payload.old?.current_round) {
-						toast.info('New round has begun!');
+						toast.info('Rozpoczęła się nowa runda!');
 						resetAnswerState();
 						await invalidateAll();
 					}
@@ -143,7 +143,7 @@
 					console.log('Answer change detected:', payload);
 					await checkAnswerStatus();
 					if (!hasSubmitted && payload.eventType === 'DELETE') {
-						toast.info('Your answer was reset by the admin');
+						toast.info('Twoja odpowiedź została zresetowana przez administratora');
 					}
 					await invalidateAll();
 				}
@@ -193,7 +193,7 @@
 						inTakeoverMode = false;
 						handRaised = false;
 						handRaiseResults = null;
-						toast.info('Takeover mode has been disabled');
+						toast.info('Tryb przejęcia został wyłączony');
 					}
 				}
 			)
@@ -202,7 +202,7 @@
 
 	async function joinGame() {
 		if (!playerName.trim()) {
-			toast.error('Please enter your name');
+			toast.error('Wprowadź swoje imię');
 			return;
 		}
 		loading = true;
@@ -219,9 +219,9 @@
 				hasJoined = true; // Set hasJoined first
 				await checkAnswerStatus(); // Then check answer status
 				if (hasSubmitted) {
-					toast.success(`Rejoined as ${playerName} - Answer already submitted`);
+					toast.success(`Dołączono ponownie jako ${playerName} - Odpowiedź już przesłana`);
 				} else {
-					toast.success(`Rejoined as ${playerName}`);
+					toast.success(`Dołączono ponownie jako ${playerName}`);
 				}
 			} else {
 				const { error: insertError } = await supabase.from('players').insert({
@@ -233,20 +233,20 @@
 
 				if (insertError) {
 					if (insertError.code === '23505') {
-						toast.error('Name already taken');
+						toast.error('Nazwa jest już zajęta');
 						return;
 					}
 					throw insertError;
 				}
 				hasJoined = true;
 				hasSubmitted = false;
-				toast.success('Joined as ' + playerName);
+				toast.success('Dołączono jako ' + playerName);
 			}
 
 			subscribeToChanges();
 		} catch (error) {
 			if (!error.message.includes('No rows found')) {
-				toast.error('Error: ' + error.message);
+				toast.error('Błąd: ' + error.message);
 			}
 		} finally {
 			loading = false;
@@ -255,12 +255,12 @@
 
 	async function submitAnswer() {
 		if (!answer.trim() || hasSubmitted) {
-			toast.error(hasSubmitted ? 'Already submitted' : 'Enter an answer');
+			toast.error(hasSubmitted ? 'Już przesłano' : 'Wprowadź odpowiedź');
 			return;
 		}
 
-		if (answer.trim().length > 256) {
-			toast.error('Answer must be 256 characters or less');
+		if (answer.trim().length > 512) {
+			toast.error('Odpowiedź musi mieć 512 znaków lub mniej');
 			return;
 		}
 
@@ -298,10 +298,10 @@
 			if (error) throw error;
 
 			hasSubmitted = true;
-			toast.success('Answer submitted');
+			toast.success('Odpowiedź przesłana');
 			resetAnswerState();
 		} catch (error) {
-			toast.error('Error: ' + error.message);
+			toast.error('Błąd: ' + error.message);
 		} finally {
 			loading = false;
 		}
@@ -337,7 +337,7 @@
 			}
 		} catch (error) {
 			console.error('Failed to raise hand:', error);
-			toast.error('Failed to record hand raise');
+			toast.error('Nie udało się przejąć');
 			handRaised = false;
 		}
 	}
@@ -477,7 +477,7 @@
 							disabled={loading || hasSubmitted}
 							class="w-full border border-gray-700 bg-gray-800 text-white hover:bg-gray-700"
 						>
-							{loading ? 'Submitting...' : 'Submit Answer'}
+							{loading ? 'Wysyłanie...' : 'Wyślij odpowiedź'}
 						</Button>
 					</form>
 				{:else}

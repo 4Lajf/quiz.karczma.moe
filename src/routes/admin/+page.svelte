@@ -52,9 +52,9 @@
 			if (updateError) throw updateError;
 
 			newRoomName = '';
-			toast.success('Room created successfully');
+			toast.success('Pomyślnie utworzono pokój');
 		} catch (error) {
-			toast.error('Failed to create room: ' + error.message);
+			toast.error('Nie udało się utworzyć pokoju: ' + error.message);
 		} finally {
 			loading = false;
 		}
@@ -69,9 +69,9 @@
 			.eq('id', roomId);
 
 		if (error) {
-			toast.error('Failed to update setting');
+			toast.error('Nie udało się zaktualizować ustawienia');
 		} else {
-			toast.success('Setting updated');
+			toast.success('Zaktualizowano ustawienie');
 		}
 	}
 
@@ -81,9 +81,9 @@
 		const { error } = await supabase.from('rooms').delete().eq('id', roomId);
 
 		if (error) {
-			toast.error('Failed to delete room');
+			toast.error('Nie udało się usunąć pokoju');
 		} else {
-			toast.success('Room deleted');
+			toast.success('Usunięto pokój');
 		}
 	}
 

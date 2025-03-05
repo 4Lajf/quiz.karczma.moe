@@ -1,5 +1,5 @@
 <script>
-//src/routes/admin/search/+page.svelte	
+	//src/routes/admin/search/+page.svelte
 	import { onMount } from 'svelte';
 	import * as Tabs from '$lib/components/ui/tabs';
 	import * as Card from '$lib/components/ui/card';
@@ -33,13 +33,13 @@
 
 	async function deleteAllOneWaySynonyms() {
 		if (!selectedIndex) {
-			toast.error('Please select a collection first');
+			toast.error('Wybierz najpierw kolekcję');
 			return;
 		}
 
 		if (
 			!confirm(
-				'Are you absolutely sure you want to delete ALL one-way synonym groups? This cannot be undone.'
+				'Czy na pewno chcesz usunąć WSZYSTKIE jednokierunkowe grupy synonimów? Tej operacji nie można cofnąć.'
 			)
 		) {
 			return;
@@ -59,7 +59,7 @@
 			result = parseResponse(result.data);
 
 			if (result.success) {
-				toast.success('All one-way synonym groups deleted successfully');
+				toast.success('Wszystkie jednokierunkowe grupy synonimów usunięte pomyślnie');
 				oneWaySynonyms = []; // Clear local state for one-way synonyms
 				await loadOneWaySynonyms(selectedIndex);
 			} else {
@@ -74,13 +74,13 @@
 
 	async function deleteAllSynonyms() {
 		if (!selectedIndex) {
-			toast.error('Please select a collection first');
+			toast.error('Wybierz najpierw kolekcję');
 			return;
 		}
 
 		if (
 			!confirm(
-				'Are you absolutely sure you want to delete ALL synonym groups? This cannot be undone.'
+				'Czy na pewno chcesz usunąć WSZYSTKIE grupy synonimów? Tej operacji nie można cofnąć.'
 			)
 		) {
 			return;
@@ -100,7 +100,7 @@
 			result = parseResponse(result.data);
 
 			if (result.success) {
-				toast.success('All synonym groups deleted successfully');
+				toast.success('Wszystkie grupy synonimów usunięte pomyślnie');
 				synonymGroups = []; // Clear local state for traditional synonyms
 				await loadSynonyms(selectedIndex);
 			} else {
@@ -125,7 +125,7 @@
 
 	async function addBatchOneWaySynonyms() {
 		if (!selectedIndex) {
-			toast.error('Please select a collection first');
+			toast.error('Wybierz najpierw kolekcję');
 			return;
 		}
 
@@ -135,13 +135,13 @@
 
 			// Basic validation of structure
 			if (!Array.isArray(synonymsData)) {
-				throw new Error('Input must be an array of one-way synonym objects');
+				throw new Error('Dane wejściowe muszą być tablicą obiektów jednokierunkowych synonimów');
 			}
 
 			// Validate each group
 			synonymsData.forEach((group, index) => {
 				if (!group.root || !Array.isArray(group.synonyms) || group.synonyms.length === 0) {
-					throw new Error(`Invalid one-way synonym group at index ${index}`);
+					throw new Error(`Nieprawidłowa grupa jednokierunkowych synonimów na indeksie ${index}`);
 				}
 			});
 
@@ -175,18 +175,18 @@
 
 	async function addOneWaySynonymGroup() {
 		if (!selectedIndex) {
-			toast.error('Please select a collection first');
+			toast.error('Wybierz najpierw kolekcję');
 			return;
 		}
 
 		// Filter out empty words and check minimum requirement
 		const words = oneWaySynonymWords.filter((word) => word.trim() !== '');
 		if (!oneWaySynonymRoot.trim()) {
-			toast.error('Please add a root word');
+			toast.error('Dodaj słowo główne');
 			return;
 		}
 		if (words.length === 0) {
-			toast.error('Please add at least one synonym');
+			toast.error('Dodaj przynajmniej jeden synonim');
 			return;
 		}
 
@@ -205,7 +205,7 @@
 			let result = await response.json();
 			result = parseResponse(result.data);
 			if (result.success) {
-				toast.success('One-way synonym group added successfully');
+				toast.success('Grupa jednokierunkowych synonimów dodana pomyślnie');
 				oneWaySynonymRoot = ''; // Reset input
 				oneWaySynonymWords = ['']; // Reset input
 				await loadOneWaySynonyms(selectedIndex); // Reload synonyms
@@ -253,7 +253,7 @@
 	}
 
 	async function deleteOneWaySynonymGroup(index) {
-		if (!confirm('Are you sure you want to delete this one-way synonym group?')) return;
+		if (!confirm('Czy na pewno chcesz usunąć tę grupę jednokierunkowych synonimów?')) return;
 
 		loading = true;
 		try {
@@ -269,7 +269,7 @@
 			let result = await response.json();
 			result = parseResponse(result.data);
 			if (result.success) {
-				toast.success('One-way synonym group deleted successfully');
+				toast.success('Grupa jednokierunkowych synonimów usunięta pomyślnie');
 				await loadOneWaySynonyms(selectedIndex);
 			} else {
 				throw new Error(result.error);
@@ -293,7 +293,7 @@
 
 	async function addBatchSynonyms() {
 		if (!selectedIndex) {
-			toast.error('Please select a collection first');
+			toast.error('Wybierz najpierw kolekcję');
 			return;
 		}
 
@@ -303,13 +303,13 @@
 
 			// Basic validation of structure
 			if (!Array.isArray(synonymsData)) {
-				throw new Error('Input must be an array of synonym groups');
+				throw new Error('Dane wejściowe muszą być tablicą grup synonimów');
 			}
 
 			// Validate each group
 			synonymsData.forEach((group, index) => {
 				if (!group.id || !Array.isArray(group.synonyms) || group.synonyms.length < 2) {
-					throw new Error(`Invalid synonym group at index ${index}`);
+					throw new Error(`Nieprawidłowa grupa synonimów na indeksie ${index}`);
 				}
 			});
 
@@ -378,14 +378,14 @@
 	}
 	async function addSynonymGroup() {
 		if (!selectedIndex) {
-			toast.error('Please select a collection first');
+			toast.error('Wybierz najpierw kolekcję');
 			return;
 		}
 
 		// Filter out empty words and check minimum requirement
 		const words = newSynonymWords.filter((word) => word.trim() !== '');
 		if (words.length < 2) {
-			toast.error('Please add at least 2 words for the synonym group');
+			toast.error('Dodaj przynajmniej 2 słowa dla grupy synonimów');
 			return;
 		}
 
@@ -403,7 +403,7 @@
 			let result = await response.json();
 			result = parseResponse(result.data);
 			if (result.success) {
-				toast.success('Synonym group added successfully');
+				toast.success('Grupa synonimów dodana pomyślnie');
 				newSynonymWords = ['', '']; // Reset input
 				await loadSynonyms(selectedIndex); // Reload synonyms
 			} else {
@@ -417,7 +417,7 @@
 	}
 
 	async function deleteSynonymGroup(groupId) {
-		if (!confirm('Are you sure you want to delete this synonym group?')) return;
+		if (!confirm('Czy na pewno chcesz usunąć tę grupę synonimów?')) return;
 
 		loading = true;
 		try {
@@ -433,7 +433,7 @@
 			let result = await response.json();
 			result = parseResponse(result.data);
 			if (result.success) {
-				toast.success('Synonym group deleted successfully');
+				toast.success('Grupa synonimów usunięta pomyślnie');
 				await loadSynonyms(selectedIndex);
 			} else {
 				throw new Error(result.error);
@@ -448,7 +448,7 @@
 	async function handleAddDocuments(event) {
 		event.preventDefault();
 		if (!file) {
-			toast.error('Please select a file');
+			toast.error('Wybierz plik');
 			return;
 		}
 
@@ -464,10 +464,10 @@
 			});
 
 			let result = await response.json();
-			console.log(result.data)
+			console.log(result.data);
 			result = parseResponse(result.data);
 			if (result.success) {
-				toast.success(`Successfully imported ${result.imported} documents`);
+				toast.success(`Pomyślnie zaimportowano ${result.imported} dokumentów`);
 				fileInput.value = '';
 				file = null;
 			} else {
@@ -487,13 +487,13 @@
 		if (selectedFile && selectedFile.type === 'application/json') {
 			file = selectedFile;
 		} else {
-			toast.error('Please select a JSON file');
+			toast.error('Wybierz plik JSON');
 			event.target.value = '';
 		}
 	}
 
 	async function deleteIndex(indexUid) {
-		if (!confirm(`Are you sure you want to delete collection ${indexUid}?`)) return;
+		if (!confirm(`Czy na pewno chcesz usunąć kolekcję ${indexUid}?`)) return;
 
 		try {
 			const form = new FormData();
@@ -507,7 +507,7 @@
 			let result = await response.json();
 			result = parseResponse(result.data);
 			if (result.success) {
-				toast.success(result.message || 'Collection deleted successfully');
+				toast.success(result.message || 'Kolekcja usunięta pomyślnie');
 			} else {
 				throw new Error(result.error);
 			}
@@ -518,7 +518,7 @@
 	}
 </script>
 
-<div class="container p-6 mx-auto">
+<div class="container mx-auto p-6">
 	<h1 class="mb-8 text-3xl font-bold text-gray-100">Typesense Dashboard</h1>
 
 	<Tabs.Root value={activeTab} onValueChange={(v) => (activeTab = v)}>
@@ -542,7 +542,7 @@
 							<p class="text-gray-300">No indexes found</p>
 						{:else}
 							{#each indexes as index}
-								<Card.Root class="bg-gray-800 border-gray-700">
+								<Card.Root class="border-gray-700 bg-gray-800">
 									<Card.Content class="p-4">
 										<div class="flex items-center justify-between">
 											<div>
@@ -554,7 +554,7 @@
 											<div class="space-x-2">
 												<Button
 													variant="outline"
-													class="text-red-400 bg-gray-800 border-red-900 hover:bg-gray-700"
+													class="border-red-900 bg-gray-800 text-red-400 hover:bg-gray-700"
 													on:click={() => deleteIndex(index.uid)}
 												>
 													Delete
@@ -581,23 +581,23 @@
 					<form on:submit={handleAddDocuments} class="space-y-4">
 						<div>
 							<!-- svelte-ignore a11y_label_has_associated_control -->
-							<label class="block mb-1 text-sm font-medium text-gray-200">Index Name</label>
+							<label class="mb-1 block text-sm font-medium text-gray-200">Index Name</label>
 							<Input
 								bind:value={indexName}
 								required
 								placeholder="Enter index name"
-								class="text-gray-100 bg-gray-800 border-gray-700 placeholder:text-gray-500"
+								class="border-gray-700 bg-gray-800 text-gray-100 placeholder:text-gray-500"
 							/>
 						</div>
 						<div class="space-y-2">
 							<!-- svelte-ignore a11y_label_has_associated_control -->
-							<label class="block mb-1 text-sm font-medium text-gray-200">Upload JSON File</label>
-							<div class="flex items-center justify-center w-full">
+							<label class="mb-1 block text-sm font-medium text-gray-200">Upload JSON File</label>
+							<div class="flex w-full items-center justify-center">
 								<label
-									class="flex flex-col items-center justify-center w-full h-32 bg-gray-800 border-2 border-gray-600 border-dashed rounded-lg cursor-pointer hover:bg-gray-700"
+									class="flex h-32 w-full cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-600 bg-gray-800 hover:bg-gray-700"
 								>
-									<div class="flex flex-col items-center justify-center pt-5 pb-6">
-										<Upload class="w-8 h-8 mb-2 text-gray-300" />
+									<div class="flex flex-col items-center justify-center pb-6 pt-5">
+										<Upload class="mb-2 h-8 w-8 text-gray-300" />
 										<p class="mb-2 text-sm text-gray-300">
 											<span class="font-semibold">Click to upload</span>
 											or drag and drop
@@ -619,7 +619,7 @@
 						</div>
 						<Button
 							type="submit"
-							class="w-full text-white bg-blue-600 hover:bg-blue-700"
+							class="w-full bg-blue-600 text-white hover:bg-blue-700"
 							disabled={loading || !file}
 						>
 							{loading ? 'Adding...' : 'Add Documents'}
@@ -643,9 +643,9 @@
 						<div>
 							<!-- Select Index -->
 							<!-- svelte-ignore a11y_label_has_associated_control -->
-							<label class="block mb-2 text-sm font-medium text-gray-200">Select Index</label>
+							<label class="mb-2 block text-sm font-medium text-gray-200">Select Index</label>
 							<select
-								class="w-full px-3 py-2 text-gray-100 bg-gray-800 border border-gray-700 rounded-md"
+								class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-gray-100"
 								on:change={(e) => loadSynonyms(e.target.value)}
 							>
 								<option value="">Select an index</option>
@@ -657,7 +657,7 @@
 
 						{#if selectedIndex}
 							<!-- Batch Import Section -->
-							<Card.Root class="bg-gray-800 border-gray-700">
+							<Card.Root class="border-gray-700 bg-gray-800">
 								<Card.Header class="flex flex-row items-center justify-between">
 									<div>
 										<Card.Title>Batch Import Synonyms</Card.Title>
@@ -667,7 +667,7 @@
 									</div>
 									<Button
 										variant="outline"
-										class="text-gray-200 bg-gray-800 border-gray-700 hover:bg-gray-700"
+										class="border-gray-700 bg-gray-800 text-gray-200 hover:bg-gray-700"
 										on:click={() => (showBatchInput = !showBatchInput)}
 									>
 										{showBatchInput ? 'Hide' : 'Show'} Batch Import
@@ -678,13 +678,13 @@
 										<div class="space-y-4">
 											<textarea
 												bind:value={batchSynonymsText}
-												class="w-full h-48 p-2 font-mono text-gray-100 bg-gray-800 border border-gray-700 rounded-md"
+												class="h-48 w-full rounded-md border border-gray-700 bg-gray-800 p-2 font-mono text-gray-100"
 												placeholder="Paste your JSON array of synonym groups here..."
 											></textarea>
 											<div class="flex justify-end">
 												<Button
 													variant="default"
-													class="text-white bg-blue-600 hover:bg-blue-700"
+													class="bg-blue-600 text-white hover:bg-blue-700"
 													on:click={addBatchSynonyms}
 													disabled={loading || !batchSynonymsText.trim()}
 												>
@@ -697,7 +697,7 @@
 							</Card.Root>
 
 							<!-- Add Individual Synonym Group -->
-							<Card.Root class="bg-gray-800 border-gray-700">
+							<Card.Root class="border-gray-700 bg-gray-800">
 								<Card.Header>
 									<Card.Title>Add New Synonym Group</Card.Title>
 								</Card.Header>
@@ -708,15 +708,15 @@
 												<Input
 													bind:value={newSynonymWords[i]}
 													placeholder="Enter synonym word"
-													class="text-gray-100 bg-gray-800 border-gray-700 placeholder:text-gray-500"
+													class="border-gray-700 bg-gray-800 text-gray-100 placeholder:text-gray-500"
 												/>
 												{#if i > 1}
 													<Button
 														variant="outline"
-														class="text-red-400 bg-gray-800 border-red-900 hover:bg-gray-700"
+														class="border-red-900 bg-gray-800 text-red-400 hover:bg-gray-700"
 														on:click={() => removeWordFromGroup(i)}
 													>
-														<Trash2 class="w-4 h-4" />
+														<Trash2 class="h-4 w-4" />
 													</Button>
 												{/if}
 											</div>
@@ -724,15 +724,15 @@
 										<div class="flex gap-2">
 											<Button
 												variant="outline"
-												class="text-gray-200 bg-gray-800 border-gray-700 hover:bg-gray-700"
+												class="border-gray-700 bg-gray-800 text-gray-200 hover:bg-gray-700"
 												on:click={addWordToGroup}
 											>
-												<Plus class="w-4 h-4 mr-2" />
+												<Plus class="mr-2 h-4 w-4" />
 												Add Word
 											</Button>
 											<Button
 												variant="default"
-												class="text-white bg-blue-600 hover:bg-blue-700"
+												class="bg-blue-600 text-white hover:bg-blue-700"
 												on:click={addSynonymGroup}
 												disabled={loading || newSynonymWords.filter((w) => w.trim()).length < 2}
 											>
@@ -750,7 +750,7 @@
 									<div class="mt-4 text-right">
 										<Button
 											variant="destructive"
-											class="text-white bg-red-600 hover:bg-red-700"
+											class="bg-red-600 text-white hover:bg-red-700"
 											on:click={deleteAllSynonyms}
 											disabled={loading}
 										>
@@ -762,22 +762,22 @@
 									<p class="text-gray-400">No synonym groups found</p>
 								{:else}
 									{#each synonymGroups as group}
-										<Card.Root class="bg-gray-800 border-gray-700">
+										<Card.Root class="border-gray-700 bg-gray-800">
 											<Card.Content class="p-4">
 												<div class="flex items-center justify-between">
 													<div class="flex flex-wrap gap-2">
 														{#each group.synonyms as word}
-															<span class="px-2 py-1 text-sm text-gray-200 bg-gray-700 rounded-md">
+															<span class="rounded-md bg-gray-700 px-2 py-1 text-sm text-gray-200">
 																{word}
 															</span>
 														{/each}
 													</div>
 													<Button
 														variant="outline"
-														class="text-red-400 bg-gray-800 border-red-900 hover:bg-gray-700"
+														class="border-red-900 bg-gray-800 text-red-400 hover:bg-gray-700"
 														on:click={() => deleteSynonymGroup(group.id)}
 													>
-														<Trash2 class="w-4 h-4" />
+														<Trash2 class="h-4 w-4" />
 													</Button>
 												</div>
 											</Card.Content>
@@ -804,9 +804,9 @@
 						<div>
 							<!-- Select Index -->
 							<!-- svelte-ignore a11y_label_has_associated_control -->
-							<label class="block mb-2 text-sm font-medium text-gray-200">Select Index</label>
+							<label class="mb-2 block text-sm font-medium text-gray-200">Select Index</label>
 							<select
-								class="w-full px-3 py-2 text-gray-100 bg-gray-800 border border-gray-700 rounded-md"
+								class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-gray-100"
 								on:change={(e) => loadOneWaySynonyms(e.target.value)}
 							>
 								<option value="">Select an index</option>
@@ -818,7 +818,7 @@
 
 						{#if selectedIndex}
 							<!-- Batch Import Section -->
-							<Card.Root class="bg-gray-800 border-gray-700">
+							<Card.Root class="border-gray-700 bg-gray-800">
 								<Card.Header class="flex flex-row items-center justify-between">
 									<div>
 										<Card.Title>Batch Import One-Way Synonyms</Card.Title>
@@ -828,7 +828,7 @@
 									</div>
 									<Button
 										variant="outline"
-										class="text-gray-200 bg-gray-800 border-gray-700 hover:bg-gray-700"
+										class="border-gray-700 bg-gray-800 text-gray-200 hover:bg-gray-700"
 										on:click={() => (showOneWaySynonymBatch = !showOneWaySynonymBatch)}
 									>
 										{showOneWaySynonymBatch ? 'Hide' : 'Show'} Batch Import
@@ -839,13 +839,13 @@
 										<div class="space-y-4">
 											<textarea
 												bind:value={oneWaySynonymBatchText}
-												class="w-full h-48 p-2 font-mono text-gray-100 bg-gray-800 border border-gray-700 rounded-md"
+												class="h-48 w-full rounded-md border border-gray-700 bg-gray-800 p-2 font-mono text-gray-100"
 												placeholder="Paste your JSON array of one-way synonym groups here..."
 											></textarea>
 											<div class="flex justify-end">
 												<Button
 													variant="default"
-													class="text-white bg-blue-600 hover:bg-blue-700"
+													class="bg-blue-600 text-white hover:bg-blue-700"
 													on:click={addBatchOneWaySynonyms}
 													disabled={loading || !oneWaySynonymBatchText.trim()}
 												>
@@ -858,7 +858,7 @@
 							</Card.Root>
 
 							<!-- Add Individual One-Way Synonym Group -->
-							<Card.Root class="bg-gray-800 border-gray-700">
+							<Card.Root class="border-gray-700 bg-gray-800">
 								<Card.Header>
 									<Card.Title>Add New One-Way Synonym Group</Card.Title>
 								</Card.Header>
@@ -867,22 +867,22 @@
 										<Input
 											bind:value={oneWaySynonymRoot}
 											placeholder="Enter root word/phrase"
-											class="text-gray-100 bg-gray-800 border-gray-700 placeholder:text-gray-500"
+											class="border-gray-700 bg-gray-800 text-gray-100 placeholder:text-gray-500"
 										/>
 										{#each oneWaySynonymWords as word, i}
 											<div class="flex gap-2">
 												<Input
 													bind:value={oneWaySynonymWords[i]}
 													placeholder="Enter synonym"
-													class="text-gray-100 bg-gray-800 border-gray-700 placeholder:text-gray-500"
+													class="border-gray-700 bg-gray-800 text-gray-100 placeholder:text-gray-500"
 												/>
 												{#if i > 0}
 													<Button
 														variant="outline"
-														class="text-red-400 bg-gray-800 border-red-900 hover:bg-gray-700"
+														class="border-red-900 bg-gray-800 text-red-400 hover:bg-gray-700"
 														on:click={() => removeWordFromOneWaySynonym(i)}
 													>
-														<Trash2 class="w-4 h-4" />
+														<Trash2 class="h-4 w-4" />
 													</Button>
 												{/if}
 											</div>
@@ -890,15 +890,15 @@
 										<div class="flex gap-2">
 											<Button
 												variant="outline"
-												class="text-gray-200 bg-gray-800 border-gray-700 hover:bg-gray-700"
+												class="border-gray-700 bg-gray-800 text-gray-200 hover:bg-gray-700"
 												on:click={addWordToOneWaySynonym}
 											>
-												<Plus class="w-4 h-4 mr-2" />
+												<Plus class="mr-2 h-4 w-4" />
 												Add Synonym
 											</Button>
 											<Button
 												variant="default"
-												class="text-white bg-blue-600 hover:bg-blue-700"
+												class="bg-blue-600 text-white hover:bg-blue-700"
 												on:click={addOneWaySynonymGroup}
 												disabled={loading ||
 													!oneWaySynonymRoot.trim() ||
@@ -918,7 +918,7 @@
 									<div class="mt-4 text-right">
 										<Button
 											variant="destructive"
-											class="text-white bg-red-600 hover:bg-red-700"
+											class="bg-red-600 text-white hover:bg-red-700"
 											on:click={deleteAllOneWaySynonyms}
 											disabled={loading}
 										>
@@ -930,13 +930,13 @@
 									<p class="text-gray-400">No one-way synonym groups found</p>
 								{:else}
 									{#each oneWaySynonyms as synonymGroup, index}
-										<Card.Root class="bg-gray-800 border-gray-700">
+										<Card.Root class="border-gray-700 bg-gray-800">
 											<Card.Content class="p-4">
 												<div class="flex items-center justify-between">
 													<div>
 														<div class="mb-2">
 															<span class="text-gray-300">Root: </span>
-															<span class="px-2 py-1 text-sm text-gray-200 bg-gray-700 rounded-md">
+															<span class="rounded-md bg-gray-700 px-2 py-1 text-sm text-gray-200">
 																{synonymGroup.root}
 															</span>
 														</div>
@@ -944,7 +944,7 @@
 															<span class="text-gray-300">Synonyms: </span>
 															{#each synonymGroup.synonyms as synonym}
 																<span
-																	class="px-2 py-1 text-sm text-gray-200 bg-gray-700 rounded-md"
+																	class="rounded-md bg-gray-700 px-2 py-1 text-sm text-gray-200"
 																>
 																	{synonym}
 																</span>
@@ -953,10 +953,10 @@
 													</div>
 													<Button
 														variant="outline"
-														class="text-red-400 bg-gray-800 border-red-900 hover:bg-gray-700"
+														class="border-red-900 bg-gray-800 text-red-400 hover:bg-gray-700"
 														on:click={() => deleteOneWaySynonymGroup(index)}
 													>
-														<Trash2 class="w-4 h-4" />
+														<Trash2 class="h-4 w-4" />
 													</Button>
 												</div>
 											</Card.Content>

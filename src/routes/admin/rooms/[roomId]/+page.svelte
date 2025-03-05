@@ -50,10 +50,10 @@
 			if (error) throw error;
 
 			selectedRoundId = newRound.id;
-			toast.success(`Created round ${nextRoundNumber}`);
+			toast.success(`Utworzono rundę ${nextRoundNumber}`);
 			await invalidateAll();
 		} catch (error) {
-			toast.error('Failed to create round: ' + error.message);
+			toast.error('Nie udało się utworzyć rundy: ' + error.message);
 		}
 	}
 
@@ -81,7 +81,7 @@
 
 				if (updateError) throw new Error('Failed to update room');
 				selectedRoundId = existingRound.id;
-				toast.success(`Moved to round ${nextRoundNumber}`);
+				toast.success(`Przesunięto do rundy ${nextRoundNumber}`);
 			} else {
 				// Create new round
 				const { data: newRound, error: insertError } = await supabase
@@ -102,7 +102,7 @@
 
 				if (updateError) throw new Error('Failed to update room');
 				selectedRoundId = newRound.id;
-				toast.success(`Created and moved to round ${nextRoundNumber}`);
+				toast.success(`Utworzono i przesunięto do rundy ${nextRoundNumber}`);
 			}
 		} catch (error) {
 			toast.error(error.message);
@@ -125,7 +125,7 @@
 			if (updateError) throw new Error('Failed to update room');
 
 			selectedRoundId = previousRound.id;
-			toast.success(`Moved to round ${previousRound.round_number}`);
+			toast.success(`Przesunięto do rundy ${previousRound.round_number}`);
 		} catch (error) {
 			toast.error(error.message);
 		}
@@ -133,7 +133,7 @@
 
 	async function toggleAnswerStatus(answerId, field, currentStatus) {
 		if (!isCurrentRound) {
-			toast.error('Cannot modify answers in past rounds');
+			toast.error('Nie można modyfikować odpowiedzi w poprzednich rundach');
 			return;
 		}
 
@@ -161,15 +161,15 @@
 			const { error } = await supabase.from('answers').update(updateData).eq('id', answerId);
 
 			if (error) throw error;
-			toast.success('Answer status updated');
+			toast.success('Zaktualizowano status odpowiedzi');
 		} catch (error) {
-			toast.error(`Update failed: ${error.message}`);
+			toast.error(`Aktualizacja nie powiodła się: ${error.message}`);
 		}
 	}
 
 	async function awardPointsToCorrectAnswers() {
 		if (!isCurrentRound) {
-			toast.error('Cannot award points in past rounds');
+			toast.error('Nie można przyznawać punktów w poprzednich rundach');
 			return;
 		}
 
@@ -213,21 +213,21 @@
 					if (error) throw error;
 				}
 			}
-			toast.success('Points awarded successfully');
+			toast.success('Punkty przyznane pomyślnie');
 		} catch (error) {
-			toast.error(`Failed to award points: ${error.message}`);
+			toast.error(`Nie udało się przyznać punktów: ${error.message}`);
 		}
 	}
 
 	async function adjustScore(playerId, field, amount) {
 		if (!isCurrentRound) {
-			toast.error('Cannot modify scores in past rounds');
+			toast.error('Nie można modyfikować wyników w poprzednich rundach');
 			return;
 		}
 
 		const player = players.find((p) => p.id === playerId);
 		if (!player || player[field] + amount < 0) {
-			toast.error(player ? 'Score cannot be negative' : 'Player not found');
+			toast.error(player ? 'Wynik nie może być ujemny' : 'Nie znaleziono gracza');
 			return;
 		}
 
@@ -240,7 +240,7 @@
 			if (error) throw error;
 			toast.success(`${field === 'score' ? 'Score' : 'Tiebreaker'} updated`);
 		} catch (error) {
-			toast.error(`Update failed: ${error.message}`);
+			toast.error(`Aktualizacja nie powiodła się: ${error.message}`);
 		}
 	}
 
@@ -249,15 +249,15 @@
 			const { error } = await supabase.from('players').delete().eq('id', playerId);
 			console.log(playerId);
 			if (error) throw error;
-			toast.success('Player removed from game');
+			toast.success('Gracz usunięty z gry');
 		} catch (error) {
-			toast.error('Failed to remove player: ' + error.message);
+			toast.error('Nie udało się usunąć gracza: ' + error.message);
 		}
 	}
 
 	async function resetAnswer(playerName) {
 		if (!isCurrentRound) {
-			toast.error('Cannot reset answers in past rounds');
+			toast.error('Nie można resetować odpowiedzi w poprzednich rundach');
 			return;
 		}
 
@@ -272,7 +272,7 @@
 			if (error) throw error;
 
 			displayedAnswers = displayedAnswers.filter((answer) => answer.player_name !== playerName);
-			toast.success('Answer reset');
+			toast.success('Odpowiedź zresetowana');
 		} catch (error) {
 			toast.error(error.message);
 		}
@@ -302,7 +302,7 @@
 
 				takeoverModeActive = false;
 				handRaiseResults = [];
-				toast.success('Takeover mode deactivated');
+				toast.success('Tryb przejęcia dezaktywowany');
 			} else {
 				// Activate takeover mode
 				const { error } = await supabase
@@ -316,10 +316,10 @@
 				if (error) throw error;
 
 				takeoverModeActive = true;
-				toast.success('Takeover mode activated');
+				toast.success('Tryb przejęcia aktywowany');
 			}
 		} catch (error) {
-			toast.error('Failed to toggle takeover mode: ' + error.message);
+			toast.error('Nie udało się przełączyć trybu przejęcia: ' + error.message);
 		}
 	}
 
@@ -352,7 +352,7 @@
 			}
 		} catch (error) {
 			console.error('Failed to load hand raise results:', error);
-			toast.error('Failed to update hand raise results');
+			toast.error('Nie udało się zaktualizować wyników podniesienia ręki');
 		}
 	}
 
@@ -364,9 +364,9 @@
 			if (error) throw error;
 
 			handRaiseResults = [];
-			toast.success('All hand raises cleared');
+			toast.success('Wszystkie podniesienia rąk wyczyszczone');
 		} catch (error) {
-			toast.error('Failed to clear hand raises: ' + error.message);
+			toast.error('Nie udało się wyczyścić podniesień rąk: ' + error.message);
 		}
 	}
 
@@ -490,8 +490,8 @@
 							}, 3000);
 						}
 					} catch (error) {
-						console.error('Failed to update hand raise results:', error);
-						toast.error('Failed to update hand raise results');
+						console.error('Failed to load hand raise results:', error);
+						toast.error('Nie udało się zaktualizować wyników podniesienia ręki');
 					}
 				}
 			)

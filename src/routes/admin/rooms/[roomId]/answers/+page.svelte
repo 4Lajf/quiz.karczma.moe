@@ -41,10 +41,10 @@
 			if (error) throw error;
 
 			selectedRoundId = newRound.id;
-			toast.success(`Created round ${nextRoundNumber}`);
+			toast.success(`Utworzono rundę ${nextRoundNumber}`);
 			await invalidateAll();
 		} catch (error) {
-			toast.error('Failed to create round: ' + error.message);
+			toast.error('Nie udało się utworzyć rundy: ' + error.message);
 		}
 	}
 
@@ -54,7 +54,7 @@
 		try {
 			// Don't allow deleting if this is the only round
 			if (rounds.length <= 1) {
-				toast.error('Cannot delete the only round');
+				toast.error('Nie można usunąć jedynej rundy');
 				return;
 			}
 
@@ -100,10 +100,10 @@
 			if (error) throw error;
 
 			selectedRoundId = switchToRound.id;
-			toast.success(`Deleted round ${currentRound.round_number}`);
+			toast.success(`Usunięto rundę ${currentRound.round_number}`);
 			await invalidateAll();
 		} catch (error) {
-			toast.error('Failed to delete round: ' + error.message);
+			toast.error('Nie udało się usunąć rundy: ' + error.message);
 		}
 	}
 

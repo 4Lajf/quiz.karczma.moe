@@ -34,7 +34,7 @@
 			.order('created_at', { ascending: true });
 
 		if (error) {
-			toast.error('Failed to load answers');
+			toast.error('Nie udało się załadować odpowiedzi');
 			return [];
 		}
 
@@ -123,12 +123,12 @@
 
 	async function createNewRounds() {
 		if (roundsToAdd < 1) {
-			toast.error('Please enter a valid number of rounds to add');
+			toast.error('Wprowadź prawidłową liczbę rund do dodania');
 			return;
 		}
 
 		if (roundsToAdd > 20) {
-			if (!confirm(`Are you sure you want to add ${roundsToAdd} rounds at once?`)) {
+			if (!confirm(`Czy na pewno chcesz dodać ${roundsToAdd} rund naraz?`)) {
 				return;
 			}
 		}
@@ -189,16 +189,18 @@
 			}
 
 			if (addedCount === 0) {
-				toast.error('Failed to add rounds');
+				toast.error('Nie udało się dodać rund');
 			} else if (addedCount < roundsToAdd) {
-				toast.warning(`Added ${addedCount} out of ${roundsToAdd} rounds`);
+				toast.warning(`Dodano ${addedCount} z ${roundsToAdd} rund`);
 			} else {
-				toast.success(`Added ${addedCount} new round${addedCount > 1 ? 's' : ''}`);
+				toast.success(
+					`Dodano ${addedCount} now${addedCount > 1 ? 'e' : 'ą'} rund${addedCount > 1 ? 'y' : 'ę'}`
+				);
 			}
 
 			await invalidateAll();
 		} catch (error) {
-			toast.error('Failed to create rounds: ' + error.message);
+			toast.error('Nie udało się stworzyć rund: ' + error.message);
 		} finally {
 			addingRounds = false;
 		}
@@ -273,7 +275,7 @@
 			if (updateError) throw updateError;
 
 			answers = [...answers, data];
-			toast.success('Answer added');
+			toast.success('Dodano odpowiedź');
 
 			// Now fetch and add related titles
 			const relatedTitles = await fetchRelatedTitles(newAnswer);
@@ -303,7 +305,7 @@
 			}
 
 			if (addedCount > 0) {
-				toast.success(`Added ${addedCount} related title${addedCount > 1 ? 's' : ''}`);
+				toast.success(`Dodano ${addedCount} powiązan${addedCount > 1 ? 'e tytuły' : 'y tytuł'}`);
 			}
 
 			// Clear form inputs
@@ -325,16 +327,18 @@
 			if (error) throw error;
 
 			answers = answers.filter((a) => a.id !== id);
-			toast.success('Answer deleted');
+			toast.success('Usunięto odpowiedź');
 		} catch (error) {
-			toast.error('Failed to delete answer: ' + error.message);
+			toast.error('Nie udało się usunąć odpowiedzi: ' + error.message);
 		}
 	}
 
 	async function deleteAllAnswers() {
 		if (!roundId || !answers.length) return;
 
-		if (!confirm(`Are you sure you want to delete all ${answers.length} answers in this round?`)) {
+		if (
+			!confirm(`Czy na pewno chcesz usunąć wszystkie ${answers.length} odpowiedzi w tej rundzie?`)
+		) {
 			return;
 		}
 
@@ -344,9 +348,9 @@
 			if (error) throw error;
 
 			answers = [];
-			toast.success('All answers deleted');
+			toast.success('Usunięto wszystkie odpowiedzi');
 		} catch (error) {
-			toast.error('Failed to delete answers: ' + error.message);
+			toast.error('Nie udało się usunąć odpowiedzi: ' + error.message);
 		}
 	}
 
