@@ -3,8 +3,10 @@
 	const SCORE_GAP_THRESHOLD = 100_000;
 	const MIN_FIELD_SCORE = 1000; // Minimum required field score
 	const USE_HYBRID_SEARCH = true; // Toggle between hybrid and full Typesense search
+	import { PUBLIC_TYPESENSE_API_KEY } from '$env/static/public';
 
 	import { onMount, onDestroy } from 'svelte';
+	import Typesense from 'typesense';
 	import Awesomplete from 'awesomplete';
 	import { cn } from '$lib/utils';
 
@@ -20,6 +22,18 @@
 	let isLoading = false;
 	let currentInputValue = value;
 	let suggestionsList = [];
+
+	const searchClient = new Typesense.Client({
+		nodes: [
+			{
+				host: 'search.lycoris.cafe',
+				port: 443,
+				protocol: 'https'
+			}
+		],
+		apiKey: PUBLIC_TYPESENSE_API_KEY,
+		connectionTimeoutSeconds: 2
+	});
 
 	function handleTab(event) {
 		if (awesomplete && awesomplete.opened) {
@@ -53,17 +67,38 @@
 
 	async function performTypesenseSearch(query) {
 		try {
-			// Use server-side endpoint instead of direct Typesense client
-			const params = new URLSearchParams({
+			// Different search parameters based on type
+			const queryBy =
+				type === 'anime'
+					? 'normalizedRomajiTitle,normalizedEnglishTitle,normalizedAltTitles'
+					: 'normalizedName';
+
+			const searchParameters = {
 				q: query,
-				type,
-				index,
-				searchKey
-			});
-			const response = await fetch(`/api/search/typesense?${params}`);
-			if (!response.ok) throw new Error('Typesense search failed');
-			const data = await response.json();
-			return data.hits || [];
+				query_by: queryBy,
+				per_page: 25,
+				drop_tokens_threshold: 1,
+				typo_tokens_threshold: 1,
+				prioritize_exact_match: true,
+				prioritize_token_position: true,
+				prefix: true,
+				infix: query.length > 3 ? 'always' : 'off',
+				num_typos: 2,
+				min_len_1typo: 3,
+				min_len_2typo: 5,
+				split_join_tokens: true,
+				text_match_type: 'max_score',
+				highlight_full_fields:
+					type === 'anime'
+						? 'normalizedRomajiTitle,normalizedEnglishTitle,normalizedAltTitles'
+						: `normalizedName,${searchKey}`,
+				highlight_start_tag: '<mark>',
+				highlight_end_tag: '</mark>',
+				sort_by: '_text_match:desc'
+			};
+
+			const response = await searchClient.collections(index).documents().search(searchParameters);
+			return response.hits || [];
 		} catch (error) {
 			console.error('Typesense search error:', error);
 			return [];
@@ -365,6 +400,8 @@
 			});
 		}
 	});
+
+	// In the Autocomplete.svelte file, modify the handleInput function:
 
 	async function handleInput(event) {
 		const query = event.target.value;
