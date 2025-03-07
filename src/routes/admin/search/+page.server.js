@@ -1,17 +1,17 @@
 // src/admin/search/+page.server.js
 import Typesense from 'typesense';
 import axios from 'axios'
-const API_KEY = '9ec5c0f9-85f3-494e-ab43-8225c4ffc14e';
-const HOST = 'search.lycoris.cafe';
+const HOST = 'search.karczma.moe';
+import { PUBLIC_TYPESENSE_API_KEY } from '$env/static/public';
 
 const createClient = () => {
   return new Typesense.Client({
     'nodes': [{
-      'host': 'search.lycoris.cafe', // For Typesense Cloud use xxx.a1.typesense.net
+      'host': 'search.karczma.moe', // For Typesense Cloud use xxx.a1.typesense.net
       'port': 80,      // For Typesense Cloud use 443
       'protocol': 'http'   // For Typesense Cloud use https
     }],
-    'apiKey': '9ec5c0f9-85f3-494e-ab43-8225c4ffc14e',
+    'apiKey': PUBLIC_TYPESENSE_API_KEY,
     'connectionTimeoutSeconds': 2,
     // logLevel: 'debug'
   });
@@ -20,11 +20,11 @@ const createClient = () => {
 export const load = async () => {
   const config = {
     'nodes': [{
-      'host': 'search.lycoris.cafe', // For Typesense Cloud use xxx.a1.typesense.net
+      'host': 'search.karczma.moe', // For Typesense Cloud use xxx.a1.typesense.net
       'port': 80,      // For Typesense Cloud use 443
       'protocol': 'http'   // For Typesense Cloud use https
     }],
-    'apiKey': '9ec5c0f9-85f3-494e-ab43-8225c4ffc14e',
+    'apiKey': PUBLIC_TYPESENSE_API_KEY,
     'connectionTimeoutSeconds': 2,
   };
 
@@ -127,7 +127,7 @@ export const actions = {
           url: `https://${HOST}/collections`,
           headers: {
             'Content-Type': 'application/json',
-            'X-TYPESENSE-API-KEY': API_KEY
+            'X-TYPESENSE-API-KEY': PUBLIC_TYPESENSE_API_KEY
           },
           data: schema
         });
@@ -151,7 +151,7 @@ export const actions = {
           port: '443',
           protocol: 'https'
         }],
-        apiKey: API_KEY,
+        apiKey: PUBLIC_TYPESENSE_API_KEY,
         connectionTimeoutSeconds: 10
       });
 
@@ -248,7 +248,7 @@ export const actions = {
               url: `https://${HOST}/collections/${collectionName}/synonyms/${group.id}`,
               headers: {
                 'Content-Type': 'application/json',
-                'X-TYPESENSE-API-KEY': API_KEY
+                'X-TYPESENSE-API-KEY': PUBLIC_TYPESENSE_API_KEY
               },
               data: {
                 synonyms: group.synonyms

@@ -26,7 +26,7 @@
 	const searchClient = new Typesense.Client({
 		nodes: [
 			{
-				host: 'search.lycoris.cafe',
+				host: 'search.karczma.moe',
 				port: 443,
 				protocol: 'https'
 			}
