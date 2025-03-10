@@ -19,8 +19,17 @@
 	let lastChangedPlayer = null;
 
 	export let data;
-	$: ({ supabase, room, players, currentAnswers, rounds, roundAnswers, currentRound, hintUsageMap } = data);
-	
+	$: ({
+		supabase,
+		room,
+		players,
+		currentAnswers,
+		rounds,
+		roundAnswers,
+		currentRound,
+		hintUsageMap
+	} = data);
+
 	let activeTab = 'answers';
 	let selectedRoundId = currentRound?.id;
 	let channel;
@@ -863,7 +872,7 @@
 									? 'bg-red-600/50 text-white hover:bg-red-500/50'
 									: 'bg-green-600/50 text-white hover:bg-green-500/50'}
 							>
-								{takeoverModeActive ? 'Włącz Tryb Przejęć' : 'Wyłącz Tryb Przejęć'}
+								{takeoverModeActive ? 'Wyłącz Tryb Przejęć ' : 'Włącz Tryb Przejęć'}
 							</Button>
 							<Button
 								on:click={clearAllHandRaises}
