@@ -45,7 +45,12 @@
 
 <div class="min-h-screen bg-gray-950">
 	<div class="mx-auto max-w-7xl px-4 py-12">
-		<h1 class="mb-8 text-center text-3xl font-bold text-white">Lista Pokoi</h1>
+		<div class="mb-8 flex items-center justify-between">
+			<h1 class="text-3xl font-bold text-white">Lista Pokoi</h1>
+			{#if !session}
+				<Button href="/login" class="bg-blue-600 text-white hover:bg-blue-700">Zaloguj się</Button>
+			{/if}
+		</div>
 		<div class="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
 			{#each rooms as room}
 				<Card.Root class="border-gray-800/50 bg-gray-900/50 transition-colors hover:bg-gray-900">
