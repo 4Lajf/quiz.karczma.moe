@@ -15,7 +15,8 @@
 		song_title: enabledFields?.song_title || false,
 		song_artist: enabledFields?.song_artist || false,
 		anime_title: enabledFields?.anime_title || false,
-		other: enabledFields?.other || false
+		other: enabledFields?.other || false,
+		hint_mode: enabledFields?.hint_mode || false
 	};
 
 	async function handleSave() {
@@ -71,6 +72,14 @@
 				/>
 				<Label for="other" class="text-gray-200">Inne</Label>
 			</div>
+			<div class="flex items-center space-x-2">
+				<Checkbox
+				  id="hint_mode"
+				  bind:checked={fields.hint_mode}
+				  class="border-gray-600 data-[state=checked]:bg-blue-600"
+				/>
+				<Label for="hint_mode" class="text-gray-200">Tryb podpowiedzi</Label>
+			  </div>
 		</div>
 		<Dialog.Footer>
 			<Button

@@ -18,6 +18,8 @@
 	let latencyHistory = [];
 	let displayLatency = 0;
 	let measuringLatency = false;
+	let hintRequested = false;
+	let maskedAnswer = '';
 
 	// Replacement rules for easier text matching
 	const ANIME_REGEX_REPLACE_RULES = [
@@ -44,6 +46,50 @@
 		{ input: 's', replace: '[sς]' },
 		{ input: 'l', replace: '[l˥]' }
 	];
+
+	async function checkHintStatus() {
+		if (!hasJoined || !playerName || !room?.current_round) return false;
+
+		const { data: hintUsage } = await supabase
+			.from('hint_usages')
+			.select('*')
+			.eq('room_id', room.id)
+			.eq('round_id', room.current_round)
+			.eq('player_name', playerName)
+			.maybeSingle();
+
+		return !!hintUsage;
+	}
+
+	async function requestHint() {
+		try {
+			const response = await fetch('/api/hint', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify({
+					roomId: room.id,
+					roundId: room.current_round,
+					playerName: playerName
+				})
+			});
+
+			const result = await response.json();
+
+			if (!response.ok) {
+				throw new Error(result.error || 'Failed to get hint');
+			}
+
+			maskedAnswer = result.hint;
+			hintRequested = true;
+
+			toast.info('Podpowiedź została wygenerowana');
+		} catch (error) {
+			console.error('Error fetching hint:', error);
+			toast.error('Nie udało się pobrać podpowiedzi: ' + error.message);
+		}
+	}
 
 	// Function to apply regex replacement rules
 	function applyRegexRules(input) {
@@ -91,16 +137,20 @@
 	async function checkAnswerStatus() {
 		if (!hasJoined || !playerName || !room?.current_round) return;
 
-		const { data: existingAnswer } = await supabase
-			.from('answers')
-			.select('*, extra_fields')
-			.eq('room_id', room.id)
-			.eq('player_name', playerName)
-			.eq('round_id', room.current_round)
-			.maybeSingle();
+		const [{ data: existingAnswer }, isHintRequested] = await Promise.all([
+			supabase
+				.from('answers')
+				.select('*, extra_fields')
+				.eq('room_id', room.id)
+				.eq('player_name', playerName)
+				.eq('round_id', room.current_round)
+				.maybeSingle(),
+			checkHintStatus()
+		]);
 
-		// Update hasSubmitted based on whether an answer exists
+		// Update states
 		hasSubmitted = !!existingAnswer;
+		hintRequested = isHintRequested;
 
 		if (existingAnswer) {
 			// If there's an existing answer, set answer and extra fields
@@ -111,8 +161,28 @@
 				otherAnswer = existingAnswer.extra_fields.other || '';
 			}
 		} else {
-			// If no answer exists, reset all fields
+			// If no answer exists, reset all fields except for hintRequested
 			resetAnswerState();
+		}
+
+		// If hint was requested but we don't have the hint yet, fetch it again
+		if (hintRequested && !maskedAnswer) {
+			const response = await fetch('/api/hint', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify({
+					roomId: room.id,
+					roundId: room.current_round,
+					playerName: playerName
+				})
+			});
+
+			if (response.ok) {
+				const result = await response.json();
+				maskedAnswer = result.hint;
+			}
 		}
 	}
 
@@ -136,6 +206,19 @@
 						resetAnswerState();
 						await invalidateAll();
 					}
+				}
+			)
+			.on(
+				'postgres_changes',
+				{
+					event: '*',
+					schema: 'public',
+					table: 'hint_usages',
+					filter: `player_name=eq.${playerName}`
+				},
+				async () => {
+					hintRequested = true;
+					await checkAnswerStatus();
 				}
 			)
 			.on(
@@ -537,6 +620,85 @@
 						</Button>
 					</form>
 				{:else if !hasSubmitted}
+					<div
+						class="mb-6 overflow-hidden rounded-xl border border-gray-700 bg-gray-800/60 shadow-lg"
+					>
+						{#if !hintRequested && room.enabled_fields?.hint_mode}
+							<div class="flex items-center justify-between p-4">
+								<div class="flex items-center gap-3">
+									<div
+										class="flex h-10 w-10 items-center justify-center rounded-full bg-gray-700/50 text-xl text-blue-400"
+									>
+										?
+									</div>
+								</div>
+								<Button
+									on:click={requestHint}
+									class="bg-blue-600/50 text-white hover:bg-blue-600/70"
+									size="sm"
+								>
+									Pokaż podpowiedź (-40% punktów)
+								</Button>
+							</div>
+						{:else if hintRequested}
+							<div class="p-4">
+								<div class="mb-2 flex items-center gap-3">
+									<div
+										class="flex h-8 w-8 items-center justify-center rounded-full bg-blue-600/30 text-lg text-blue-400"
+									>
+										<svg
+											xmlns="http://www.w3.org/2000/svg"
+											width="18"
+											height="18"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+										>
+											<circle cx="12" cy="12" r="10"></circle>
+											<line x1="12" y1="16" x2="12" y2="12"></line>
+											<line x1="12" y1="8" x2="12.01" y2="8"></line>
+										</svg>
+									</div>
+									<h3 class="font-medium text-blue-400">Podpowiedź</h3>
+								</div>
+								<div class="mt-2 rounded-lg bg-gray-900/60 p-3">
+									{#if maskedAnswer}
+										<p class="text-center font-mono text-lg tracking-tight text-white">
+											<!-- Process the hint to make it more word-like -->
+											{#each maskedAnswer.split(' ') as word, i}
+												<span class="mb-1 mr-2 inline-block">
+													{#each word.split('') as char}
+														<span
+															class={char === '_'
+																? 'mx-px'
+																: char === '•'
+																	? 'mx-px text-blue-500'
+																	: 'mx-px font-bold text-blue-400'}
+														>
+															{char}
+														</span>
+													{/each}
+												</span>
+											{/each}
+										</p>
+									{:else}
+										<p class="text-center font-mono text-lg text-white">Ładowanie...</p>
+									{/if}
+								</div>
+								<p class="mt-2 text-center text-xs text-gray-400">
+									<span
+										class="mx-auto inline-flex items-center rounded border border-gray-700 bg-gray-800/80 px-2 py-1 font-mono text-sm text-blue-400"
+									>
+										<span class="mr-1 font-bold">•</span> = Dowolny znak specjalny
+									</span>
+								</p>
+							</div>
+						{/if}
+					</div>
+
 					<form on:submit|preventDefault={submitAnswer} class="space-y-4">
 						<Autocomplete
 							bind:value={answer}
@@ -585,7 +747,7 @@
 						</Button>
 					</form>
 				{:else}
-					<p class="text-center text-gray-200">Answer submitted for this round</p>
+					<p class="text-center text-gray-200">Odpowiedź dla tej rundy została wysłana</p>
 				{/if}
 			</Card.Content>
 		</Card.Root>

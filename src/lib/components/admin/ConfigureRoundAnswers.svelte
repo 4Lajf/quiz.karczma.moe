@@ -253,13 +253,18 @@
 				extraFields.other = newOther;
 			}
 
-			// Add main answer first
+			// Generate hint for this answer
+			const processedAnswer = newAnswer.trim();
+			const hint = await generateHint(processedAnswer);
+
+			// Add main answer first with pre-calculated hint
 			const { data, error } = await supabase
 				.from('correct_answers')
 				.insert({
 					round_id: roundId,
-					content: newAnswer.trim(),
-					extra_fields: Object.keys(extraFields).length > 0 ? extraFields : null
+					content: processedAnswer,
+					extra_fields: Object.keys(extraFields).length > 0 ? extraFields : null,
+					hint: hint
 				})
 				.select()
 				.single();
@@ -285,12 +290,16 @@
 				// Check if this title is already in answers list
 				const isDuplicate = answers.some((a) => a.content.toLowerCase() === title.toLowerCase());
 				if (!isDuplicate) {
+					// Generate hint for this related title
+					const relatedHint = await generateHint(title.trim());
+
 					const { data: relatedData, error: relatedError } = await supabase
 						.from('correct_answers')
 						.insert({
 							round_id: roundId,
 							content: title.trim(),
-							extra_fields: Object.keys(extraFields).length > 0 ? extraFields : null
+							extra_fields: Object.keys(extraFields).length > 0 ? extraFields : null,
+							hint: relatedHint
 						})
 						.select()
 						.single();
@@ -318,6 +327,82 @@
 		} finally {
 			loading = false;
 		}
+	}
+
+	// Add this function to generate hints
+	async function generateHint(title) {
+		// Count actual characters to potentially reveal (excluding spaces)
+		const nonSpaceChars = title.replace(/\s/g, '').length;
+
+		// Calculate characters to reveal (balanced approach)
+		let charsToReveal;
+		if (nonSpaceChars <= 1) {
+			// Special case for single-character titles
+			charsToReveal = 1;
+		} else if (nonSpaceChars <= 2) {
+			// Special case for two-character titles
+			charsToReveal = 1;
+		} else {
+			// Logarithmic scaling for all other lengths
+			// Formula: 1.6 * ln(length + 1)
+			charsToReveal = Math.ceil(1.6 * Math.log(nonSpaceChars + 1));
+
+			// Add a safety cap to ensure we never reveal too much
+			const maxRevealPercentage = 0.35; // Never reveal more than 35%
+			const percentageCap = Math.floor(nonSpaceChars * maxRevealPercentage);
+			charsToReveal = Math.min(charsToReveal, percentageCap);
+
+			// Ensure we always reveal at least one character
+			charsToReveal = Math.max(1, charsToReveal);
+		}
+
+		// Process the answer to create the hint
+		const words = title.split(' ');
+		const hintWords = [];
+
+		// Prepare array of character positions to potentially reveal (excluding spaces)
+		const allPositions = [];
+		for (let i = 0; i < title.length; i++) {
+			if (title[i] !== ' ') {
+				allPositions.push(i);
+			}
+		}
+
+		// Randomly select positions to reveal
+		const positionsToReveal = [];
+		while (positionsToReveal.length < charsToReveal && allPositions.length > 0) {
+			const randomIndex = Math.floor(Math.random() * allPositions.length);
+			positionsToReveal.push(allPositions[randomIndex]);
+			allPositions.splice(randomIndex, 1);
+		}
+
+		// Process each word
+		let currentPos = 0;
+		for (const word of words) {
+			let hintWord = '';
+
+			for (let i = 0; i < word.length; i++) {
+				const globalPos = currentPos + i;
+				const char = word[i];
+
+				if (positionsToReveal.includes(globalPos)) {
+					// Reveal this character
+					hintWord += char;
+				} else if (/[a-zA-Z0-9]/.test(char)) {
+					// Replace alphanumeric characters with underscore
+					hintWord += '_';
+				} else {
+					// Replace special characters with a symbol
+					hintWord += '•';
+				}
+			}
+
+			hintWords.push(hintWord);
+			currentPos += word.length + 1; // +1 for the space
+		}
+
+		// Join words with spaces for the final hint
+		return hintWords.join(' ');
 	}
 
 	async function deleteAnswer(id) {
@@ -400,7 +485,9 @@
 				<div>
 					<Card.Title class="text-white">Konfiguruj odpowiedzi rund</Card.Title>
 					<Card.Description class="text-gray-400">
-						Dodaj lub usuń poprawne odpowiedzi dla rund
+						Dodaj lub usuń poprawne odpowiedzi dla rund<br />
+						Pierwszą odpowiedź jaką dodasz będzie użyta do uzyskania podpowiedzi<br />liczba liter
+						odsłonięta w zależności od długości
 					</Card.Description>
 				</div>
 

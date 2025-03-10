@@ -19,8 +19,8 @@
 	let lastChangedPlayer = null;
 
 	export let data;
-	$: ({ supabase, room, players, currentAnswers, rounds, roundAnswers, currentRound } = data);
-
+	$: ({ supabase, room, players, currentAnswers, rounds, roundAnswers, currentRound, hintUsageMap } = data);
+	
 	let activeTab = 'answers';
 	let selectedRoundId = currentRound?.id;
 	let channel;
@@ -174,6 +174,17 @@
 		}
 
 		try {
+			// Fetch hint usages for this round
+			const { data: hintUsages, error: hintError } = await supabase
+				.from('hint_usages')
+				.select('player_name')
+				.eq('round_id', selectedRoundId);
+
+			if (hintError) throw hintError;
+
+			// Create a set of player names that used hints for easy lookup
+			const hintUsedByPlayer = new Set(hintUsages?.map((h) => h.player_name) || []);
+
 			for (const answer of displayedAnswers) {
 				const player = players.find((p) => p.name === answer.player_name);
 				if (!player) continue;
@@ -181,13 +192,21 @@
 				let points = 0;
 				let tiebreaker = 0;
 
-				// Main answer points
+				// Main answer points with hint deduction if applicable
 				if (answer.answer_status.main_answer) {
-					points += room.points_config.main_answer;
+					let mainPoints = room.points_config.main_answer;
+
+					// Apply 40% deduction if hint was used
+					if (hintUsedByPlayer.has(answer.player_name)) {
+						mainPoints = Math.round(mainPoints * 0.6); // 60% of original points
+					}
+
+					points += mainPoints;
+					// Tiebreaker is not affected by hint usage
 					tiebreaker += room.points_config.tiebreaker.main_answer;
 				}
 
-				// Extra fields points
+				// Extra fields points (not affected by hint usage)
 				if (answer.answer_status.song_title) {
 					points += room.points_config.song_title;
 					tiebreaker += room.points_config.tiebreaker.song_title;
@@ -606,14 +625,14 @@
 			<Card.Content>
 				<Tabs.Root value={activeTab} onValueChange={(v) => (activeTab = v)}>
 					<Tabs.List class="mb-4">
-						<Tabs.Trigger value="answers" class="text-gray-300">Round Answers</Tabs.Trigger>
-						<Tabs.Trigger value="teams" class="text-gray-300">All Teams</Tabs.Trigger>
-						<Tabs.Trigger value="takeover" class="text-gray-300">Takeover Mode</Tabs.Trigger>
+						<Tabs.Trigger value="answers" class="text-gray-300">Odpowiedzi</Tabs.Trigger>
+						<Tabs.Trigger value="teams" class="text-gray-300">Drużyny</Tabs.Trigger>
+						<Tabs.Trigger value="takeover" class="text-gray-300">Przejęcia</Tabs.Trigger>
 					</Tabs.List>
 
 					<Tabs.Content value="answers">
 						{#if displayedAnswers.length === 0}
-							<div class="p-4 text-center text-gray-400">No answers submitted for this round</div>
+							<div class="p-4 text-center text-gray-400">Brak odpowiedzi w tej rundzie</div>
 						{:else}
 							<div class="mb-4">
 								<Button
@@ -641,6 +660,7 @@
 										<Table.Head class="text-gray-300">Czas</Table.Head>
 										<Table.Head class="text-gray-300">Wynik</Table.Head>
 										<Table.Head class="text-center text-gray-300">Tiebreaker</Table.Head>
+										<Table.Head class="text-center text-gray-300">Podpowiedź</Table.Head>
 										<Table.Head class="text-gray-300">Akcje</Table.Head>
 									</Table.Row>
 								</Table.Header>
@@ -764,6 +784,18 @@
 
 											<Table.Cell>
 												<span class="text-center text-gray-200">{player?.tiebreaker || 0}</span>
+											</Table.Cell>
+
+											<Table.Cell class="text-center">
+												{#if hintUsageMap[`${answer.player_name}-${answer.round_id}`]}
+													<span
+														class="rounded-md bg-yellow-900/30 px-2 py-1 text-xs text-yellow-400"
+													>
+														Użyta
+													</span>
+												{:else}
+													<span class="text-gray-400">-</span>
+												{/if}
 											</Table.Cell>
 
 											<Table.Cell>
