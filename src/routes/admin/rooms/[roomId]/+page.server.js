@@ -10,6 +10,22 @@ export const load = async ({ depends, params, locals: { supabase } }) => {
   depends('rounds');
 
   try {
+    const { data: hintUsages, error: hintUsagesError } = await supabase
+      .from('hint_usages')
+      .select('player_name, round_id')
+      .eq('room_id', params.roomId);
+
+    if (hintUsagesError) {
+      console.error('Hint usages fetch error:', hintUsagesError);
+    }
+
+    const hintUsageMap = {};
+    (hintUsages || []).forEach(usage => {
+      const key = `${usage.player_name}-${usage.round_id}`;
+      hintUsageMap[key] = true;
+    });
+
+
     // Fetch room data with all configurations
     const { data: rooms, error: roomError } = await supabase
       .from('rooms')
@@ -91,15 +107,15 @@ export const load = async ({ depends, params, locals: { supabase } }) => {
         answer.answer_status.song_artist === true ||
         answer.answer_status.other === true
       );
-      
+
       // If manually edited, keep the existing status
       if (hasManualChanges) {
         return answer;
       }
-      
+
       // Otherwise, perform automatic checking
       const roundCorrectAnswers = correctAnswers.filter(ca => ca.round_id === answer.round_id);
-      
+
       // Start with existing answer status or default
       const newAnswerStatus = {
         ...(answer.answer_status || {}),
@@ -108,47 +124,47 @@ export const load = async ({ depends, params, locals: { supabase } }) => {
         song_artist: false,
         other: false
       };
-      
+
       // Helper for text normalization
       const normalizeText = (text) => (text ? text.toLowerCase().trim() : '');
-      
+
       // Check main answer against all correct answers
-      const mainAnswerMatches = roundCorrectAnswers.some(correctAnswer => 
+      const mainAnswerMatches = roundCorrectAnswers.some(correctAnswer =>
         normalizeText(correctAnswer.content) === normalizeText(answer.content)
       );
-      
+
       if (mainAnswerMatches) {
         newAnswerStatus.main_answer = true;
       }
-      
+
       // Check extra fields individually
       if (answer.extra_fields) {
         // Check song_title
         if (answer.extra_fields.song_title) {
-          const songTitleMatches = roundCorrectAnswers.some(correctAnswer => 
-            correctAnswer.extra_fields?.song_title && 
+          const songTitleMatches = roundCorrectAnswers.some(correctAnswer =>
+            correctAnswer.extra_fields?.song_title &&
             normalizeText(correctAnswer.extra_fields.song_title) === normalizeText(answer.extra_fields.song_title)
           );
           if (songTitleMatches) {
             newAnswerStatus.song_title = true;
           }
         }
-        
+
         // Check song_artist
         if (answer.extra_fields.song_artist) {
-          const artistMatches = roundCorrectAnswers.some(correctAnswer => 
-            correctAnswer.extra_fields?.song_artist && 
+          const artistMatches = roundCorrectAnswers.some(correctAnswer =>
+            correctAnswer.extra_fields?.song_artist &&
             normalizeText(correctAnswer.extra_fields.song_artist) === normalizeText(answer.extra_fields.song_artist)
           );
           if (artistMatches) {
             newAnswerStatus.song_artist = true;
           }
         }
-        
+
         // Check other field
         if (answer.extra_fields.other) {
-          const otherMatches = roundCorrectAnswers.some(correctAnswer => 
-            correctAnswer.extra_fields?.other && 
+          const otherMatches = roundCorrectAnswers.some(correctAnswer =>
+            correctAnswer.extra_fields?.other &&
             normalizeText(correctAnswer.extra_fields.other) === normalizeText(answer.extra_fields.other)
           );
           if (otherMatches) {
@@ -156,7 +172,7 @@ export const load = async ({ depends, params, locals: { supabase } }) => {
           }
         }
       }
-      
+
       return {
         ...answer,
         answer_status: newAnswerStatus
@@ -175,7 +191,8 @@ export const load = async ({ depends, params, locals: { supabase } }) => {
       currentRound,
       players: players || [],
       roundAnswers,
-      currentAnswers: roundAnswers[room.current_round] || []
+      currentAnswers: roundAnswers[room.current_round] || [],
+      hintUsageMap
     };
   } catch (err) {
     console.error('Load error:', err);
