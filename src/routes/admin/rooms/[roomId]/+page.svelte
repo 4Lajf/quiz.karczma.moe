@@ -11,24 +11,62 @@
 	import { Check, X } from 'lucide-svelte';
 	import PointsConfigModal from '$lib/components/admin/PointsConfigModal.svelte';
 	import { Plus } from 'lucide-svelte';
+	import { Input } from '$lib/components/ui/input';
 
 	let pointsConfigModalOpen = false;
 	let takeoverModeActive = false;
 	let handRaiseResults = [];
 	let lastUpdated = '';
 	let lastChangedPlayer = null;
+	let currentCorrectAnswers = [];
+	let editingPlayer = null;
+	let editValue = 0;
+	let editType = null; // 'score' or 'tiebreaker'
+
+	function startEditing(player, type) {
+		editingPlayer = player.id;
+		editValue = player[type];
+		editType = type;
+	}
+
+	function cancelEditing() {
+		editingPlayer = null;
+		editValue = 0;
+		editType = null;
+	}
+
+	async function saveEditedValue() {
+		if (!editingPlayer || editValue === null) return;
+
+		try {
+			const { error } = await supabase
+				.from('players')
+				.update({ [editType]: editValue })
+				.eq('id', editingPlayer);
+
+			if (error) throw error;
+			toast.success(`${editType === 'score' ? 'Wynik' : 'Tiebreaker'} zaktualizowany`);
+			cancelEditing();
+			await invalidateAll();
+		} catch (error) {
+			toast.error(`Aktualizacja nie powiodła się: ${error.message}`);
+		}
+	}
+
+	async function loadCorrectAnswers(roundId) {
+		try {
+			const { data, error } = await supabase.from('correct_answers').select('*').eq('round_id', roundId);
+
+			if (error) throw error;
+			currentCorrectAnswers = data || [];
+		} catch (error) {
+			console.error('Failed to load correct answers:', error);
+			toast.error('Nie udało się załadować prawidłowych odpowiedzi');
+		}
+	}
 
 	export let data;
-	$: ({
-		supabase,
-		room,
-		players,
-		currentAnswers,
-		rounds,
-		roundAnswers,
-		currentRound,
-		hintUsageMap
-	} = data);
+	$: ({ supabase, room, players, currentAnswers, rounds, roundAnswers, currentRound, hintUsageMap } = data);
 
 	let activeTab = 'answers';
 	let selectedRoundId = currentRound?.id;
@@ -40,10 +78,7 @@
 	async function createNewRound() {
 		try {
 			// Find the highest round number
-			const highestRound = rounds.reduce(
-				(max, round) => (round.round_number > max ? round.round_number : max),
-				0
-			);
+			const highestRound = rounds.reduce((max, round) => (round.round_number > max ? round.round_number : max), 0);
 
 			const nextRoundNumber = highestRound + 1;
 
@@ -68,6 +103,7 @@
 
 	function handleRoundChange(event) {
 		selectedRoundId = event.target.value;
+		loadCorrectAnswers(selectedRoundId);
 	}
 
 	async function handleNextRound() {
@@ -83,10 +119,7 @@
 
 			if (existingRound) {
 				// Just switch to existing round
-				const { error: updateError } = await supabase
-					.from('rooms')
-					.update({ current_round: existingRound.id })
-					.eq('id', room.id);
+				const { error: updateError } = await supabase.from('rooms').update({ current_round: existingRound.id }).eq('id', room.id);
 
 				if (updateError) throw new Error('Failed to update room');
 				selectedRoundId = existingRound.id;
@@ -104,10 +137,7 @@
 
 				if (insertError) throw new Error('Failed to create round');
 
-				const { error: updateError } = await supabase
-					.from('rooms')
-					.update({ current_round: newRound.id })
-					.eq('id', room.id);
+				const { error: updateError } = await supabase.from('rooms').update({ current_round: newRound.id }).eq('id', room.id);
 
 				if (updateError) throw new Error('Failed to update room');
 				selectedRoundId = newRound.id;
@@ -126,10 +156,7 @@
 			const previousRound = rounds.find((r) => r.round_number === currentRoundNumber - 1);
 			if (!previousRound) return;
 
-			const { error: updateError } = await supabase
-				.from('rooms')
-				.update({ current_round: previousRound.id })
-				.eq('id', room.id);
+			const { error: updateError } = await supabase.from('rooms').update({ current_round: previousRound.id }).eq('id', room.id);
 
 			if (updateError) throw new Error('Failed to update room');
 
@@ -146,30 +173,49 @@
 			return;
 		}
 
-		try {
-			const answer = displayedAnswers.find((a) => a.id === answerId);
-			if (!answer) return;
+		// Create a local copy of the current displayed answers
+		const optimisticAnswers = displayedAnswers.map((answer) => {
+			if (answer.id === answerId) {
+				return {
+					...answer,
+					answer_status: {
+						...(answer.answer_status || {}),
+						[field]: field === 'main_answer' ? !answer.answer_status?.main_answer : !answer.answer_status?.[field]
+					}
+				};
+			}
+			return answer;
+		});
 
+		// Optimistically update the displayed answers
+		displayedAnswers = optimisticAnswers;
+
+		try {
 			let updateData = {};
 			if (field === 'main_answer') {
 				updateData = {
 					answer_status: {
-						...(answer.answer_status || {}),
-						main_answer: !answer.answer_status?.main_answer
+						...(displayedAnswers.find((a) => a.id === answerId).answer_status || {}),
+						main_answer: !currentStatus
 					}
 				};
 			} else {
 				updateData = {
 					answer_status: {
-						...(answer.answer_status || {}),
-						[field]: !answer.answer_status?.[field]
+						...(displayedAnswers.find((a) => a.id === answerId).answer_status || {}),
+						[field]: !currentStatus
 					}
 				};
 			}
 
 			const { error } = await supabase.from('answers').update(updateData).eq('id', answerId);
 
-			if (error) throw error;
+			if (error) {
+				// If update fails, revert to original state
+				displayedAnswers = displayedAnswers.map((answer) => (answer.id === answerId ? { ...answer, answer_status: { ...answer.answer_status, [field]: currentStatus } } : answer));
+				throw error;
+			}
+
 			toast.success('Zaktualizowano status odpowiedzi');
 		} catch (error) {
 			toast.error(`Aktualizacja nie powiodła się: ${error.message}`);
@@ -184,15 +230,15 @@
 
 		try {
 			// Fetch hint usages for this round
-			const { data: hintUsages, error: hintError } = await supabase
-				.from('hint_usages')
-				.select('player_name')
-				.eq('round_id', selectedRoundId);
+			const { data: hintUsages, error: hintError } = await supabase.from('hint_usages').select('player_name').eq('round_id', selectedRoundId);
 
 			if (hintError) throw hintError;
 
 			// Create a set of player names that used hints for easy lookup
 			const hintUsedByPlayer = new Set(hintUsages?.map((h) => h.player_name) || []);
+
+			// Get hint penalty percentage from room settings (default to 40% if not set)
+			const hintPenaltyPercent = room.points_config.hint_penalty_percent || 40;
 
 			for (const answer of displayedAnswers) {
 				const player = players.find((p) => p.name === answer.player_name);
@@ -205,9 +251,11 @@
 				if (answer.answer_status.main_answer) {
 					let mainPoints = room.points_config.main_answer;
 
-					// Apply 40% deduction if hint was used
+					// Apply hint penalty if hint was used
 					if (hintUsedByPlayer.has(answer.player_name)) {
-						mainPoints = Math.round(mainPoints * 0.6); // 60% of original points
+						// Calculate as float for precision, then round to 2 decimal places
+						mainPoints = mainPoints * (1 - hintPenaltyPercent / 100);
+						mainPoints = Math.ceil(mainPoints * 100) / 100; // Round up to 2 decimal places
 					}
 
 					points += mainPoints;
@@ -230,6 +278,9 @@
 				}
 
 				if (points > 0 || tiebreaker > 0) {
+					// Round final points to 2 decimal places
+					points = Math.ceil(points * 100) / 100;
+
 					const { error } = await supabase
 						.from('players')
 						.update({
@@ -290,12 +341,7 @@
 		}
 
 		try {
-			const { error } = await supabase
-				.from('answers')
-				.delete()
-				.eq('room_id', room.id)
-				.eq('round_id', selectedRoundId)
-				.eq('player_name', playerName);
+			const { error } = await supabase.from('answers').delete().eq('room_id', room.id).eq('round_id', selectedRoundId).eq('player_name', playerName);
 
 			if (error) throw error;
 
@@ -321,10 +367,7 @@
 				if (error) throw error;
 
 				// Clear hand raises
-				const { error: clearError } = await supabase
-					.from('hand_raises')
-					.delete()
-					.eq('room_id', room.id);
+				const { error: clearError } = await supabase.from('hand_raises').delete().eq('room_id', room.id);
 
 				if (clearError) throw clearError;
 
@@ -353,11 +396,7 @@
 
 	async function loadHandRaiseResults() {
 		try {
-			const { data, error } = await supabase
-				.from('hand_raises')
-				.select('*')
-				.eq('room_id', room.id)
-				.order('server_timestamp', { ascending: true });
+			const { data, error } = await supabase.from('hand_raises').select('*').eq('room_id', room.id).order('server_timestamp', { ascending: true });
 
 			if (error) throw error;
 
@@ -405,11 +444,7 @@
 
 	onMount(async () => {
 		// Check current takeover mode status first
-		const { data, error } = await supabase
-			.from('rooms')
-			.select('takeover_mode')
-			.eq('id', room.id)
-			.single();
+		const { data, error } = await supabase.from('rooms').select('takeover_mode').eq('id', room.id).single();
 
 		if (!error && data) {
 			takeoverModeActive = !!data.takeover_mode;
@@ -436,9 +471,7 @@
 					if (payload.eventType === 'DELETE') {
 						const deletedAnswer = payload.old;
 						if (deletedAnswer.round_id === selectedRoundId) {
-							displayedAnswers = displayedAnswers.filter(
-								(answer) => answer.player_name !== deletedAnswer.player_name
-							);
+							displayedAnswers = displayedAnswers.filter((answer) => answer.player_name !== deletedAnswer.player_name);
 						}
 					}
 					await invalidateAll();
@@ -535,6 +568,10 @@
 		};
 	});
 
+	$: if (selectedRoundId) {
+		loadCorrectAnswers(selectedRoundId);
+	}
+
 	onDestroy(() => {
 		if (channel) channel.unsubscribe();
 	});
@@ -546,91 +583,76 @@
 			<Card.Header>
 				<div class="flex items-center justify-between">
 					<div class="flex items-center gap-4">
-						<Card.Title class="text-white">{room.name}</Card.Title>
+						<Card.Title class="text-white">Pokój: {room.name}</Card.Title>
 						<div class="flex items-center gap-4">
-							<select
-								bind:value={selectedRoundId}
-								on:change={handleRoundChange}
-								class="rounded-md border border-gray-700 bg-gray-800 px-3 py-1 text-sm text-gray-200"
-							>
+							<select bind:value={selectedRoundId} on:change={handleRoundChange} class="rounded-md border border-gray-700 bg-gray-800 px-3 py-1 text-sm text-gray-200">
 								{#each rounds as round}
 									<option value={round.id}>
 										Runda {round.round_number}
-										{round.id === room.current_round ? '(Current)' : ''}
+										{round.id === room.current_round ? '(Obecna)' : ''}
 									</option>
 								{/each}
 							</select>
 							{#if !isCurrentRound}
-								<span class="rounded-md bg-yellow-900/20 px-2 py-1 text-xs text-yellow-400">
-									Oglądasz poprzednią rundę
-								</span>
+								<span class="rounded-md bg-yellow-900/20 px-2 py-1 text-xs text-yellow-400"> Przeglądasz poprzednią rundę </span>
 							{/if}
 						</div>
 					</div>
 					<div class="flex gap-4">
-						<Button
-							on:click={() => (pointsConfigModalOpen = true)}
-							class="border border-gray-700 bg-gray-800 text-white hover:bg-gray-700"
-						>
-							Konfiguruj punkty
-						</Button>
+						<Button on:click={() => (pointsConfigModalOpen = true)} class="border border-gray-700 bg-gray-800 text-white hover:bg-gray-700">Konfiguruj punkty</Button>
 
 						<div class="flex items-center gap-2">
-							<Button
-								on:click={() => handlePreviousRound()}
-								disabled={!rounds?.length || currentRound?.round_number <= 1}
-								class="border border-gray-700 bg-gray-800 text-white hover:bg-gray-700"
-							>
-								Poprzednia runda
-							</Button>
+							<Button on:click={() => handlePreviousRound()} disabled={!rounds?.length || currentRound?.round_number <= 1} class="border border-gray-700 bg-gray-800 text-white hover:bg-gray-700">Poprzednia runda</Button>
 
-							<select
-								bind:value={selectedRoundId}
-								on:change={handleRoundChange}
-								class="rounded-md border border-gray-700 bg-gray-800 px-3 py-1 text-sm text-gray-200"
-							>
-								{#each rounds as round}
-									<option value={round.id}>
-										Runda {round.round_number}
-										{round.id === room.current_round ? '(Current)' : ''}
-									</option>
-								{/each}
-							</select>
-
-							<Button
-								on:click={() => handleNextRound()}
-								class="border border-gray-700 bg-gray-800 text-white hover:bg-gray-700"
-							>
-								Następna runda
-							</Button>
-
-							<Button
-								on:click={createNewRound}
-								class="border border-gray-700 bg-gray-800 text-white hover:bg-gray-700"
-							>
-								<Plus class="h-4 w-4" />
-								Nowa runda
-							</Button>
+							<Button on:click={() => handleNextRound()} class="border border-gray-700 bg-gray-800 text-white hover:bg-gray-700">Następna runda</Button>
 						</div>
 
-						<Button
-							href="/admin"
-							variant="outline"
-							class="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700"
-						>
-							Powrót
-						</Button>
+						<Button href="/admin" variant="outline" class="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700">Powrót</Button>
 					</div>
 
-					<PointsConfigModal
-						open={pointsConfigModalOpen}
-						roomId={room.id}
-						pointsConfig={room.points_config}
-						{supabase}
-						onOpenChange={(open) => (pointsConfigModalOpen = open)}
-					/>
+					<PointsConfigModal open={pointsConfigModalOpen} roomId={room.id} pointsConfig={room.points_config} {supabase} onOpenChange={(open) => (pointsConfigModalOpen = open)} />
 				</div>
 			</Card.Header>
+
+			<div class="mb-6 rounded-lg border border-gray-800 bg-gray-800/30 p-4">
+				<div class="flex items-center gap-2">
+					<h3 class="font-medium text-white">Prawidłowe odpowiedzi:</h3>
+
+					{#if currentCorrectAnswers.length === 0}
+						<p class="text-gray-400">Brak prawidłowych odpowiedzi dla tej rundy</p>
+					{:else}
+						<div class="flex-1 rounded-md bg-gray-800/50 p-3">
+							<div class="whitespace-pre-line text-sm font-medium text-gray-300">
+								{currentCorrectAnswers.map((answer) => answer.content).join('\n')}
+							</div>
+
+							{#if currentCorrectAnswers[0]?.extra_fields}
+								<div class="mt-3 flex gap-4 border-t border-gray-700 pt-2 text-sm">
+									{#if currentCorrectAnswers[0].extra_fields.song_title}
+										<div class="text-gray-300">
+											<span class="text-gray-400">Piosenka:</span>
+											{currentCorrectAnswers[0].extra_fields.song_title}
+										</div>
+									{/if}
+									{#if currentCorrectAnswers[0].extra_fields.song_artist}
+										<div class="text-gray-300">
+											<span class="text-gray-400">Artysta:</span>
+											{currentCorrectAnswers[0].extra_fields.song_artist}
+										</div>
+									{/if}
+									{#if currentCorrectAnswers[0].extra_fields.other}
+										<div class="text-gray-300">
+											<span class="text-gray-400">Inne:</span>
+											{currentCorrectAnswers[0].extra_fields.other}
+										</div>
+									{/if}
+								</div>
+							{/if}
+						</div>
+					{/if}
+				</div>
+			</div>
+
 			<Card.Content>
 				<Tabs.Root value={activeTab} onValueChange={(v) => (activeTab = v)}>
 					<Tabs.List class="mb-4">
@@ -644,13 +666,7 @@
 							<div class="p-4 text-center text-gray-400">Brak odpowiedzi w tej rundzie</div>
 						{:else}
 							<div class="mb-4">
-								<Button
-									on:click={awardPointsToCorrectAnswers}
-									disabled={!isCurrentRound}
-									class="bg-green-600/50 text-white hover:bg-green-500/50"
-								>
-									Dodaj punkty do dobrych odpowiedzi
-								</Button>
+								<Button on:click={awardPointsToCorrectAnswers} disabled={!isCurrentRound} class="bg-green-600/50 text-white hover:bg-green-500/50">Dodaj punkty do dobrych odpowiedzi</Button>
 							</div>
 							<Table.Root>
 								<Table.Header>
@@ -677,21 +693,11 @@
 									{#each displayedAnswers.sort((a, b) => new Date(a.created_at) - new Date(b.created_at)) as answer}
 										{@const player = players.find((p) => p.name === answer.player_name)}
 										<Table.Row class="border-gray-800 hover:bg-gray-800/30">
-											<Table.Cell class="font-medium text-gray-200">{answer.player_name}</Table.Cell
-											>
+											<Table.Cell class="font-medium text-gray-200">{answer.player_name}</Table.Cell>
 											<Table.Cell>
 												<div class="flex items-center gap-2">
 													<span class="text-gray-200">{answer.content}</span>
-													<button
-														on:click={() =>
-															toggleAnswerStatus(
-																answer.id,
-																'main_answer',
-																answer.answer_status?.main_answer
-															)}
-														disabled={!isCurrentRound}
-														class="flex h-10 w-10 items-center justify-center rounded-full p-2 transition-colors hover:bg-gray-800"
-													>
+													<button on:click={() => toggleAnswerStatus(answer.id, 'main_answer', answer.answer_status?.main_answer)} disabled={!isCurrentRound} class="flex h-10 w-10 items-center justify-center rounded-full p-2 transition-colors hover:bg-gray-800">
 														{#if answer.answer_status?.main_answer}
 															<Check class="h-6 w-6 text-green-500" />
 														{:else}
@@ -704,20 +710,9 @@
 											{#if room.enabled_fields?.song_title}
 												<Table.Cell>
 													<div class="flex items-center gap-2">
-														<span class="text-gray-200"
-															>{answer.extra_fields?.song_title || '-'}</span
-														>
+														<span class="text-gray-200">{answer.extra_fields?.song_title || '-'}</span>
 														{#if answer.extra_fields?.song_title}
-															<button
-																on:click={() =>
-																	toggleAnswerStatus(
-																		answer.id,
-																		'song_title',
-																		answer.answer_status?.song_title
-																	)}
-																disabled={!isCurrentRound}
-																class="flex h-10 w-10 items-center justify-center rounded-full p-2 transition-colors hover:bg-gray-800"
-															>
+															<button on:click={() => toggleAnswerStatus(answer.id, 'song_title', answer.answer_status?.song_title)} disabled={!isCurrentRound} class="flex h-10 w-10 items-center justify-center rounded-full p-2 transition-colors hover:bg-gray-800">
 																{#if answer.answer_status?.song_title}
 																	<Check class="h-6 w-6 text-green-500" />
 																{:else}
@@ -732,20 +727,9 @@
 											{#if room.enabled_fields?.song_artist}
 												<Table.Cell>
 													<div class="flex items-center gap-2">
-														<span class="text-gray-200"
-															>{answer.extra_fields?.song_artist || '-'}</span
-														>
+														<span class="text-gray-200">{answer.extra_fields?.song_artist || '-'}</span>
 														{#if answer.extra_fields?.song_artist}
-															<button
-																on:click={() =>
-																	toggleAnswerStatus(
-																		answer.id,
-																		'song_artist',
-																		answer.answer_status?.song_artist
-																	)}
-																disabled={!isCurrentRound}
-																class="flex h-10 w-10 items-center justify-center rounded-full p-2 transition-colors hover:bg-gray-800"
-															>
+															<button on:click={() => toggleAnswerStatus(answer.id, 'song_artist', answer.answer_status?.song_artist)} disabled={!isCurrentRound} class="flex h-10 w-10 items-center justify-center rounded-full p-2 transition-colors hover:bg-gray-800">
 																{#if answer.answer_status?.song_artist}
 																	<Check class="h-6 w-6 text-green-500" />
 																{:else}
@@ -762,16 +746,7 @@
 													<div class="flex items-center gap-2">
 														<span class="text-gray-200">{answer.extra_fields?.other || '-'}</span>
 														{#if answer.extra_fields?.other}
-															<button
-																on:click={() =>
-																	toggleAnswerStatus(
-																		answer.id,
-																		'other',
-																		answer.answer_status?.other
-																	)}
-																disabled={!isCurrentRound}
-																class="flex h-10 w-10 items-center justify-center rounded-full p-2 transition-colors hover:bg-gray-800"
-															>
+															<button on:click={() => toggleAnswerStatus(answer.id, 'other', answer.answer_status?.other)} disabled={!isCurrentRound} class="flex h-10 w-10 items-center justify-center rounded-full p-2 transition-colors hover:bg-gray-800">
 																{#if answer.answer_status?.other}
 																	<Check class="h-6 w-6 text-green-500" />
 																{:else}
@@ -797,26 +772,14 @@
 
 											<Table.Cell class="text-center">
 												{#if hintUsageMap[`${answer.player_name}-${answer.round_id}`]}
-													<span
-														class="rounded-md bg-yellow-900/30 px-2 py-1 text-xs text-yellow-400"
-													>
-														Użyta
-													</span>
+													<span class="rounded-md bg-yellow-900/30 px-2 py-1 text-xs text-yellow-400"> Użyta </span>
 												{:else}
 													<span class="text-gray-400">-</span>
 												{/if}
 											</Table.Cell>
 
 											<Table.Cell>
-												<Button
-													size="sm"
-													variant="outline"
-													disabled={!isCurrentRound}
-													on:click={() => resetAnswer(answer.player_name)}
-													class="border-red-900 bg-gray-800 text-red-400 hover:bg-gray-700"
-												>
-													Reset
-												</Button>
+												<Button size="sm" variant="outline" disabled={!isCurrentRound} on:click={() => resetAnswer(answer.player_name)} class="border-red-900 bg-gray-800 text-red-400 hover:bg-gray-700">Reset</Button>
 											</Table.Cell>
 										</Table.Row>
 									{/each}
@@ -841,22 +804,67 @@
 									{@const hasAnswered = displayedAnswers.some((a) => a.player_name === player.name)}
 									<Table.Row class="border-gray-800 hover:bg-gray-800/30">
 										<Table.Cell class="font-medium text-gray-200">{player.name}</Table.Cell>
-										<Table.Cell class="text-gray-200">{player.score}</Table.Cell>
-										<Table.Cell class="text-gray-200">{player.tiebreaker}</Table.Cell>
+
+										<!-- Score cell with editing capability -->
+										<Table.Cell class="text-gray-200">
+											{#if editingPlayer === player.id && editType === 'score'}
+												<div class="flex items-center gap-2">
+													<Input type="number" bind:value={editValue} class="w-24 border-gray-700 bg-gray-800 text-gray-100" />
+													<button class="text-green-400 hover:text-green-300" on:click={saveEditedValue}>
+														<Check class="h-4 w-4" />
+													</button>
+													<button class="text-red-400 hover:text-red-300" on:click={cancelEditing}>
+														<X class="h-4 w-4" />
+													</button>
+												</div>
+											{:else}
+												<div class="flex items-center gap-1">
+													{player.score}
+													<!-- svelte-ignore a11y_consider_explicit_label -->
+													<button class="ml-2 text-gray-400 hover:text-gray-300" on:click={() => startEditing(player, 'score')}>
+														<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+															<path d="M12 20h9"></path>
+															<path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
+														</svg>
+													</button>
+												</div>
+											{/if}
+										</Table.Cell>
+
+										<!-- Tiebreaker cell with editing capability -->
+										<Table.Cell class="text-gray-200">
+											{#if editingPlayer === player.id && editType === 'tiebreaker'}
+												<div class="flex items-center gap-2">
+													<Input type="number" bind:value={editValue} class="w-24 border-gray-700 bg-gray-800 text-gray-100" />
+													<button class="text-green-400 hover:text-green-300" on:click={saveEditedValue}>
+														<Check class="h-4 w-4" />
+													</button>
+													<button class="text-red-400 hover:text-red-300" on:click={cancelEditing}>
+														<X class="h-4 w-4" />
+													</button>
+												</div>
+											{:else}
+												<div class="flex items-center gap-1">
+													{player.tiebreaker}
+													<!-- svelte-ignore a11y_consider_explicit_label -->
+													<button class="ml-2 text-gray-400 hover:text-gray-300" on:click={() => startEditing(player, 'tiebreaker')}>
+														<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+															<path d="M12 20h9"></path>
+															<path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
+														</svg>
+													</button>
+												</div>
+											{/if}
+										</Table.Cell>
+
 										<Table.Cell>
 											<span class={hasAnswered ? 'text-green-400' : 'text-gray-400'}>
 												{hasAnswered ? 'Answered' : 'No answer'}
 											</span>
 										</Table.Cell>
+
 										<Table.Cell>
-											<Button
-												size="sm"
-												variant="destructive"
-												on:click={() => deletePlayer(player.id)}
-												class="border border-red-900 bg-gray-900 text-red-400 hover:bg-gray-800"
-											>
-												Usuń
-											</Button>
+											<Button size="sm" variant="destructive" on:click={() => deletePlayer(player.id)} class="border border-red-900 bg-gray-900 text-red-400 hover:bg-gray-800">Usuń</Button>
 										</Table.Cell>
 									</Table.Row>
 								{/each}
@@ -866,20 +874,10 @@
 
 					<Tabs.Content value="takeover">
 						<div class="mb-6">
-							<Button
-								on:click={toggleTakeoverMode}
-								class={takeoverModeActive
-									? 'bg-red-600/50 text-white hover:bg-red-500/50'
-									: 'bg-green-600/50 text-white hover:bg-green-500/50'}
-							>
+							<Button on:click={toggleTakeoverMode} class={takeoverModeActive ? 'bg-red-600/50 text-white hover:bg-red-500/50' : 'bg-green-600/50 text-white hover:bg-green-500/50'}>
 								{takeoverModeActive ? 'Wyłącz Tryb Przejęć ' : 'Włącz Tryb Przejęć'}
 							</Button>
-							<Button
-								on:click={clearAllHandRaises}
-								class="bg-amber-600/50 text-white hover:bg-amber-500/50"
-							>
-								Wyczyść przejęcia
-							</Button>
+							<Button on:click={clearAllHandRaises} class="bg-amber-600/50 text-white hover:bg-amber-500/50">Wyczyść przejęcia</Button>
 
 							{#if lastUpdated}
 								<span class="ml-4 text-sm text-gray-400">Ostatnia aktualizacja: {lastUpdated}</span>
@@ -899,9 +897,7 @@
 								</Table.Header>
 								<Table.Body>
 									{#each handRaiseResults as result}
-										<Table.Row
-											class={`border-gray-800 transition-colors duration-300 ${result.name === lastChangedPlayer ? 'bg-blue-900/30' : ''}`}
-										>
+										<Table.Row class={`border-gray-800 transition-colors duration-300 ${result.name === lastChangedPlayer ? 'bg-blue-900/30' : ''}`}>
 											<Table.Cell class="text-gray-200">{result.position}</Table.Cell>
 											<Table.Cell class="text-gray-200">{result.name}</Table.Cell>
 											<Table.Cell class="text-gray-200">
@@ -913,9 +909,7 @@
 												})}
 											</Table.Cell>
 											<Table.Cell class="text-gray-200">
-												{result.position === 1
-													? '-'
-													: `+${(result.timeDifferenceMs / 1000).toFixed(3)}s`}
+												{result.position === 1 ? '-' : `+${(result.timeDifferenceMs / 1000).toFixed(3)}s`}
 											</Table.Cell>
 											<Table.Cell class="text-gray-200">
 												{result.latency || 0}ms
@@ -925,9 +919,7 @@
 
 									{#if handRaiseResults.length === 0}
 										<Table.Row class="border-gray-800">
-											<Table.Cell colspan="5" class="py-8 text-center text-gray-400">
-												Brak przejęć
-											</Table.Cell>
+											<Table.Cell colspan="5" class="py-8 text-center text-gray-400">Brak przejęć</Table.Cell>
 										</Table.Row>
 									{/if}
 								</Table.Body>

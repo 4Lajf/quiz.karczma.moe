@@ -6,63 +6,311 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { toast } from 'svelte-sonner';
-	import { Check, X, Plus, Trash2 } from 'lucide-svelte';
+	import { Check, X, Plus, Trash2, Edit, Save, ChevronUp, ChevronDown } from 'lucide-svelte';
 	import Autocomplete from '$lib/components/player/Autocomplete.svelte';
 
 	export let supabase;
-	export let roundId;
 	export let room;
+	export let roundId;
 
 	let answers = [];
-	let newAnswer = '';
-	let newSongTitle = '';
-	let newSongArtist = '';
-	let newOther = '';
+	let newAnswer = {
+		answer: '',
+		songTitle: '',
+		songArtist: '',
+		other: ''
+	};
+
+	// Add match status tracking for visual feedback
+	let matchStatus = {
+		answer: null, // null = not checked, 'exact', 'partial', or 'none'
+		songTitle: null,
+		songArtist: null,
+		other: null
+	};
+
+	let editMode = false;
+	let editingId = null;
 	let loading = false;
-	let currentRound = null;
 	let channel;
-	let roundsToAdd = 1;
-	let addingRounds = false;
+	let formHidden = false;
+	let checkingMatch = false;
 
-	async function loadAnswers() {
-		if (!roundId) return [];
-
-		const { data, error } = await supabase
-			.from('correct_answers')
-			.select('*')
-			.eq('round_id', roundId)
-			.order('created_at', { ascending: true });
-
-		if (error) {
-			toast.error('Nie udało się załadować odpowiedzi');
-			return [];
-		}
-
-		answers = data || [];
-		return data;
+	// Helper function to get row background color based on match status
+	function getRowBackgroundClass(matchStatus) {
+		if (matchStatus === 'match') return 'bg-green-500/20';
+		if (matchStatus === 'partial-match') return 'bg-yellow-500/20';
+		if (matchStatus === 'no-match') return 'bg-red-500/20';
+		return '';
 	}
 
-	async function loadCurrentRound() {
-		if (!roundId) return null;
+	// Fetch a hint from the API
+	async function getHintFromAPI(title) {
+		try {
+			const response = await fetch('/api/generate-hint', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify({
+					content: title,
+					roundId: roundId
+				})
+			});
 
-		const { data, error } = await supabase
-			.from('quiz_rounds')
-			.select('*')
-			.eq('id', roundId)
-			.single();
+			if (!response.ok) {
+				throw new Error('Failed to generate hint from API');
+			}
 
-		if (error) {
-			console.error('Failed to load current round:', error);
+			const data = await response.json();
+			return data.hint;
+		} catch (error) {
+			console.error('Error generating hint:', error);
+			// Return null so we can continue even if hint generation fails
+			return null;
+		}
+	}
+
+	// Load answers for the round
+	async function loadAnswers() {
+		try {
+			const { data, error } = await supabase
+				.from('correct_answers')
+				.select('*')
+				.eq('round_id', roundId)
+				.order('created_at', { ascending: true });
+
+			if (error) throw error;
+			answers = data || [];
+
+			// Set formHidden to true if there are answers
+			if (data && data.length > 0) {
+				formHidden = true;
+			}
+
+			return data;
+		} catch (error) {
+			console.error(`Failed to load answers for round ${roundId}:`, error);
+			return [];
+		}
+	}
+	// Function to check title match against API results
+	async function checkTitleMatch(inputTitle) {
+		if (!inputTitle || inputTitle.trim().length < 2) {
+			matchStatus.answer = null;
 			return null;
 		}
 
-		currentRound = data;
-		return data;
+		checkingMatch = true;
+		try {
+			const response = await fetch(
+				`/api/search/substring?q=${encodeURIComponent(inputTitle)}&type=anime`
+			);
+			if (!response.ok) throw new Error('Failed to fetch title matches');
+
+			const data = await response.json();
+			const hits = data.hits || [];
+
+			// Find the best match
+			const exactMatch = hits.find(
+				(hit) =>
+					hit.document.displayTitle.toLowerCase() === inputTitle.toLowerCase() ||
+					hit.document.romajiTitle?.toLowerCase() === inputTitle.toLowerCase() ||
+					hit.document.englishTitle?.toLowerCase() === inputTitle.toLowerCase() ||
+					(hit.document.altTitles || []).some(
+						(alt) => alt.toLowerCase() === inputTitle.toLowerCase()
+					)
+			);
+
+			if (exactMatch) {
+				matchStatus.answer = 'exact';
+				return 'exact';
+			}
+
+			// Check for partial matches
+			const partialMatch = hits.find(
+				(hit) =>
+					hit.document.displayTitle.toLowerCase().includes(inputTitle.toLowerCase()) ||
+					(hit.document.romajiTitle &&
+						hit.document.romajiTitle.toLowerCase().includes(inputTitle.toLowerCase())) ||
+					(hit.document.englishTitle &&
+						hit.document.englishTitle.toLowerCase().includes(inputTitle.toLowerCase())) ||
+					(hit.document.altTitles || []).some((alt) =>
+						alt.toLowerCase().includes(inputTitle.toLowerCase())
+					)
+			);
+
+			if (partialMatch) {
+				matchStatus.answer = 'partial';
+				return 'partial';
+			}
+
+			matchStatus.answer = 'none';
+			return 'none';
+		} catch (error) {
+			console.error('Error checking title match:', error);
+			matchStatus.answer = 'none';
+			return 'none';
+		} finally {
+			checkingMatch = false;
+		}
 	}
 
+	// Function to check song title match
+	async function checkSongMatch(songTitle) {
+		if (!songTitle || songTitle.trim().length < 2) {
+			matchStatus.songTitle = null;
+			return null;
+		}
+
+		checkingMatch = true;
+		try {
+			const response = await fetch(
+				`/api/search/substring?q=${encodeURIComponent(songTitle)}&type=songs`
+			);
+			if (!response.ok) throw new Error('Failed to fetch song matches');
+
+			const data = await response.json();
+			const hits = data.hits || [];
+
+			const exactMatch = hits.find(
+				(hit) => hit.document.songName?.toLowerCase() === songTitle.toLowerCase()
+			);
+
+			if (exactMatch) {
+				matchStatus.songTitle = 'exact';
+				return 'exact';
+			}
+
+			const partialMatch = hits.find((hit) =>
+				hit.document.songName?.toLowerCase().includes(songTitle.toLowerCase())
+			);
+
+			if (partialMatch) {
+				matchStatus.songTitle = 'partial';
+				return 'partial';
+			}
+
+			matchStatus.songTitle = 'none';
+			return 'none';
+		} catch (error) {
+			console.error('Error checking song match:', error);
+			matchStatus.songTitle = 'none';
+			return 'none';
+		} finally {
+			checkingMatch = false;
+		}
+	}
+
+	// Function to check artist match
+	async function checkArtistMatch(artist) {
+		if (!artist || artist.trim().length < 2) {
+			matchStatus.songArtist = null;
+			return null;
+		}
+
+		checkingMatch = true;
+		try {
+			const response = await fetch(
+				`/api/search/substring?q=${encodeURIComponent(artist)}&type=artists`
+			);
+			if (!response.ok) throw new Error('Failed to fetch artist matches');
+
+			const data = await response.json();
+			const hits = data.hits || [];
+
+			const exactMatch = hits.find(
+				(hit) => hit.document.artist?.toLowerCase() === artist.toLowerCase()
+			);
+
+			if (exactMatch) {
+				matchStatus.songArtist = 'exact';
+				return 'exact';
+			}
+
+			const partialMatch = hits.find((hit) =>
+				hit.document.artist?.toLowerCase().includes(artist.toLowerCase())
+			);
+
+			if (partialMatch) {
+				matchStatus.songArtist = 'partial';
+				return 'partial';
+			}
+
+			matchStatus.songArtist = 'none';
+			return 'none';
+		} catch (error) {
+			console.error('Error checking artist match:', error);
+			matchStatus.songArtist = 'none';
+			return 'none';
+		} finally {
+			checkingMatch = false;
+		}
+	}
+
+	// Check all matches synchronously before submission
+	async function checkAllMatches() {
+		// Clear any pending timeouts
+		clearTimeout(titleCheckTimeout);
+		clearTimeout(songCheckTimeout);
+		clearTimeout(artistCheckTimeout);
+
+		// Check title match
+		if (newAnswer.answer.trim().length > 2) {
+			matchStatus.answer = await checkTitleMatch(newAnswer.answer);
+		}
+
+		// Check song match if needed
+		if (room.enabled_fields?.song_title && newAnswer.songTitle.trim().length > 2) {
+			matchStatus.songTitle = await checkSongMatch(newAnswer.songTitle);
+		}
+
+		// Check artist match if needed
+		if (room.enabled_fields?.song_artist && newAnswer.songArtist.trim().length > 2) {
+			matchStatus.songArtist = await checkArtistMatch(newAnswer.songArtist);
+		}
+	}
+
+	// Update input handlers to check matches (debounced)
+	let titleCheckTimeout;
+	async function handleTitleInput() {
+		clearTimeout(titleCheckTimeout);
+		titleCheckTimeout = setTimeout(async () => {
+			if (newAnswer.answer.trim().length > 2) {
+				await checkTitleMatch(newAnswer.answer);
+			} else {
+				matchStatus.answer = null;
+			}
+		}, 500);
+	}
+
+	let songCheckTimeout;
+	async function handleSongTitleInput() {
+		clearTimeout(songCheckTimeout);
+		songCheckTimeout = setTimeout(async () => {
+			if (newAnswer.songTitle.trim().length > 2) {
+				await checkSongMatch(newAnswer.songTitle);
+			} else {
+				matchStatus.songTitle = null;
+			}
+		}, 500);
+	}
+
+	let artistCheckTimeout;
+	async function handleArtistInput() {
+		clearTimeout(artistCheckTimeout);
+		artistCheckTimeout = setTimeout(async () => {
+			if (newAnswer.songArtist.trim().length > 2) {
+				await checkArtistMatch(newAnswer.songArtist);
+			} else {
+				matchStatus.songArtist = null;
+			}
+		}, 500);
+	}
+
+	// Fetch related anime titles
 	async function fetchRelatedTitles(selectedTitle) {
 		try {
-			// Fetch the anime title data from the API
 			const response = await fetch(
 				`/api/search/substring?q=${encodeURIComponent(selectedTitle)}&type=anime`
 			);
@@ -71,7 +319,6 @@
 			const data = await response.json();
 			const hits = data.hits || [];
 
-			// Look for exact match or closest match
 			const matchingAnime = hits.find(
 				(hit) =>
 					hit.document.displayTitle.toLowerCase() === selectedTitle.toLowerCase() ||
@@ -83,10 +330,8 @@
 			);
 
 			if (matchingAnime) {
-				// Collect all related titles
 				const titles = [];
 
-				// Add English title if available and different from selected
 				if (
 					matchingAnime.document.englishTitle &&
 					matchingAnime.document.englishTitle.toLowerCase() !== selectedTitle.toLowerCase()
@@ -94,7 +339,6 @@
 					titles.push(matchingAnime.document.englishTitle);
 				}
 
-				// Add Romaji title if available and different from selected
 				if (
 					matchingAnime.document.romajiTitle &&
 					matchingAnime.document.romajiTitle.toLowerCase() !== selectedTitle.toLowerCase()
@@ -102,7 +346,6 @@
 					titles.push(matchingAnime.document.romajiTitle);
 				}
 
-				// Add alternative titles if available
 				if (matchingAnime.document.altTitles) {
 					for (const altTitle of matchingAnime.document.altTitles) {
 						if (altTitle && altTitle.toLowerCase() !== selectedTitle.toLowerCase()) {
@@ -121,185 +364,118 @@
 		}
 	}
 
-	async function createNewRounds() {
-		if (roundsToAdd < 1) {
-			toast.error('Wprowadź prawidłową liczbę rund do dodania');
-			return;
-		}
-
-		if (roundsToAdd > 20) {
-			if (!confirm(`Czy na pewno chcesz dodać ${roundsToAdd} rund naraz?`)) {
-				return;
-			}
-		}
-
-		addingRounds = true;
-		try {
-			// Find the highest round number in the room
-			const { data: existingRounds, error: queryError } = await supabase
-				.from('quiz_rounds')
-				.select('round_number')
-				.eq('room_id', room.id)
-				.order('round_number', { ascending: false });
-
-			if (queryError) throw queryError;
-
-			const highestRound = existingRounds.length > 0 ? existingRounds[0].round_number : 0;
-
-			let lastRoundId = null;
-			let addedCount = 0;
-
-			// Insert multiple rounds in sequence
-			for (let i = 1; i <= roundsToAdd; i++) {
-				const nextRoundNumber = highestRound + i;
-
-				const { data: newRound, error } = await supabase
-					.from('quiz_rounds')
-					.insert({
-						room_id: room.id,
-						round_number: nextRoundNumber
-					})
-					.select()
-					.single();
-
-				if (error) {
-					console.error(`Failed to create round ${nextRoundNumber}:`, error);
-					continue;
-				}
-
-				lastRoundId = newRound.id;
-				addedCount++;
-			}
-
-			if (lastRoundId) {
-				// Update the current component to use the last created round
-				roundId = lastRoundId;
-				await loadCurrentRound();
-				await loadAnswers();
-
-				// Update the room's current round to the last created round
-				const { error: updateError } = await supabase
-					.from('rooms')
-					.update({ current_round: lastRoundId })
-					.eq('id', room.id);
-
-				if (updateError) {
-					console.error('Failed to update room current round:', updateError);
-				}
-			}
-
-			if (addedCount === 0) {
-				toast.error('Nie udało się dodać rund');
-			} else if (addedCount < roundsToAdd) {
-				toast.warning(`Dodano ${addedCount} z ${roundsToAdd} rund`);
-			} else {
-				toast.success(
-					`Dodano ${addedCount} now${addedCount > 1 ? 'e' : 'ą'} rund${addedCount > 1 ? 'y' : 'ę'}`
-				);
-			}
-
-			await invalidateAll();
-		} catch (error) {
-			toast.error('Nie udało się stworzyć rund: ' + error.message);
-		} finally {
-			addingRounds = false;
-		}
-	}
-
+	// Add an answer to the round
 	async function addAnswer() {
-		if (!newAnswer.trim()) return;
+		if (!newAnswer.answer.trim()) return;
 
 		loading = true;
 		try {
-			// Check if round exists, if not create it
-			if (!roundId) {
-				// Find the highest round number in the room
-				const { data: existingRounds, error: queryError } = await supabase
-					.from('quiz_rounds')
-					.select('round_number')
-					.eq('room_id', room.id)
-					.order('round_number', { ascending: false });
-
-				if (queryError) throw queryError;
-
-				const nextRoundNumber = existingRounds.length > 0 ? existingRounds[0].round_number + 1 : 1;
-
-				const { data: newRound, error: roundError } = await supabase
-					.from('quiz_rounds')
-					.insert({
-						room_id: room.id,
-						round_number: nextRoundNumber
-					})
-					.select()
-					.single();
-
-				if (roundError) throw roundError;
-				roundId = newRound.id;
-				currentRound = newRound;
-
-				// Notify the parent component that roundId has changed
-				await invalidateAll();
+			if (editMode) {
+				await updateAnswer();
+				return;
 			}
 
-			const extraFields = {};
+			// Check matches one more time before submission
+			await checkAllMatches();
 
-			if (room.enabled_fields?.song_title && newSongTitle) {
-				extraFields.song_title = newSongTitle;
-			}
-			if (room.enabled_fields?.song_artist && newSongArtist) {
-				extraFields.song_artist = newSongArtist;
-			}
-			if (room.enabled_fields?.other && newOther) {
-				extraFields.other = newOther;
+			// Determine overall match status
+			let overallStatus;
+			if (
+				matchStatus.answer === 'exact' &&
+				(!room.enabled_fields?.song_title ||
+					!newAnswer.songTitle ||
+					matchStatus.songTitle === 'exact') &&
+				(!room.enabled_fields?.song_artist ||
+					!newAnswer.songArtist ||
+					matchStatus.songArtist === 'exact')
+			) {
+				overallStatus = 'match';
+			} else if (
+				matchStatus.answer === 'exact' ||
+				(room.enabled_fields?.song_title &&
+					newAnswer.songTitle &&
+					matchStatus.songTitle === 'exact') ||
+				(room.enabled_fields?.song_artist &&
+					newAnswer.songArtist &&
+					matchStatus.songArtist === 'exact')
+			) {
+				overallStatus = 'partial-match';
+			} else {
+				overallStatus = 'no-match';
 			}
 
-			// Generate hint for this answer
-			const processedAnswer = newAnswer.trim();
-			const hint = await generateHint(processedAnswer);
+			// Log match status for statistics
+			const matchStats = {
+				anime: matchStatus.answer,
+				song: matchStatus.songTitle,
+				artist: matchStatus.songArtist,
+				overall: overallStatus
+			};
+			console.log('Match statistics:', matchStats);
 
-			// Add main answer first with pre-calculated hint
+			const extraFields = {
+				match_status: overallStatus
+			};
+
+			if (room.enabled_fields?.song_title && newAnswer.songTitle) {
+				extraFields.song_title = newAnswer.songTitle;
+			}
+			if (room.enabled_fields?.song_artist && newAnswer.songArtist) {
+				extraFields.song_artist = newAnswer.songArtist;
+			}
+			if (room.enabled_fields?.other && newAnswer.other) {
+				extraFields.other = newAnswer.other;
+			}
+
+			// Process the answer
+			const processedAnswer = newAnswer.answer.trim();
+
+			// Call the API to generate hint
+			await getHintFromAPI(processedAnswer);
+
+			// Add main answer
 			const { data, error } = await supabase
 				.from('correct_answers')
 				.insert({
 					round_id: roundId,
 					content: processedAnswer,
-					extra_fields: Object.keys(extraFields).length > 0 ? extraFields : null,
-					hint: hint
+					extra_fields: extraFields
+					// We don't need to set the hint field as the API will handle this
 				})
 				.select()
 				.single();
 
 			if (error) throw error;
 
-			// Update room's current round if needed
-			const { error: updateError } = await supabase
-				.from('rooms')
-				.update({ current_round: roundId })
-				.eq('id', room.id);
-
-			if (updateError) throw updateError;
-
+			// Update the answers list
 			answers = [...answers, data];
-			toast.success('Dodano odpowiedź');
+
+			// Customize toast message based on match status
+			let toastMsg = 'Dodano odpowiedź';
+			toast.success(toastMsg);
+
+			// Auto-hide the form after adding an answer
+			formHidden = true;
 
 			// Now fetch and add related titles
-			const relatedTitles = await fetchRelatedTitles(newAnswer);
+			const relatedTitles = await fetchRelatedTitles(newAnswer.answer);
 			let addedCount = 0;
 
 			for (const title of relatedTitles) {
 				// Check if this title is already in answers list
 				const isDuplicate = answers.some((a) => a.content.toLowerCase() === title.toLowerCase());
+
 				if (!isDuplicate) {
-					// Generate hint for this related title
-					const relatedHint = await generateHint(title.trim());
+					// Call API to generate hint for this related title
+					await getHintFromAPI(title);
 
 					const { data: relatedData, error: relatedError } = await supabase
 						.from('correct_answers')
 						.insert({
 							round_id: roundId,
 							content: title.trim(),
-							extra_fields: Object.keys(extraFields).length > 0 ? extraFields : null,
-							hint: relatedHint
+							extra_fields: extraFields
+							// We don't need to set the hint field as the API will handle this
 						})
 						.select()
 						.single();
@@ -317,135 +493,186 @@
 				toast.success(`Dodano ${addedCount} powiązan${addedCount > 1 ? 'e tytuły' : 'y tytuł'}`);
 			}
 
-			// Clear form inputs
-			newAnswer = '';
-			newSongTitle = '';
-			newSongArtist = '';
-			newOther = '';
+			// Clear form inputs and match statuses
+			newAnswer = {
+				answer: '',
+				songTitle: '',
+				songArtist: '',
+				other: ''
+			};
+			matchStatus = {
+				answer: null,
+				songTitle: null,
+				songArtist: null,
+				other: null
+			};
 		} catch (error) {
-			toast.error('Failed to add answer: ' + error.message);
+			toast.error('Nie udało się dodać odpowiedzi: ' + error.message);
 		} finally {
 			loading = false;
 		}
 	}
 
-	// Add this function to generate hints
-	async function generateHint(title) {
-		// Count actual characters to potentially reveal (excluding spaces)
-		const nonSpaceChars = title.replace(/\s/g, '').length;
-
-		// Calculate characters to reveal (balanced approach)
-		let charsToReveal;
-		if (nonSpaceChars <= 1) {
-			// Special case for single-character titles
-			charsToReveal = 1;
-		} else if (nonSpaceChars <= 2) {
-			// Special case for two-character titles
-			charsToReveal = 1;
-		} else {
-			// Logarithmic scaling for all other lengths
-			// Formula: 1.6 * ln(length + 1)
-			charsToReveal = Math.ceil(1.6 * Math.log(nonSpaceChars + 1));
-
-			// Add a safety cap to ensure we never reveal too much
-			const maxRevealPercentage = 0.35; // Never reveal more than 35%
-			const percentageCap = Math.floor(nonSpaceChars * maxRevealPercentage);
-			charsToReveal = Math.min(charsToReveal, percentageCap);
-
-			// Ensure we always reveal at least one character
-			charsToReveal = Math.max(1, charsToReveal);
+	// Update an existing answer
+	async function updateAnswer() {
+		if (!newAnswer.answer.trim() || !editingId) {
+			toast.error('Wprowadź odpowiedź');
+			return;
 		}
 
-		// Process the answer to create the hint
-		const words = title.split(' ');
-		const hintWords = [];
-
-		// Prepare array of character positions to potentially reveal (excluding spaces)
-		const allPositions = [];
-		for (let i = 0; i < title.length; i++) {
-			if (title[i] !== ' ') {
-				allPositions.push(i);
-			}
-		}
-
-		// Randomly select positions to reveal
-		const positionsToReveal = [];
-		while (positionsToReveal.length < charsToReveal && allPositions.length > 0) {
-			const randomIndex = Math.floor(Math.random() * allPositions.length);
-			positionsToReveal.push(allPositions[randomIndex]);
-			allPositions.splice(randomIndex, 1);
-		}
-
-		// Process each word
-		let currentPos = 0;
-		for (const word of words) {
-			let hintWord = '';
-
-			for (let i = 0; i < word.length; i++) {
-				const globalPos = currentPos + i;
-				const char = word[i];
-
-				if (positionsToReveal.includes(globalPos)) {
-					// Reveal this character
-					hintWord += char;
-				} else if (/[a-zA-Z0-9]/.test(char)) {
-					// Replace alphanumeric characters with underscore
-					hintWord += '_';
-				} else {
-					// Replace special characters with a symbol
-					hintWord += '•';
-				}
-			}
-
-			hintWords.push(hintWord);
-			currentPos += word.length + 1; // +1 for the space
-		}
-
-		// Join words with spaces for the final hint
-		return hintWords.join(' ');
-	}
-
-	async function deleteAnswer(id) {
+		loading = true;
 		try {
-			const { error } = await supabase.from('correct_answers').delete().eq('id', id);
+			// Check matches one more time before submission
+			await checkAllMatches();
+
+			// Determine overall match status
+			let overallStatus;
+			if (
+				matchStatus.answer === 'exact' &&
+				(!room.enabled_fields?.song_title ||
+					!newAnswer.songTitle ||
+					matchStatus.songTitle === 'exact') &&
+				(!room.enabled_fields?.song_artist ||
+					!newAnswer.songArtist ||
+					matchStatus.songArtist === 'exact')
+			) {
+				overallStatus = 'match';
+			} else if (
+				matchStatus.answer === 'exact' ||
+				(room.enabled_fields?.song_title &&
+					newAnswer.songTitle &&
+					matchStatus.songTitle === 'exact') ||
+				(room.enabled_fields?.song_artist &&
+					newAnswer.songArtist &&
+					matchStatus.songArtist === 'exact')
+			) {
+				overallStatus = 'partial-match';
+			} else {
+				overallStatus = 'no-match';
+			}
+
+			const extraFields = {
+				match_status: overallStatus
+			};
+
+			if (room.enabled_fields?.song_title && newAnswer.songTitle) {
+				extraFields.song_title = newAnswer.songTitle;
+			}
+			if (room.enabled_fields?.song_artist && newAnswer.songArtist) {
+				extraFields.song_artist = newAnswer.songArtist;
+			}
+			if (room.enabled_fields?.other && newAnswer.other) {
+				extraFields.other = newAnswer.other;
+			}
+
+			// Process the answer
+			const processedAnswer = newAnswer.answer.trim();
+
+			// Call API to generate new hint
+			await getHintFromAPI(processedAnswer);
+
+			const { data, error } = await supabase
+				.from('correct_answers')
+				.update({
+					content: processedAnswer,
+					extra_fields: extraFields
+					// We don't need to set the hint field as the API will handle this
+				})
+				.eq('id', editingId)
+				.select()
+				.single();
 
 			if (error) throw error;
 
-			answers = answers.filter((a) => a.id !== id);
+			// Update the answer in the local array
+			answers = answers.map((a) => (a.id === editingId ? data : a));
+
+			// Customize toast message based on match status
+			let toastMsg = 'Zaktualizowano odpowiedź';
+			toast.success(toastMsg);
+
+			// Clear form inputs and exit edit mode
+			cancelEditing();
+		} catch (error) {
+			toast.error('Nie udało się zaktualizować odpowiedzi: ' + error.message);
+		} finally {
+			loading = false;
+		}
+	}
+
+	// Start editing an answer
+	function startEditing(answer) {
+		editMode = true;
+		editingId = answer.id;
+		formHidden = false; // Show the form when editing
+
+		newAnswer = {
+			answer: answer.content,
+			songTitle: answer.extra_fields?.song_title || '',
+			songArtist: answer.extra_fields?.song_artist || '',
+			other: answer.extra_fields?.other || ''
+		};
+
+		// Reset match statuses when starting edit mode
+		matchStatus = {
+			answer: null,
+			songTitle: null,
+			songArtist: null,
+			other: null
+		};
+
+		// Check matches after setting the values
+		setTimeout(() => {
+			checkAllMatches();
+		}, 100);
+	}
+
+	// Cancel editing an answer
+	function cancelEditing() {
+		editMode = false;
+		editingId = null;
+
+		newAnswer = {
+			answer: '',
+			songTitle: '',
+			songArtist: '',
+			other: ''
+		};
+
+		// Reset match statuses
+		matchStatus = {
+			answer: null,
+			songTitle: null,
+			songArtist: null,
+			other: null
+		};
+	}
+
+	// Delete an answer
+	async function deleteAnswer(answerId) {
+		try {
+			const { error } = await supabase.from('correct_answers').delete().eq('id', answerId);
+
+			if (error) throw error;
+
+			answers = answers.filter((a) => a.id !== answerId);
 			toast.success('Usunięto odpowiedź');
 		} catch (error) {
 			toast.error('Nie udało się usunąć odpowiedzi: ' + error.message);
 		}
 	}
 
-	async function deleteAllAnswers() {
-		if (!roundId || !answers.length) return;
-
-		if (
-			!confirm(`Czy na pewno chcesz usunąć wszystkie ${answers.length} odpowiedzi w tej rundzie?`)
-		) {
-			return;
-		}
-
-		try {
-			const { error } = await supabase.from('correct_answers').delete().eq('round_id', roundId);
-
-			if (error) throw error;
-
-			answers = [];
-			toast.success('Usunięto wszystkie odpowiedzi');
-		} catch (error) {
-			toast.error('Nie udało się usunąć odpowiedzi: ' + error.message);
-		}
+	// Toggle form visibility
+	function toggleFormVisibility() {
+		formHidden = !formHidden;
 	}
 
+	// Set up realtime subscription
 	function setupChannel() {
 		if (channel) channel.unsubscribe();
 
-		if (!roundId) return;
-
 		channel = supabase
-			.channel(`correct-answers-${roundId}`)
+			.channel(`round-answers-${roundId}`)
 			.on(
 				'postgres_changes',
 				{
@@ -454,23 +681,16 @@
 					table: 'correct_answers',
 					filter: `round_id=eq.${roundId}`
 				},
-				() => loadAnswers()
+				() => {
+					loadAnswers();
+				}
 			)
 			.subscribe();
 	}
 
-	$: if (roundId) {
-		loadAnswers();
-		loadCurrentRound();
-		setupChannel();
-	}
-
 	onMount(() => {
-		if (roundId) {
-			loadAnswers();
-			loadCurrentRound();
-			setupChannel();
-		}
+		loadAnswers();
+		setupChannel();
 	});
 
 	onDestroy(() => {
@@ -480,161 +700,180 @@
 
 <div class="space-y-6">
 	<Card.Root class="border-gray-800 bg-gray-900">
-		<Card.Header>
-			<div class="flex items-center justify-between">
-				<div>
-					<Card.Title class="text-white">Konfiguruj odpowiedzi rund</Card.Title>
-					<Card.Description class="text-gray-400">
-						Dodaj lub usuń poprawne odpowiedzi dla rund<br />
-						Pierwszą odpowiedź jaką dodasz będzie użyta do uzyskania podpowiedzi<br />liczba liter
-						odsłonięta w zależności od długości
-					</Card.Description>
-				</div>
-
-				<div class="flex items-center gap-3">
-					<div class="flex items-center gap-2">
-						<Input
-							type="number"
-							min="1"
-							max="100"
-							bind:value={roundsToAdd}
-							class="w-20 border-gray-700 bg-gray-800 text-gray-100 focus-visible:ring-1 focus-visible:ring-gray-600 focus-visible:ring-offset-0"
-						/>
-						<Button
-							on:click={createNewRounds}
-							disabled={addingRounds || roundsToAdd < 1}
-							class="border border-gray-700 bg-gray-800 text-white hover:bg-gray-700"
-						>
-							<Plus class="mr-2 h-4 w-4" />
-							{addingRounds
-								? 'Dodawanie...'
-								: roundsToAdd === 1
-									? 'Dodaj rundę'
-									: `Dodaj ${roundsToAdd} rund`}
-						</Button>
-					</div>
-
-					{#if answers.length > 0}
-						<Button
-							variant="destructive"
-							size="sm"
-							on:click={deleteAllAnswers}
-							class="border border-red-900 bg-gray-900 text-red-400 hover:bg-gray-800"
-						>
-							<Trash2 class="mr-2 h-4 w-4" />
-							Usuń wszystkie odpowiedzi
-						</Button>
-					{/if}
-				</div>
-			</div>
-		</Card.Header>
-
 		<Card.Content>
-			<form on:submit|preventDefault={addAnswer} class="space-y-4">
-				<Autocomplete
-					bind:value={newAnswer}
-					placeholder="Nazwa anime"
-					index="animeTitles"
-					searchKey="animeTitle"
-					type="anime"
-					disabled={loading}
-				/>
+			<div class="space-y-8">
+				<div class="rounded-lg border border-gray-800 p-4">
+					<!-- Toggle form visibility button -->
+					<Button
+						on:click={toggleFormVisibility}
+						variant="outline"
+						class="mb-4 border border-gray-700 bg-gray-800 text-white hover:bg-gray-700"
+					>
+						{#if formHidden}
+							<ChevronDown class="mr-2 h-4 w-4" />
+							Pokaż formularz
+						{:else}
+							<ChevronUp class="mr-2 h-4 w-4" />
+							Ukryj formularz
+						{/if}
+					</Button>
 
-				{#if room.enabled_fields?.song_title}
-					<Autocomplete
-						bind:value={newSongTitle}
-						placeholder="Tytuł piosenki"
-						index="songNames"
-						searchKey="songName"
-						type="songs"
-						disabled={loading}
-					/>
-				{/if}
-
-				{#if room.enabled_fields?.song_artist}
-					<Autocomplete
-						bind:value={newSongArtist}
-						placeholder="Artysta"
-						index="artists"
-						searchKey="artist"
-						type="artists"
-						disabled={loading}
-					/>
-				{/if}
-
-				{#if room.enabled_fields?.other}
-					<Input
-						type="text"
-						bind:value={newOther}
-						placeholder="Inne"
-						class="w-full border-gray-700 bg-gray-800 text-gray-100 focus-visible:ring-1 focus-visible:ring-gray-600 focus-visible:ring-offset-0"
-					/>
-				{/if}
-
-				<Button
-					type="submit"
-					disabled={loading || !newAnswer.trim()}
-					class="w-full border border-gray-700 bg-gray-800 text-white hover:bg-gray-700"
-				>
-					<Plus class="mr-2 h-4 w-4" />
-					Dodaj odpowiedź
-				</Button>
-			</form>
-
-			<div class="mt-6">
-				{#if answers.length === 0}
-					<div class="p-6 text-center text-gray-400">Brak odpowiedzi dodanych dla tej rundy.</div>
-				{:else}
-					<Table.Root>
-						<Table.Header>
-							<Table.Row class="border-gray-800">
-								<Table.Head class="text-gray-300">Nazwa anime</Table.Head>
-								{#if room.enabled_fields?.song_title}
-									<Table.Head class="text-gray-300">Tytuł piosenki</Table.Head>
+					{#if !formHidden}
+						<form on:submit|preventDefault={addAnswer} class="mb-6 space-y-4">
+							<div class="relative">
+								{#if editMode}
+									<div
+										class="absolute left-2 top-2 rounded-full bg-blue-500 px-2 py-1 text-xs text-white"
+									>
+										Tryb edycji
+									</div>
 								{/if}
-								{#if room.enabled_fields?.song_artist}
-									<Table.Head class="text-gray-300">Artysta</Table.Head>
+								<div class="relative">
+									<Autocomplete
+										bind:value={newAnswer.answer}
+										placeholder="Nazwa anime"
+										index="animeTitles"
+										searchKey="animeTitle"
+										type="anime"
+										disabled={loading}
+										on:input={handleTitleInput}
+									/>
+								</div>
+							</div>
+
+							{#if room.enabled_fields?.song_title}
+								<div class="relative">
+									<Autocomplete
+										bind:value={newAnswer.songTitle}
+										placeholder="Tytuł piosenki"
+										index="songNames"
+										searchKey="songName"
+										type="songs"
+										disabled={loading}
+										on:input={handleSongTitleInput}
+									/>
+								</div>
+							{/if}
+
+							{#if room.enabled_fields?.song_artist}
+								<div class="relative">
+									<Autocomplete
+										bind:value={newAnswer.songArtist}
+										placeholder="Artysta"
+										index="artists"
+										searchKey="artist"
+										type="artists"
+										disabled={loading}
+										on:input={handleArtistInput}
+									/>
+								</div>
+							{/if}
+
+							{#if room.enabled_fields?.other}
+								<Input
+									type="text"
+									bind:value={newAnswer.other}
+									placeholder="Inne"
+									class="w-full border-gray-700 bg-gray-800 text-gray-100 focus-visible:ring-1 focus-visible:ring-gray-600 focus-visible:ring-offset-0"
+								/>
+							{/if}
+
+							<div class="flex gap-2">
+								<Button
+									type="submit"
+									disabled={loading || !newAnswer.answer?.trim()}
+									class="flex-1 border border-gray-700 bg-gray-800 text-white hover:bg-gray-700"
+								>
+									{#if editMode}
+										<Save class="mr-2 h-4 w-4" />
+										Zapisz zmiany
+									{:else}
+										<Plus class="mr-2 h-4 w-4" />
+										Dodaj odpowiedź
+									{/if}
+								</Button>
+
+								{#if editMode}
+									<Button
+										type="button"
+										on:click={cancelEditing}
+										class="border border-gray-700 bg-gray-800 text-white hover:bg-gray-700"
+									>
+										<X class="mr-2 h-4 w-4" />
+										Anuluj
+									</Button>
 								{/if}
-								{#if room.enabled_fields?.other}
-									<Table.Head class="text-gray-300">Inne</Table.Head>
-								{/if}
-								<Table.Head class="w-24 text-gray-300">Akcje</Table.Head>
-							</Table.Row>
-						</Table.Header>
-						<Table.Body>
-							{#each answers as answer}
+							</div>
+						</form>
+					{/if}
+
+					<!-- Answers table -->
+					{#if !answers || answers.length === 0}
+						<div class="p-6 text-center text-gray-400">Brak odpowiedzi dodanych dla tej rundy.</div>
+					{:else}
+						<Table.Root>
+							<Table.Header>
 								<Table.Row class="border-gray-800">
-									<Table.Cell class="text-gray-200">{answer.content}</Table.Cell>
+									<Table.Head class="text-gray-300">Nazwa anime</Table.Head>
 									{#if room.enabled_fields?.song_title}
-										<Table.Cell class="text-gray-200">
-											{answer.extra_fields?.song_title || '-'}
-										</Table.Cell>
+										<Table.Head class="text-gray-300">Tytuł piosenki</Table.Head>
 									{/if}
 									{#if room.enabled_fields?.song_artist}
-										<Table.Cell class="text-gray-200">
-											{answer.extra_fields?.song_artist || '-'}
-										</Table.Cell>
+										<Table.Head class="text-gray-300">Artysta</Table.Head>
 									{/if}
 									{#if room.enabled_fields?.other}
-										<Table.Cell class="text-gray-200">
-											{answer.extra_fields?.other || '-'}
-										</Table.Cell>
+										<Table.Head class="text-gray-300">Inne</Table.Head>
 									{/if}
-									<Table.Cell>
-										<Button
-											variant="destructive"
-											size="sm"
-											on:click={() => deleteAnswer(answer.id)}
-											class="border border-red-900 bg-gray-900 text-red-400 hover:bg-gray-800"
-										>
-											<Trash2 class="h-4 w-4" />
-										</Button>
-									</Table.Cell>
+									<Table.Head class="w-28 text-gray-300">Akcje</Table.Head>
 								</Table.Row>
-							{/each}
-						</Table.Body>
-					</Table.Root>
-				{/if}
+							</Table.Header>
+							<Table.Body>
+								{#each answers as answer}
+									<Table.Row
+										class={`border-gray-800 ${getRowBackgroundClass(answer.extra_fields?.match_status)}`}
+									>
+										<Table.Cell class="text-gray-200">{answer.content}</Table.Cell>
+										{#if room.enabled_fields?.song_title}
+											<Table.Cell class="text-gray-200">
+												{answer.extra_fields?.song_title || '-'}
+											</Table.Cell>
+										{/if}
+										{#if room.enabled_fields?.song_artist}
+											<Table.Cell class="text-gray-200">
+												{answer.extra_fields?.song_artist || '-'}
+											</Table.Cell>
+										{/if}
+										{#if room.enabled_fields?.other}
+											<Table.Cell class="text-gray-200">
+												{answer.extra_fields?.other || '-'}
+											</Table.Cell>
+										{/if}
+										<Table.Cell>
+											<div class="flex gap-2">
+												<Button
+													size="sm"
+													on:click={() => startEditing(answer)}
+													class="border border-blue-800 bg-gray-900 text-blue-400 hover:bg-gray-800"
+													disabled={editMode}
+												>
+													<Edit class="h-4 w-4" />
+												</Button>
+												<Button
+													variant="destructive"
+													size="sm"
+													on:click={() => deleteAnswer(answer.id)}
+													class="border border-red-900 bg-gray-900 text-red-400 hover:bg-gray-800"
+												>
+													<Trash2 class="h-4 w-4" />
+												</Button>
+											</div>
+										</Table.Cell>
+									</Table.Row>
+								{/each}
+							</Table.Body>
+						</Table.Root>
+					{/if}
+				</div>
 			</div>
 		</Card.Content>
 	</Card.Root>

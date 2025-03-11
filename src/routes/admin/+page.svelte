@@ -12,11 +12,26 @@
 
 	export let data;
 	let modalOpen = false;
+	let selectedRoomId = null; // Track which room's modal is open
 	let newRoomName = '';
 	let loading = false;
 	let channel;
 
 	$: ({ supabase, user, profile, rooms } = data);
+
+	// Open the modal for a specific room
+	function openModal(roomId) {
+		selectedRoomId = roomId;
+		modalOpen = true;
+	}
+
+	// Handle modal close and reset selected room
+	function handleModalChange(isOpen) {
+		modalOpen = isOpen;
+		if (!isOpen) {
+			selectedRoomId = null;
+		}
+	}
 
 	async function handleCreateRoom(event) {
 		event.preventDefault();
@@ -125,6 +140,9 @@
 	onDestroy(() => {
 		if (channel) channel.unsubscribe();
 	});
+
+	// Find the currently selected room
+	$: selectedRoom = rooms.find(room => room.id === selectedRoomId);
 </script>
 
 <div class="container mx-auto min-h-screen bg-gray-950 p-6">
@@ -191,7 +209,7 @@
 									variant="outline"
 									size="sm"
 									class="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700"
-									on:click={() => (modalOpen = true)}
+									on:click={() => openModal(room.id)}
 								>
 									Konfiguruj pola odpowiedzi
 								</Button>
@@ -203,13 +221,6 @@
 								>
 									Konfiguruj odpowiedzi rund
 								</Button>
-								<AnswerFieldsModal
-									open={modalOpen}
-									roomId={room.id}
-									enabledFields={room.enabled_fields}
-									{supabase}
-									onOpenChange={(open) => (modalOpen = open)}
-								/>
 							</Table.Cell>
 							<Table.Cell>
 								<div class="flex gap-2">
@@ -238,6 +249,16 @@
 		</Card.Content>
 	</Card.Root>
 </div>
+
+<!-- Render a single modal that's shared across all rooms, but with the correct roomId -->
+{#if modalOpen && selectedRoomId && selectedRoom}
+	<AnswerFieldsModal
+		open={modalOpen}
+		roomId={selectedRoomId}
+		enabledFields={selectedRoom.enabled_fields}
+		onOpenChange={handleModalChange}
+	/>
+{/if}
 
 <style>
 	*:focus-visible {

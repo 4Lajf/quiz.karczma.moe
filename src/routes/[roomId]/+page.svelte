@@ -50,13 +50,7 @@
 	async function checkHintStatus() {
 		if (!hasJoined || !playerName || !room?.current_round) return false;
 
-		const { data: hintUsage } = await supabase
-			.from('hint_usages')
-			.select('*')
-			.eq('room_id', room.id)
-			.eq('round_id', room.current_round)
-			.eq('player_name', playerName)
-			.maybeSingle();
+		const { data: hintUsage } = await supabase.from('hint_usages').select('*').eq('room_id', room.id).eq('round_id', room.current_round).eq('player_name', playerName).maybeSingle();
 
 		return !!hintUsage;
 	}
@@ -137,16 +131,7 @@
 	async function checkAnswerStatus() {
 		if (!hasJoined || !playerName || !room?.current_round) return;
 
-		const [{ data: existingAnswer }, isHintRequested] = await Promise.all([
-			supabase
-				.from('answers')
-				.select('*, extra_fields')
-				.eq('room_id', room.id)
-				.eq('player_name', playerName)
-				.eq('round_id', room.current_round)
-				.maybeSingle(),
-			checkHintStatus()
-		]);
+		const [{ data: existingAnswer }, isHintRequested] = await Promise.all([supabase.from('answers').select('*, extra_fields').eq('room_id', room.id).eq('player_name', playerName).eq('round_id', room.current_round).maybeSingle(), checkHintStatus()]);
 
 		// Update states
 		hasSubmitted = !!existingAnswer;
@@ -296,11 +281,7 @@
 		}
 		loading = true;
 		try {
-			const { data: existingPlayers, error: fetchError } = await supabase
-				.from('players')
-				.select('*')
-				.eq('room_id', room.id)
-				.ilike('name', playerName);
+			const { data: existingPlayers, error: fetchError } = await supabase.from('players').select('*').eq('room_id', room.id).ilike('name', playerName);
 
 			if (fetchError) throw fetchError;
 
@@ -449,11 +430,7 @@
 
 	async function loadHandRaiseResults() {
 		try {
-			const { data, error } = await supabase
-				.from('hand_raises')
-				.select('*')
-				.eq('room_id', room.id)
-				.order('server_timestamp', { ascending: true });
+			const { data, error } = await supabase.from('hand_raises').select('*').eq('room_id', room.id).order('server_timestamp', { ascending: true });
 
 			if (error) throw error;
 
@@ -540,9 +517,7 @@
 				validMeasurements = sortedLatencies.slice(1, -1);
 			}
 
-			networkLatency = Math.round(
-				validMeasurements.reduce((sum, val) => sum + val, 0) / validMeasurements.length
-			);
+			networkLatency = Math.round(validMeasurements.reduce((sum, val) => sum + val, 0) / validMeasurements.length);
 
 			// Update displayed latency with color indicator
 			displayLatency = networkLatency;
@@ -603,60 +578,27 @@
 			<Card.Content>
 				{#if !hasJoined}
 					<form on:submit|preventDefault={joinGame} class="space-y-4">
-						<Input
-							type="text"
-							placeholder="Twój nick"
-							bind:value={playerName}
-							required
-							disabled={loading}
-							class="border-gray-700 bg-gray-800 text-gray-100 placeholder:text-gray-500 focus-visible:ring-1 focus-visible:ring-gray-600 focus-visible:ring-offset-0"
-						/>
-						<Button
-							type="submit"
-							disabled={loading}
-							class="w-full border border-gray-700 bg-gray-800 text-white hover:bg-gray-700"
-						>
+						<Input type="text" placeholder="Twój nick" bind:value={playerName} required disabled={loading} class="border-gray-700 bg-gray-800 text-gray-100 placeholder:text-gray-500 focus-visible:ring-1 focus-visible:ring-gray-600 focus-visible:ring-offset-0" />
+						<Button type="submit" disabled={loading} class="w-full border border-gray-700 bg-gray-800 text-white hover:bg-gray-700">
 							{loading ? 'Dołączanie...' : 'Dołącz do pokoju'}
 						</Button>
 					</form>
 				{:else if !hasSubmitted}
-					<div
-						class="mb-6 overflow-hidden rounded-xl border border-gray-700 bg-gray-800/60 shadow-lg"
-					>
+					<div class="mb-6 overflow-hidden rounded-xl border border-gray-700 bg-gray-800/60 shadow-lg">
 						{#if !hintRequested && room.enabled_fields?.hint_mode}
 							<div class="flex items-center justify-between p-4">
 								<div class="flex items-center gap-3">
-									<div
-										class="flex h-10 w-10 items-center justify-center rounded-full bg-gray-700/50 text-xl text-blue-400"
-									>
-										?
-									</div>
+									<div class="flex h-10 w-10 items-center justify-center rounded-full bg-gray-700/50 text-xl text-blue-400">?</div>
 								</div>
-								<Button
-									on:click={requestHint}
-									class="bg-blue-600/50 text-white hover:bg-blue-600/70"
-									size="sm"
-								>
-									Pokaż podpowiedź (-40% punktów)
+								<Button on:click={requestHint} class="bg-blue-600/50 text-white hover:bg-blue-600/70" size="sm">
+									Pokaż podpowiedź (-{room.points_config?.hint_penalty_percent || 40}% punktów)
 								</Button>
 							</div>
 						{:else if hintRequested}
 							<div class="p-4">
 								<div class="mb-2 flex items-center gap-3">
-									<div
-										class="flex h-8 w-8 items-center justify-center rounded-full bg-blue-600/30 text-lg text-blue-400"
-									>
-										<svg
-											xmlns="http://www.w3.org/2000/svg"
-											width="18"
-											height="18"
-											viewBox="0 0 24 24"
-											fill="none"
-											stroke="currentColor"
-											stroke-width="2"
-											stroke-linecap="round"
-											stroke-linejoin="round"
-										>
+									<div class="flex h-8 w-8 items-center justify-center rounded-full bg-blue-600/30 text-lg text-blue-400">
+										<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 											<circle cx="12" cy="12" r="10"></circle>
 											<line x1="12" y1="16" x2="12" y2="12"></line>
 											<line x1="12" y1="8" x2="12.01" y2="8"></line>
@@ -671,13 +613,7 @@
 											{#each maskedAnswer.split(' ') as word, i}
 												<span class="mb-1 mr-2 inline-block">
 													{#each word.split('') as char}
-														<span
-															class={char === '_'
-																? 'mx-px'
-																: char === '•'
-																	? 'mx-px text-blue-500'
-																	: 'mx-px font-bold text-blue-400'}
-														>
+														<span class={char === '_' ? 'mx-px' : char === '•' ? 'mx-px text-blue-500' : 'mx-px font-bold text-blue-400'}>
 															{char}
 														</span>
 													{/each}
@@ -689,9 +625,7 @@
 									{/if}
 								</div>
 								<p class="mt-2 text-center text-xs text-gray-400">
-									<span
-										class="mx-auto inline-flex items-center rounded border border-gray-700 bg-gray-800/80 px-2 py-1 font-mono text-sm text-blue-400"
-									>
+									<span class="mx-auto inline-flex items-center rounded border border-gray-700 bg-gray-800/80 px-2 py-1 font-mono text-sm text-blue-400">
 										<span class="mr-1 font-bold">•</span> = Dowolny znak specjalny
 									</span>
 								</p>
@@ -700,49 +634,21 @@
 					</div>
 
 					<form on:submit|preventDefault={submitAnswer} class="space-y-4">
-						<Autocomplete
-							bind:value={answer}
-							placeholder="Nazwa anime"
-							index="animeTitles"
-							searchKey="animeTitle"
-							type="anime"
-						/>
+						<Autocomplete bind:value={answer} placeholder="Nazwa anime" index="animeTitles" searchKey="animeTitle" type="anime" />
 
 						{#if room.enabled_fields?.song_title}
-							<Autocomplete
-								bind:value={songTitle}
-								placeholder="Tytuł piosenki"
-								index="songNames"
-								searchKey="songName"
-								type="songs"
-							/>
+							<Autocomplete bind:value={songTitle} placeholder="Tytuł piosenki" index="songNames" searchKey="songName" type="songs" />
 						{/if}
 
 						{#if room.enabled_fields?.song_artist}
-							<Autocomplete
-								bind:value={songArtist}
-								placeholder="Artysta"
-								index="artists"
-								searchKey="artist"
-								type="artists"
-							/>
+							<Autocomplete bind:value={songArtist} placeholder="Artysta" index="artists" searchKey="artist" type="artists" />
 						{/if}
 
 						{#if room.enabled_fields?.other}
-							<Input
-								type="text"
-								placeholder="Inne"
-								bind:value={otherAnswer}
-								disabled={loading}
-								class="border-gray-700 bg-gray-800 text-gray-100 placeholder:text-gray-500 focus-visible:ring-1 focus-visible:ring-gray-600 focus-visible:ring-offset-0"
-							/>
+							<Input type="text" placeholder="Inne" bind:value={otherAnswer} disabled={loading} class="border-gray-700 bg-gray-800 text-gray-100 placeholder:text-gray-500 focus-visible:ring-1 focus-visible:ring-gray-600 focus-visible:ring-offset-0" />
 						{/if}
 
-						<Button
-							type="submit"
-							disabled={loading || hasSubmitted}
-							class="w-full border border-gray-700 bg-gray-800 text-white hover:bg-gray-700"
-						>
+						<Button type="submit" disabled={loading || hasSubmitted} class="w-full border border-gray-700 bg-gray-800 text-white hover:bg-gray-700">
 							{loading ? 'Wysyłanie...' : 'Wyślij odpowiedź'}
 						</Button>
 					</form>
@@ -754,12 +660,7 @@
 
 		{#if hasJoined && !inTakeoverMode}
 			<div class="fixed right-4 top-4 z-20">
-				<Button
-					on:click={enterTakeoverMode}
-					class="border border-gray-700 bg-gray-600 text-white hover:bg-gray-700"
-				>
-					Tryb przejęć
-				</Button>
+				<Button on:click={enterTakeoverMode} class="border border-gray-700 bg-gray-600 text-white hover:bg-gray-700">Tryb przejęć</Button>
 			</div>
 		{/if}
 
@@ -783,12 +684,7 @@
 						</span>
 					</div>
 
-					<button
-						on:click={raiseHand}
-						class="flex h-full w-full items-center justify-center bg-blue-600 text-4xl font-bold text-white active:bg-blue-800"
-					>
-						DOTKNIJ BY PODNIEŚĆ ŁAPĘ
-					</button>
+					<button on:click={raiseHand} class="flex h-full w-full items-center justify-center bg-blue-600 text-4xl font-bold text-white active:bg-blue-800"> DOTKNIJ BY PODNIEŚĆ ŁAPĘ </button>
 				{:else if handRaiseResults}
 					<div class="flex flex-col items-center justify-center rounded-lg bg-gray-800 p-8">
 						<h2 class="mb-4 text-3xl font-bold text-white">
@@ -800,16 +696,12 @@
 								{(handRaiseResults.timeDifferenceMs / 1000).toFixed(3)}s za pierwszym miejscem
 							</p>
 							<p class="mb-6 text-sm text-gray-400">
-								Twój ping: <span class={getLatencyColorClass(handRaiseResults.latency)}
-									>{handRaiseResults.latency}ms</span
-								>
+								Twój ping: <span class={getLatencyColorClass(handRaiseResults.latency)}>{handRaiseResults.latency}ms</span>
 							</p>
 						{:else}
 							<p class="mb-2 text-xl text-green-400">Jesteś pierwszy!</p>
 							<p class="mb-6 text-sm text-gray-400">
-								Twój ping: <span class={getLatencyColorClass(handRaiseResults.latency)}
-									>{handRaiseResults.latency}ms</span
-								>
+								Twój ping: <span class={getLatencyColorClass(handRaiseResults.latency)}>{handRaiseResults.latency}ms</span>
 							</p>
 						{/if}
 
@@ -830,9 +722,7 @@
 											<td class="px-4 py-2 text-gray-200">{player.position}</td>
 											<td class="px-4 py-2 text-gray-200">{player.name}</td>
 											<td class="px-4 py-2 text-gray-200">
-												{player.position === 1
-													? '-'
-													: `+${(player.timeDifferenceMs / 1000).toFixed(3)}s`}
+												{player.position === 1 ? '-' : `+${(player.timeDifferenceMs / 1000).toFixed(3)}s`}
 											</td>
 											<td class="px-4 py-2">
 												<span class={getLatencyColorClass(player.latency)}>
@@ -845,12 +735,7 @@
 							</table>
 						</div>
 
-						<Button
-							on:click={exitTakeoverMode}
-							class="mt-6 border border-gray-700 bg-gray-800 text-white hover:bg-gray-700"
-						>
-							Wyjdź
-						</Button>
+						<Button on:click={exitTakeoverMode} class="mt-6 border border-gray-700 bg-gray-800 text-white hover:bg-gray-700">Wyjdź</Button>
 					</div>
 				{:else}
 					<div class="text-xl text-white">Przetwarzanie...</div>

@@ -12,8 +12,6 @@
 	let channel;
 
 	onMount(() => {
-		if (session && profile?.role === 'admin') goto('/admin');
-
 		// Subscribe to all room-related changes
 		channel = supabase
 			.channel('public-rooms')

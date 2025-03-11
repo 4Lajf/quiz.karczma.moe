@@ -16,6 +16,7 @@
 		song_title: pointsConfig?.song_title || 0,
 		song_artist: pointsConfig?.song_artist || 0,
 		other: pointsConfig?.other || 0,
+		hint_penalty_percent: pointsConfig?.hint_penalty_percent || 40, // Add this new field with default 40%
 		tiebreaker: {
 			main_answer: pointsConfig?.tiebreaker?.main_answer || 0,
 			song_title: pointsConfig?.tiebreaker?.song_title || 1,
@@ -26,10 +27,7 @@
 
 	async function handleSave() {
 		try {
-			const { error } = await supabase
-				.from('rooms')
-				.update({ points_config: config })
-				.eq('id', roomId);
+			const { error } = await supabase.from('rooms').update({ points_config: config }).eq('id', roomId);
 
 			if (error) throw error;
 			onOpenChange(false);
@@ -49,43 +47,19 @@
 				<h3 class="text-lg font-medium text-white">Główne punkty</h3>
 				<div class="space-y-2">
 					<Label for="main_points" class="text-gray-200">Nazwa anime</Label>
-					<Input
-						type="number"
-						id="main_points"
-						bind:value={config.main_answer}
-						min="0"
-						class="border-gray-700 bg-gray-800 text-gray-100"
-					/>
+					<Input type="number" id="main_points" bind:value={config.main_answer} min="0" class="border-gray-700 bg-gray-800 text-gray-100" />
 				</div>
 				<div class="space-y-2">
 					<Label for="title_points" class="text-gray-200">Tytuł piosenki</Label>
-					<Input
-						type="number"
-						id="title_points"
-						bind:value={config.song_title}
-						min="0"
-						class="border-gray-700 bg-gray-800 text-gray-100"
-					/>
+					<Input type="number" id="title_points" bind:value={config.song_title} min="0" class="border-gray-700 bg-gray-800 text-gray-100" />
 				</div>
 				<div class="space-y-2">
 					<Label for="artist_points" class="text-gray-200">Artysta</Label>
-					<Input
-						type="number"
-						id="artist_points"
-						bind:value={config.song_artist}
-						min="0"
-						class="border-gray-700 bg-gray-800 text-gray-100"
-					/>
+					<Input type="number" id="artist_points" bind:value={config.song_artist} min="0" class="border-gray-700 bg-gray-800 text-gray-100" />
 				</div>
 				<div class="space-y-2">
 					<Label for="other_points" class="text-gray-200">Inne</Label>
-					<Input
-						type="number"
-						id="other_points"
-						bind:value={config.other}
-						min="0"
-						class="border-gray-700 bg-gray-800 text-gray-100"
-					/>
+					<Input type="number" id="other_points" bind:value={config.other} min="0" class="border-gray-700 bg-gray-800 text-gray-100" />
 				</div>
 			</div>
 
@@ -93,57 +67,35 @@
 				<h3 class="text-lg font-medium text-white">Tiebreakery</h3>
 				<div class="space-y-2">
 					<Label for="main_tiebreaker" class="text-gray-200">Nazwa anime</Label>
-					<Input
-						type="number"
-						id="main_tiebreaker"
-						bind:value={config.tiebreaker.main_answer}
-						min="0"
-						class="border-gray-700 bg-gray-800 text-gray-100"
-					/>
+					<Input type="number" id="main_tiebreaker" bind:value={config.tiebreaker.main_answer} min="0" class="border-gray-700 bg-gray-800 text-gray-100" />
 				</div>
 				<div class="space-y-2">
 					<Label for="title_tiebreaker" class="text-gray-200">Tytuł piosenki</Label>
-					<Input
-						type="number"
-						id="title_tiebreaker"
-						bind:value={config.tiebreaker.song_title}
-						min="0"
-						class="border-gray-700 bg-gray-800 text-gray-100"
-					/>
+					<Input type="number" id="title_tiebreaker" bind:value={config.tiebreaker.song_title} min="0" class="border-gray-700 bg-gray-800 text-gray-100" />
 				</div>
 				<div class="space-y-2">
 					<Label for="artist_tiebreaker" class="text-gray-200">Artysta</Label>
-					<Input
-						type="number"
-						id="artist_tiebreaker"
-						bind:value={config.tiebreaker.song_artist}
-						min="0"
-						class="border-gray-700 bg-gray-800 text-gray-100"
-					/>
+					<Input type="number" id="artist_tiebreaker" bind:value={config.tiebreaker.song_artist} min="0" class="border-gray-700 bg-gray-800 text-gray-100" />
 				</div>
 				<div class="space-y-2">
 					<Label for="other_tiebreaker" class="text-gray-200">Inne</Label>
-					<Input
-						type="number"
-						id="other_tiebreaker"
-						bind:value={config.tiebreaker.other}
-						min="0"
-						class="border-gray-700 bg-gray-800 text-gray-100"
-					/>
+					<Input type="number" id="other_tiebreaker" bind:value={config.tiebreaker.other} min="0" class="border-gray-700 bg-gray-800 text-gray-100" />
 				</div>
+			</div>
+
+			<!-- Hint penalty setting -->
+			<div class="col-span-2 mt-2 space-y-2 border-t border-gray-800 pt-4">
+				<Label for="hint_penalty" class="text-gray-200">Kara za podpowiedź (%)</Label>
+				<div class="flex items-center gap-2">
+					<Input type="number" id="hint_penalty" bind:value={config.hint_penalty_percent} min="0" max="100" class="border-gray-700 bg-gray-800 text-gray-100" />
+					<span class="text-gray-300">%</span>
+				</div>
+				<p class="text-xs text-gray-400">Procent punktów odejmowanych po użyciu podpowiedzi</p>
 			</div>
 		</div>
 		<Dialog.Footer>
-			<Button
-				variant="outline"
-				on:click={() => onOpenChange(false)}
-				class="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700"
-			>
-				Anuluj
-			</Button>
-			<Button on:click={handleSave} class="bg-blue-600 text-white hover:bg-blue-700">
-				Zapisz zmiany
-			</Button>
+			<Button variant="outline" on:click={() => onOpenChange(false)} class="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700">Anuluj</Button>
+			<Button on:click={handleSave} class="bg-blue-600 text-white hover:bg-blue-700">Zapisz zmiany</Button>
 		</Dialog.Footer>
 	</Dialog.Content>
 </Dialog.Root>
