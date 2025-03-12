@@ -223,7 +223,7 @@
 							<div class="bg-gray-800/40 lg:col-span-1">
 								{#if animeData?.coverImage?.large}
 									<div class="flex h-full items-center justify-center p-4 lg:p-0">
-										<img src={animeData.coverImage.large} alt={getMainTitle()} class="h-auto w-full max-w-lg object-cover shadow-xl lg:h-[600px]" />
+										<img src={animeData.coverImage.large.replace('/medium/','/large/')} alt={getMainTitle()} class="h-auto w-full max-w-lg object-cover shadow-xl lg:h-[600px]" />
 									</div>
 								{:else}
 									<div class="flex h-[300px] w-full items-center justify-center bg-gray-800/20 lg:h-[600px]">
