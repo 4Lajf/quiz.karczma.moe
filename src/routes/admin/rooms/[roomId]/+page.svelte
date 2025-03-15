@@ -55,7 +55,7 @@
 
 	async function loadCorrectAnswers(roundId) {
 		try {
-			const { data, error } = await supabase.from('correct_answers').select('*').eq('round_id', roundId);
+			const { data, error } = await supabase.from('correct_answers').select('*').eq('round_id', roundId).order('created_at', { ascending: true });
 
 			if (error) throw error;
 			currentCorrectAnswers = data || [];
