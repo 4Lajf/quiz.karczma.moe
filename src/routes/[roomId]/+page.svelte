@@ -20,6 +20,7 @@
 	let measuringLatency = false;
 	let hintRequested = false;
 	let maskedAnswer = '';
+	let checkingHandRaiseStatus = false;
 
 	// Replacement rules for easier text matching
 	const ANIME_REGEX_REPLACE_RULES = [
@@ -46,6 +47,11 @@
 		{ input: 's', replace: '[sς]' },
 		{ input: 'l', replace: '[l˥]' }
 	];
+
+	function closeLeaderboardView() {
+		handRaiseResults = null;
+		handRaised = false;
+	}
 
 	async function checkHintStatus() {
 		if (!hasJoined || !playerName || !room?.current_round) return false;
@@ -128,6 +134,19 @@
 		answer = answer;
 	}
 
+	function resetAnswerStateWithHint() {
+		hasSubmitted = false;
+		answer = '';
+		songTitle = '';
+		songArtist = '';
+		otherAnswer = '';
+		hintRequested = false; // Reset hint requested state
+		maskedAnswer = ''; // Clear the masked answer
+		// Force Svelte to recognize the state change
+		hasSubmitted = hasSubmitted;
+		answer = answer;
+	}
+
 	async function checkAnswerStatus() {
 		if (!hasJoined || !playerName || !room?.current_round) return;
 
@@ -188,7 +207,7 @@
 					console.log('Room change detected:', payload);
 					if (payload.new.current_round !== payload.old?.current_round) {
 						toast.info('Rozpoczęła się nowa runda!');
-						resetAnswerState();
+						resetAnswerStateWithHint();
 						await invalidateAll();
 					}
 				}
@@ -300,12 +319,8 @@
 					score: 0,
 					tiebreaker: 0
 				});
-
+				console.log(insertError);
 				if (insertError) {
-					if (insertError.code === '23505') {
-						toast.error('Nazwa jest już zajęta');
-						return;
-					}
 					throw insertError;
 				}
 				hasJoined = true;
@@ -378,9 +393,43 @@
 	}
 
 	async function enterTakeoverMode() {
-		inTakeoverMode = true;
-		// Start monitoring latency
-		setupLatencyMonitoring();
+		// First check if takeover mode is enabled for this room
+		try {
+			const { data: roomData, error: roomError } = await supabase.from('rooms').select('takeover_mode').eq('id', room.id).single();
+
+			if (roomError) throw roomError;
+
+			// If takeover mode is disabled, show toast and return
+			if (!roomData.takeover_mode) {
+				toast.error('Tryb przejęć jest obecnie wyłączony');
+				return;
+			}
+
+			// Continue with normal takeover mode flow
+			inTakeoverMode = true;
+			checkingHandRaiseStatus = true; // Set loading state
+
+			// Start monitoring latency
+			setupLatencyMonitoring();
+
+			// Check if user already raised hand in this room
+			try {
+				const { data, error } = await supabase.from('hand_raises').select('*').eq('room_id', room.id).eq('player_name', playerName).maybeSingle();
+
+				if (data) {
+					// User already raised hand, set flag and load results
+					handRaised = true;
+					await loadHandRaiseResults();
+				}
+			} catch (error) {
+				console.error('Error checking hand raise status:', error);
+			} finally {
+				checkingHandRaiseStatus = false; // Clear loading state
+			}
+		} catch (error) {
+			console.error('Error checking takeover mode status:', error);
+			toast.error('Wystąpił błąd podczas włączania trybu przejęć');
+		}
 	}
 
 	async function raiseHand() {
@@ -667,8 +716,8 @@
 		<!-- Takeover Mode Overlay -->
 		{#if inTakeoverMode}
 			<div class="fixed inset-0 z-50 flex flex-col items-center justify-center bg-gray-900">
-				{#if !handRaised}
-					<div class="absolute right-4 top-4 flex items-center gap-2 rounded-lg bg-gray-800 p-3">
+				<div class="absolute right-4 top-4 flex flex-col items-end gap-2">
+					<div class="flex items-center gap-2 rounded-lg bg-gray-800 p-3">
 						<span class="text-gray-300">Twój ping:</span>
 						<span class={getLatencyColorClass(displayLatency)}>
 							{displayLatency}ms
@@ -683,10 +732,20 @@
 							</span>
 						</span>
 					</div>
+					<Button on:click={exitTakeoverMode} class="border border-gray-700 bg-gray-800 text-white hover:bg-gray-700">Wyjdź</Button>
+				</div>
 
+				{#if checkingHandRaiseStatus}
+					<!-- Show loading indicator while checking status -->
+					<div class="flex flex-col items-center justify-center">
+						<div class="mb-4 h-12 w-12 animate-spin rounded-full border-4 border-blue-600 border-t-transparent"></div>
+						<p class="text-xl text-white">Ładowanie...</p>
+					</div>
+				{:else if !handRaised}
 					<button on:click={raiseHand} class="flex h-full w-full items-center justify-center bg-blue-600 text-4xl font-bold text-white active:bg-blue-800"> DOTKNIJ BY PODNIEŚĆ ŁAPĘ </button>
 				{:else if handRaiseResults}
 					<div class="flex flex-col items-center justify-center rounded-lg bg-gray-800 p-8">
+						<!-- Rest of the results display remains the same -->
 						<h2 class="mb-4 text-3xl font-bold text-white">
 							Jesteś #{handRaiseResults.position}
 						</h2>
@@ -735,7 +794,7 @@
 							</table>
 						</div>
 
-						<Button on:click={exitTakeoverMode} class="mt-6 border border-gray-700 bg-gray-800 text-white hover:bg-gray-700">Wyjdź</Button>
+						<Button on:click={closeLeaderboardView} class="mt-6 border border-gray-700 bg-gray-800 text-white hover:bg-gray-700">Wyjdź</Button>
 					</div>
 				{:else}
 					<div class="text-xl text-white">Przetwarzanie...</div>
