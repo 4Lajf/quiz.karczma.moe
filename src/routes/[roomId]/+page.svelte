@@ -794,7 +794,7 @@
 							</table>
 						</div>
 
-						<Button on:click={closeLeaderboardView} class="mt-6 border border-gray-700 bg-gray-800 text-white hover:bg-gray-700">Wyjdź</Button>
+						<Button on:click={closeLeaderboardView} class="mt-6 border border-gray-700 bg-gray-800 text-white hover:bg-gray-700">Wróć</Button>
 					</div>
 				{:else}
 					<div class="text-xl text-white">Przetwarzanie...</div>

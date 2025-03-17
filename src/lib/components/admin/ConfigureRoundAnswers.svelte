@@ -74,11 +74,7 @@
 	// Load answers for the round
 	async function loadAnswers() {
 		try {
-			const { data, error } = await supabase
-				.from('correct_answers')
-				.select('*')
-				.eq('round_id', roundId)
-				.order('created_at', { ascending: true });
+			const { data, error } = await supabase.from('correct_answers').select('*').eq('round_id', roundId).order('created_at', { ascending: true });
 
 			if (error) throw error;
 			answers = data || [];
@@ -103,24 +99,14 @@
 
 		checkingMatch = true;
 		try {
-			const response = await fetch(
-				`/api/search/substring?q=${encodeURIComponent(inputTitle)}&type=anime`
-			);
+			const response = await fetch(`/api/search/substring?q=${encodeURIComponent(inputTitle)}&type=anime`);
 			if (!response.ok) throw new Error('Failed to fetch title matches');
 
 			const data = await response.json();
 			const hits = data.hits || [];
 
 			// Find the best match
-			const exactMatch = hits.find(
-				(hit) =>
-					hit.document.displayTitle.toLowerCase() === inputTitle.toLowerCase() ||
-					hit.document.romajiTitle?.toLowerCase() === inputTitle.toLowerCase() ||
-					hit.document.englishTitle?.toLowerCase() === inputTitle.toLowerCase() ||
-					(hit.document.altTitles || []).some(
-						(alt) => alt.toLowerCase() === inputTitle.toLowerCase()
-					)
-			);
+			const exactMatch = hits.find((hit) => hit.document.displayTitle.toLowerCase() === inputTitle.toLowerCase() || hit.document.romajiTitle?.toLowerCase() === inputTitle.toLowerCase() || hit.document.englishTitle?.toLowerCase() === inputTitle.toLowerCase() || (hit.document.altTitles || []).some((alt) => alt.toLowerCase() === inputTitle.toLowerCase()));
 
 			if (exactMatch) {
 				matchStatus.answer = 'exact';
@@ -128,17 +114,7 @@
 			}
 
 			// Check for partial matches
-			const partialMatch = hits.find(
-				(hit) =>
-					hit.document.displayTitle.toLowerCase().includes(inputTitle.toLowerCase()) ||
-					(hit.document.romajiTitle &&
-						hit.document.romajiTitle.toLowerCase().includes(inputTitle.toLowerCase())) ||
-					(hit.document.englishTitle &&
-						hit.document.englishTitle.toLowerCase().includes(inputTitle.toLowerCase())) ||
-					(hit.document.altTitles || []).some((alt) =>
-						alt.toLowerCase().includes(inputTitle.toLowerCase())
-					)
-			);
+			const partialMatch = hits.find((hit) => hit.document.displayTitle.toLowerCase().includes(inputTitle.toLowerCase()) || (hit.document.romajiTitle && hit.document.romajiTitle.toLowerCase().includes(inputTitle.toLowerCase())) || (hit.document.englishTitle && hit.document.englishTitle.toLowerCase().includes(inputTitle.toLowerCase())) || (hit.document.altTitles || []).some((alt) => alt.toLowerCase().includes(inputTitle.toLowerCase())));
 
 			if (partialMatch) {
 				matchStatus.answer = 'partial';
@@ -165,26 +141,20 @@
 
 		checkingMatch = true;
 		try {
-			const response = await fetch(
-				`/api/search/substring?q=${encodeURIComponent(songTitle)}&type=songs`
-			);
+			const response = await fetch(`/api/search/substring?q=${encodeURIComponent(songTitle)}&type=songs`);
 			if (!response.ok) throw new Error('Failed to fetch song matches');
 
 			const data = await response.json();
 			const hits = data.hits || [];
 
-			const exactMatch = hits.find(
-				(hit) => hit.document.songName?.toLowerCase() === songTitle.toLowerCase()
-			);
+			const exactMatch = hits.find((hit) => hit.document.songName?.toLowerCase() === songTitle.toLowerCase());
 
 			if (exactMatch) {
 				matchStatus.songTitle = 'exact';
 				return 'exact';
 			}
 
-			const partialMatch = hits.find((hit) =>
-				hit.document.songName?.toLowerCase().includes(songTitle.toLowerCase())
-			);
+			const partialMatch = hits.find((hit) => hit.document.songName?.toLowerCase().includes(songTitle.toLowerCase()));
 
 			if (partialMatch) {
 				matchStatus.songTitle = 'partial';
@@ -211,26 +181,20 @@
 
 		checkingMatch = true;
 		try {
-			const response = await fetch(
-				`/api/search/substring?q=${encodeURIComponent(artist)}&type=artists`
-			);
+			const response = await fetch(`/api/search/substring?q=${encodeURIComponent(artist)}&type=artists`);
 			if (!response.ok) throw new Error('Failed to fetch artist matches');
 
 			const data = await response.json();
 			const hits = data.hits || [];
 
-			const exactMatch = hits.find(
-				(hit) => hit.document.artist?.toLowerCase() === artist.toLowerCase()
-			);
+			const exactMatch = hits.find((hit) => hit.document.artist?.toLowerCase() === artist.toLowerCase());
 
 			if (exactMatch) {
 				matchStatus.songArtist = 'exact';
 				return 'exact';
 			}
 
-			const partialMatch = hits.find((hit) =>
-				hit.document.artist?.toLowerCase().includes(artist.toLowerCase())
-			);
+			const partialMatch = hits.find((hit) => hit.document.artist?.toLowerCase().includes(artist.toLowerCase()));
 
 			if (partialMatch) {
 				matchStatus.songArtist = 'partial';
@@ -311,38 +275,22 @@
 	// Fetch related anime titles
 	async function fetchRelatedTitles(selectedTitle) {
 		try {
-			const response = await fetch(
-				`/api/search/substring?q=${encodeURIComponent(selectedTitle)}&type=anime`
-			);
+			const response = await fetch(`/api/search/substring?q=${encodeURIComponent(selectedTitle)}&type=anime`);
 			if (!response.ok) throw new Error('Failed to fetch related titles');
 
 			const data = await response.json();
 			const hits = data.hits || [];
 
-			const matchingAnime = hits.find(
-				(hit) =>
-					hit.document.displayTitle.toLowerCase() === selectedTitle.toLowerCase() ||
-					hit.document.romajiTitle?.toLowerCase() === selectedTitle.toLowerCase() ||
-					hit.document.englishTitle?.toLowerCase() === selectedTitle.toLowerCase() ||
-					(hit.document.altTitles || []).some(
-						(alt) => alt.toLowerCase() === selectedTitle.toLowerCase()
-					)
-			);
+			const matchingAnime = hits.find((hit) => hit.document.displayTitle.toLowerCase() === selectedTitle.toLowerCase() || hit.document.romajiTitle?.toLowerCase() === selectedTitle.toLowerCase() || hit.document.englishTitle?.toLowerCase() === selectedTitle.toLowerCase() || (hit.document.altTitles || []).some((alt) => alt.toLowerCase() === selectedTitle.toLowerCase()));
 
 			if (matchingAnime) {
 				const titles = [];
 
-				if (
-					matchingAnime.document.englishTitle &&
-					matchingAnime.document.englishTitle.toLowerCase() !== selectedTitle.toLowerCase()
-				) {
+				if (matchingAnime.document.englishTitle && matchingAnime.document.englishTitle.toLowerCase() !== selectedTitle.toLowerCase()) {
 					titles.push(matchingAnime.document.englishTitle);
 				}
 
-				if (
-					matchingAnime.document.romajiTitle &&
-					matchingAnime.document.romajiTitle.toLowerCase() !== selectedTitle.toLowerCase()
-				) {
+				if (matchingAnime.document.romajiTitle && matchingAnime.document.romajiTitle.toLowerCase() !== selectedTitle.toLowerCase()) {
 					titles.push(matchingAnime.document.romajiTitle);
 				}
 
@@ -380,25 +328,9 @@
 
 			// Determine overall match status
 			let overallStatus;
-			if (
-				matchStatus.answer === 'exact' &&
-				(!room.enabled_fields?.song_title ||
-					!newAnswer.songTitle ||
-					matchStatus.songTitle === 'exact') &&
-				(!room.enabled_fields?.song_artist ||
-					!newAnswer.songArtist ||
-					matchStatus.songArtist === 'exact')
-			) {
+			if (matchStatus.answer === 'exact' && (!room.enabled_fields?.song_title || !newAnswer.songTitle || matchStatus.songTitle === 'exact') && (!room.enabled_fields?.song_artist || !newAnswer.songArtist || matchStatus.songArtist === 'exact')) {
 				overallStatus = 'match';
-			} else if (
-				matchStatus.answer === 'exact' ||
-				(room.enabled_fields?.song_title &&
-					newAnswer.songTitle &&
-					matchStatus.songTitle === 'exact') ||
-				(room.enabled_fields?.song_artist &&
-					newAnswer.songArtist &&
-					matchStatus.songArtist === 'exact')
-			) {
+			} else if (matchStatus.answer === 'exact' || (room.enabled_fields?.song_title && newAnswer.songTitle && matchStatus.songTitle === 'exact') || (room.enabled_fields?.song_artist && newAnswer.songArtist && matchStatus.songArtist === 'exact')) {
 				overallStatus = 'partial-match';
 			} else {
 				overallStatus = 'no-match';
@@ -516,7 +448,7 @@
 	// Update an existing answer
 	async function updateAnswer() {
 		if (!newAnswer.answer.trim() || !editingId) {
-			toast.error('Wprowadź odpowiedź');
+			toast.error('Tytuł anime jest wymagany');
 			return;
 		}
 
@@ -527,25 +459,9 @@
 
 			// Determine overall match status
 			let overallStatus;
-			if (
-				matchStatus.answer === 'exact' &&
-				(!room.enabled_fields?.song_title ||
-					!newAnswer.songTitle ||
-					matchStatus.songTitle === 'exact') &&
-				(!room.enabled_fields?.song_artist ||
-					!newAnswer.songArtist ||
-					matchStatus.songArtist === 'exact')
-			) {
+			if (matchStatus.answer === 'exact' && (!room.enabled_fields?.song_title || !newAnswer.songTitle || matchStatus.songTitle === 'exact') && (!room.enabled_fields?.song_artist || !newAnswer.songArtist || matchStatus.songArtist === 'exact')) {
 				overallStatus = 'match';
-			} else if (
-				matchStatus.answer === 'exact' ||
-				(room.enabled_fields?.song_title &&
-					newAnswer.songTitle &&
-					matchStatus.songTitle === 'exact') ||
-				(room.enabled_fields?.song_artist &&
-					newAnswer.songArtist &&
-					matchStatus.songArtist === 'exact')
-			) {
+			} else if (matchStatus.answer === 'exact' || (room.enabled_fields?.song_title && newAnswer.songTitle && matchStatus.songTitle === 'exact') || (room.enabled_fields?.song_artist && newAnswer.songArtist && matchStatus.songArtist === 'exact')) {
 				overallStatus = 'partial-match';
 			} else {
 				overallStatus = 'no-match';
@@ -704,11 +620,7 @@
 			<div class="space-y-8">
 				<div class="rounded-lg border border-gray-800 p-4">
 					<!-- Toggle form visibility button -->
-					<Button
-						on:click={toggleFormVisibility}
-						variant="outline"
-						class="mb-4 border border-gray-700 bg-gray-800 text-white hover:bg-gray-700"
-					>
+					<Button on:click={toggleFormVisibility} variant="outline" class="mb-4 border border-gray-700 bg-gray-800 text-white hover:bg-gray-700">
 						{#if formHidden}
 							<ChevronDown class="mr-2 h-4 w-4" />
 							Pokaż formularz
@@ -722,68 +634,31 @@
 						<form on:submit|preventDefault={addAnswer} class="mb-6 space-y-4">
 							<div class="relative">
 								{#if editMode}
-									<div
-										class="absolute left-2 top-2 rounded-full bg-blue-500 px-2 py-1 text-xs text-white"
-									>
-										Tryb edycji
-									</div>
+									<div class="absolute left-2 top-2 rounded-full bg-blue-500 px-2 py-1 text-xs text-white">Tryb edycji</div>
 								{/if}
 								<div class="relative">
-									<Autocomplete
-										bind:value={newAnswer.answer}
-										placeholder="Nazwa anime"
-										index="animeTitles"
-										searchKey="animeTitle"
-										type="anime"
-										disabled={loading}
-										on:input={handleTitleInput}
-									/>
+									<Autocomplete bind:value={newAnswer.answer} placeholder="Nazwa anime" index="animeTitles" searchKey="animeTitle" type="anime" disabled={loading} on:input={handleTitleInput} />
 								</div>
 							</div>
 
 							{#if room.enabled_fields?.song_title}
 								<div class="relative">
-									<Autocomplete
-										bind:value={newAnswer.songTitle}
-										placeholder="Tytuł piosenki"
-										index="songNames"
-										searchKey="songName"
-										type="songs"
-										disabled={loading}
-										on:input={handleSongTitleInput}
-									/>
+									<Autocomplete bind:value={newAnswer.songTitle} placeholder="Tytuł piosenki" index="songNames" searchKey="songName" type="songs" disabled={loading} on:input={handleSongTitleInput} />
 								</div>
 							{/if}
 
 							{#if room.enabled_fields?.song_artist}
 								<div class="relative">
-									<Autocomplete
-										bind:value={newAnswer.songArtist}
-										placeholder="Artysta"
-										index="artists"
-										searchKey="artist"
-										type="artists"
-										disabled={loading}
-										on:input={handleArtistInput}
-									/>
+									<Autocomplete bind:value={newAnswer.songArtist} placeholder="Artysta" index="artists" searchKey="artist" type="artists" disabled={loading} on:input={handleArtistInput} />
 								</div>
 							{/if}
 
 							{#if room.enabled_fields?.other}
-								<Input
-									type="text"
-									bind:value={newAnswer.other}
-									placeholder="Inne"
-									class="w-full border-gray-700 bg-gray-800 text-gray-100 focus-visible:ring-1 focus-visible:ring-gray-600 focus-visible:ring-offset-0"
-								/>
+								<Input type="text" bind:value={newAnswer.other} placeholder="Inne" class="w-full border-gray-700 bg-gray-800 text-gray-100 focus-visible:ring-1 focus-visible:ring-gray-600 focus-visible:ring-offset-0" />
 							{/if}
 
 							<div class="flex gap-2">
-								<Button
-									type="submit"
-									disabled={loading || !newAnswer.answer?.trim()}
-									class="flex-1 border border-gray-700 bg-gray-800 text-white hover:bg-gray-700"
-								>
+								<Button type="submit" disabled={loading || !newAnswer.answer?.trim()} class="flex-1 border border-gray-700 bg-gray-800 text-white hover:bg-gray-700">
 									{#if editMode}
 										<Save class="mr-2 h-4 w-4" />
 										Zapisz zmiany
@@ -794,11 +669,7 @@
 								</Button>
 
 								{#if editMode}
-									<Button
-										type="button"
-										on:click={cancelEditing}
-										class="border border-gray-700 bg-gray-800 text-white hover:bg-gray-700"
-									>
+									<Button type="button" on:click={cancelEditing} class="border border-gray-700 bg-gray-800 text-white hover:bg-gray-700">
 										<X class="mr-2 h-4 w-4" />
 										Anuluj
 									</Button>
@@ -829,9 +700,7 @@
 							</Table.Header>
 							<Table.Body>
 								{#each answers as answer}
-									<Table.Row
-										class={`border-gray-800 ${getRowBackgroundClass(answer.extra_fields?.match_status)}`}
-									>
+									<Table.Row class={`border-gray-800 ${getRowBackgroundClass(answer.extra_fields?.match_status)}`}>
 										<Table.Cell class="text-gray-200">{answer.content}</Table.Cell>
 										{#if room.enabled_fields?.song_title}
 											<Table.Cell class="text-gray-200">
@@ -850,20 +719,10 @@
 										{/if}
 										<Table.Cell>
 											<div class="flex gap-2">
-												<Button
-													size="sm"
-													on:click={() => startEditing(answer)}
-													class="border border-blue-800 bg-gray-900 text-blue-400 hover:bg-gray-800"
-													disabled={editMode}
-												>
+												<Button size="sm" on:click={() => startEditing(answer)} class="border border-blue-800 bg-gray-900 text-blue-400 hover:bg-gray-800" disabled={editMode}>
 													<Edit class="h-4 w-4" />
 												</Button>
-												<Button
-													variant="destructive"
-													size="sm"
-													on:click={() => deleteAnswer(answer.id)}
-													class="border border-red-900 bg-gray-900 text-red-400 hover:bg-gray-800"
-												>
+												<Button variant="destructive" size="sm" on:click={() => deleteAnswer(answer.id)} class="border border-red-900 bg-gray-900 text-red-400 hover:bg-gray-800">
 													<Trash2 class="h-4 w-4" />
 												</Button>
 											</div>

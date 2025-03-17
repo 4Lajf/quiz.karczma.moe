@@ -3,7 +3,7 @@
 	import { goto, invalidate, invalidateAll } from '$app/navigation';
 	import { onMount } from 'svelte';
 	import { Button } from '$lib/components/ui/button';
-	import { Toaster } from '$lib/components/ui/sonner';
+	import { Toaster, toast } from 'svelte-sonner';
 	import { ModeWatcher } from 'mode-watcher';
 	import '../app.css';
 
@@ -26,21 +26,9 @@
 			<div class="flex items-center gap-4"></div>
 			<div class="flex items-center gap-4">
 				{#if profile?.role === 'admin'}
-					<Button
-						variant="outline"
-						href="/admin"
-						class="border-gray-700 bg-gray-700 text-gray-300 hover:bg-gray-800 hover:text-gray-400"
-					>
-						Admin Panel
-					</Button>
+					<Button variant="outline" href="/admin" class="border-gray-700 bg-gray-700 text-gray-300 hover:bg-gray-800 hover:text-gray-400">Admin Panel</Button>
 				{/if}
-				<Button
-					variant="outline"
-					on:click={handleLogout}
-					class="border-gray-700 bg-gray-700 text-gray-300 hover:bg-gray-800 hover:text-gray-400"
-				>
-					Wyloguj
-				</Button>
+				<Button variant="outline" on:click={handleLogout} class="border-gray-700 bg-gray-700 text-gray-300 hover:bg-gray-800 hover:text-gray-400">Wyloguj</Button>
 			</div>
 		</div>
 	</header>
