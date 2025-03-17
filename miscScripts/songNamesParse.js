@@ -11,7 +11,6 @@ const CHAR_MAPPINGS = {
   "ə": "a",
   "t": 't',
   "ˈ": '',
-  "0": "o",
   "ά": "a",
   "α": "a",
   "ɪ": "i",
@@ -100,49 +99,18 @@ function normalizeText(text) {
   return normalized;
 }
 
-const transformAnimeTitles = (inputObject) => {
-  const transformedEntries = [];
-
-  Object.entries(inputObject).forEach(([id, anime]) => {
-    if (anime.animeJPName || anime.animeENName || (Array.isArray(anime.animeAltName) && anime.animeAltName.length > 0)) {
-      const entry = { id };
-
-      // Japanese title
-      if (anime.animeJPName) {
-        entry.originalNameJP = anime.animeJPName;
-        entry.normalizedNameJP = normalizeText(anime.animeJPName);
-        entry.lengthJP = anime.animeJPName.length.toString();
-        entry.normalizedLengthJP = normalizeText(anime.animeJPName).length.toString();
-      }
-
-      // English title
-      if (anime.animeENName) {
-        entry.originalNameEN = anime.animeENName;
-        entry.normalizedNameEN = normalizeText(anime.animeENName);
-        entry.lengthEN = anime.animeENName.length.toString();
-        entry.normalizedLengthEN = normalizeText(anime.animeENName).length.toString();
-      }
-
-      // Alternative titles
-      if (Array.isArray(anime.animeAltName)) {
-        const validAltNames = anime.animeAltName.filter(name => name);
-        if (validAltNames.length > 0) {
-          entry.originalNamesAlt = validAltNames.join('||');
-          entry.normalizedNamesAlt = validAltNames.map(name => normalizeText(name)).join('||');
-          entry.lengthsAlt = validAltNames.map(name => name.length).join('||');
-          entry.normalizedLengthsAlt = validAltNames.map(name => normalizeText(name).length).join('||');
-        }
-      }
-
-      transformedEntries.push(entry);
-    }
-  });
-
-  return transformedEntries;
-};
+const transformSongNames = (inputArray) =>
+  inputArray.map((songName, index) => ({
+    id: `${index + 1}`,
+    songName: songName,                           // Original artist name
+    normalizedName: normalizeText(songName), // Normalized version for searching
+    displayName: songName,              // Name to display in UI
+    string_length: songName.length,     // Length of original string
+    normalized_length: normalizeText(songName).length // Length of normalized string
+  }));
 
 // Get input file path from command-line arguments
-const inputFilePath = 'miscScripts/anime_autocomplete.json';
+const inputFilePath = 'miscScripts/song_name_autocomplete.json'
 
 if (!inputFilePath) {
   console.error('Please provide an input JSON file path');
@@ -152,18 +120,16 @@ if (!inputFilePath) {
 try {
   // Read input file
   const rawData = fs.readFileSync(inputFilePath, 'utf8');
-  const originalObject = JSON.parse(rawData);
+  const originalArray = JSON.parse(rawData);
 
-  // Transform the object with normalization
-  const transformedArray = transformAnimeTitles(originalObject);
+  // Transform the array
+  const transformedArray = transformSongNames(originalArray);
 
   // Generate output file path
-  const outputPath = path.join(__dirname, 'transformed_anime_names.json');
+  const outputPath = path.join(__dirname, 'transformed_song_names.json');
 
   // Write transformed array to file
   fs.writeFileSync(outputPath, JSON.stringify(transformedArray, null, 2));
-
-  console.log('Successfully processed anime titles and saved to:', outputPath);
 } catch (error) {
   console.error('Error processing file:', error.message);
   process.exit(1);

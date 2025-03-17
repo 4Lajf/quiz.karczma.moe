@@ -11,7 +11,6 @@ const CHAR_MAPPINGS = {
   "ə": "a",
   "t": 't',
   "ˈ": '',
-  "0": "o",
   "ά": "a",
   "α": "a",
   "ɪ": "i",
@@ -113,26 +112,26 @@ const transformAnimeTitles = (inputObject) => {
         romajiTitle: anime.animeJPName || null,
         englishTitle: anime.animeENName || null,
         altTitles: Array.isArray(anime.animeAltName) ? anime.animeAltName.filter(name => name) : [],
-        
+
         // Normalized versions
         normalizedRomajiTitle: anime.animeJPName ? normalizeText(anime.animeJPName) : null,
         normalizedEnglishTitle: anime.animeENName ? normalizeText(anime.animeENName) : null,
-        normalizedAltTitles: Array.isArray(anime.animeAltName) 
-          ? anime.animeAltName.filter(name => name).map(name => normalizeText(name)) 
+        normalizedAltTitles: Array.isArray(anime.animeAltName)
+          ? anime.animeAltName.filter(name => name).map(name => normalizeText(name))
           : []
       };
-      
+
       // Calculate lengths
       if (entry.romajiTitle) {
         entry.romajiTitleLength = entry.romajiTitle.length;
         entry.normalizedRomajiTitleLength = entry.normalizedRomajiTitle.length;
       }
-      
+
       if (entry.englishTitle) {
         entry.englishTitleLength = entry.englishTitle.length;
         entry.normalizedEnglishTitleLength = entry.normalizedEnglishTitle.length;
       }
-      
+
       if (entry.altTitles.length > 0) {
         entry.altTitleLengths = entry.altTitles.map(title => title.length);
         entry.normalizedAltTitleLengths = entry.normalizedAltTitles.map(title => title.length);
