@@ -22,6 +22,13 @@
 	let editingPlayer = null;
 	let editValue = 0;
 	let editType = null; // 'score' or 'tiebreaker'
+	let pointsAddedForRounds = {};
+	let isAddingPoints = false;
+
+	$: if (selectedRoundId && selectedRoundId !== room.current_round) {
+		// Reset points added tracking when switching to a different round
+		isAddingPoints = false;
+	}
 
 	function startEditing(player, type) {
 		editingPlayer = player.id;
@@ -55,7 +62,7 @@
 
 	async function loadCorrectAnswers(roundId) {
 		try {
-			const { data, error } = await supabase.from('correct_answers').select('*').eq('round_id', roundId);
+			const { data, error } = await supabase.from('correct_answers').select('*').eq('round_id', roundId).order('created_at', { ascending: true });
 
 			if (error) throw error;
 			currentCorrectAnswers = data || [];
@@ -228,6 +235,17 @@
 			return;
 		}
 
+		// Check if points were already added for this round
+		if (pointsAddedForRounds[selectedRoundId]) {
+			// Confirm with the user before adding points again
+			if (!confirm('Punkty zostały już dodane dla tej rundy. Czy na pewno chcesz dodać je ponownie?')) {
+				return;
+			}
+		}
+
+		// Set loading state
+		isAddingPoints = true;
+
 		try {
 			// Fetch hint usages for this round
 			const { data: hintUsages, error: hintError } = await supabase.from('hint_usages').select('player_name').eq('round_id', selectedRoundId);
@@ -292,9 +310,18 @@
 					if (error) throw error;
 				}
 			}
+
+			// Mark that points have been added for this round
+			pointsAddedForRounds[selectedRoundId] = true;
+
 			toast.success('Punkty przyznane pomyślnie');
 		} catch (error) {
 			toast.error(`Nie udało się przyznać punktów: ${error.message}`);
+		} finally {
+			// Reset loading state after a delay to prevent immediate re-clicks
+			setTimeout(() => {
+				isAddingPoints = false;
+			}, 1000);
 		}
 	}
 
@@ -666,7 +693,15 @@
 							<div class="p-4 text-center text-gray-400">Brak odpowiedzi w tej rundzie</div>
 						{:else}
 							<div class="mb-4">
-								<Button on:click={awardPointsToCorrectAnswers} disabled={!isCurrentRound} class="bg-green-600/50 text-white hover:bg-green-500/50">Dodaj punkty do dobrych odpowiedzi</Button>
+								<Button on:click={awardPointsToCorrectAnswers} disabled={!isCurrentRound || isAddingPoints} class="bg-green-600/50 text-white hover:bg-green-500/50">
+									{#if isAddingPoints}
+										Przyznawanie punktów...
+									{:else if pointsAddedForRounds[selectedRoundId]}
+										Dodaj punkty ponownie
+									{:else}
+										Dodaj punkty do dobrych odpowiedzi
+									{/if}
+								</Button>
 							</div>
 							<Table.Root>
 								<Table.Header>
@@ -859,7 +894,7 @@
 
 										<Table.Cell>
 											<span class={hasAnswered ? 'text-green-400' : 'text-gray-400'}>
-												{hasAnswered ? 'Answered' : 'No answer'}
+												{hasAnswered ? 'Odpowiedział' : 'Brak odpowiedzi'}
 											</span>
 										</Table.Cell>
 

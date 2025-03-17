@@ -10,11 +10,13 @@ export async function POST({ request, locals, fetch }) {
             return json({ error: 'Missing required parameters' }, { status: 400 });
         }
 
+        //TODO: dodac sortowanie odpowiedzi by byly zawsze w tej samej kolejnosci wedlug created_at
         // Fetch correct answers for the round
         const { data: correctAnswers, error: answersError } = await supabase
             .from('correct_answers')
             .select('content, hint')
-            .eq('round_id', roundId);
+            .eq('round_id', roundId)
+            .order('created_at', { ascending: true });
         if (answersError) throw answersError;
 
         if (!correctAnswers || correctAnswers.length === 0) {
