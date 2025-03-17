@@ -6,17 +6,19 @@ function substringMatch(query, item, type = 'songs') {
     const normalizedQuery = query.toLowerCase();
 
     // Handle different data structures based on type
+    // In the substringMatch function, modify the anime title search section:
+    // In the substringMatch function, modify the anime title search section:
     if (type === 'anime') {
-        // Check all normalized title fields for anime
-        const matchInRomaji = item.normalizedRomajiTitle && item.normalizedRomajiTitle.includes(normalizedQuery);
-        const matchInEnglish = item.normalizedEnglishTitle && item.normalizedEnglishTitle.includes(normalizedQuery);
+        // Check only original title fields for anime (non-normalized)
+        const matchInRomaji = item.romajiTitle && item.romajiTitle.toLowerCase().includes(normalizedQuery);
+        const matchInEnglish = item.englishTitle && item.englishTitle.toLowerCase().includes(normalizedQuery);
 
-        // Check in all normalized alt titles
+        // Check in original alt titles
         let matchInAlt = false;
         let matchedAltIndex = -1;
-        if (item.normalizedAltTitles && item.normalizedAltTitles.length > 0) {
-            for (let i = 0; i < item.normalizedAltTitles.length; i++) {
-                if (item.normalizedAltTitles[i].includes(normalizedQuery)) {
+        if (item.altTitles && item.altTitles.length > 0) {
+            for (let i = 0; i < item.altTitles.length; i++) {
+                if (item.altTitles[i].toLowerCase().includes(normalizedQuery)) {
                     matchInAlt = true;
                     matchedAltIndex = i;
                     break;
@@ -26,14 +28,14 @@ function substringMatch(query, item, type = 'songs') {
 
         if (matchInRomaji || matchInEnglish || matchInAlt) {
             // Determine which title had the exact match
-            const exactMatchRomaji = item.normalizedRomajiTitle === normalizedQuery;
-            const exactMatchEnglish = item.normalizedEnglishTitle === normalizedQuery;
-            const exactMatchAlt = matchedAltIndex >= 0 && item.normalizedAltTitles[matchedAltIndex] === normalizedQuery;
+            const exactMatchRomaji = item.romajiTitle && item.romajiTitle.toLowerCase() === normalizedQuery;
+            const exactMatchEnglish = item.englishTitle && item.englishTitle.toLowerCase() === normalizedQuery;
+            const exactMatchAlt = matchedAltIndex >= 0 && item.altTitles[matchedAltIndex].toLowerCase() === normalizedQuery;
 
             // Determine which title starts with the query
-            const startsWithRomaji = item.normalizedRomajiTitle && item.normalizedRomajiTitle.startsWith(normalizedQuery);
-            const startsWithEnglish = item.normalizedEnglishTitle && item.normalizedEnglishTitle.startsWith(normalizedQuery);
-            const startsWithAlt = matchedAltIndex >= 0 && item.normalizedAltTitles[matchedAltIndex].startsWith(normalizedQuery);
+            const startsWithRomaji = item.romajiTitle && item.romajiTitle.toLowerCase().startsWith(normalizedQuery);
+            const startsWithEnglish = item.englishTitle && item.englishTitle.toLowerCase().startsWith(normalizedQuery);
+            const startsWithAlt = matchedAltIndex >= 0 && item.altTitles[matchedAltIndex].toLowerCase().startsWith(normalizedQuery);
 
             // Find the best matching title (exact > starts with > contains)
             let bestMatchType = '';
