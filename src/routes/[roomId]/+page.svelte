@@ -7,6 +7,7 @@
 	import { toast } from 'svelte-sonner';
 	import { invalidateAll } from '$app/navigation';
 	import Autocomplete from '$lib/components/player/Autocomplete.svelte';
+	import { nanoid } from 'nanoid';
 
 	let inTakeoverMode = false;
 	let handRaised = false;
@@ -21,6 +22,501 @@
 	let hintRequested = false;
 	let maskedAnswer = '';
 	let checkingHandRaiseStatus = false;
+
+	let teamCode = '';
+	let teamCodeRequired = false;
+	let teamCodeInputValue = '';
+	let teamCodeCorrect = true;
+
+	const FOUR_LETTER_WORDS = [
+		'able',
+		'ache',
+		'acid',
+		'acts',
+		'adds',
+		'ages',
+		'also',
+		'area',
+		'army',
+		'away',
+		'baby',
+		'back',
+		'ball',
+		'band',
+		'bank',
+		'base',
+		'bath',
+		'bear',
+		'beat',
+		'been',
+		'bell',
+		'belt',
+		'best',
+		'bike',
+		'bird',
+		'blue',
+		'boat',
+		'body',
+		'book',
+		'born',
+		'both',
+		'bowl',
+		'busy',
+		'cake',
+		'call',
+		'calm',
+		'came',
+		'camp',
+		'card',
+		'care',
+		'cars',
+		'case',
+		'cash',
+		'city',
+		'club',
+		'coal',
+		'coat',
+		'code',
+		'cold',
+		'come',
+		'cook',
+		'cool',
+		'cope',
+		'copy',
+		'core',
+		'cost',
+		'cute',
+		'dame',
+		'dark',
+		'data',
+		'date',
+		'dawn',
+		'days',
+		'dead',
+		'deal',
+		'dean',
+		'dear',
+		'debt',
+		'deep',
+		'desk',
+		'dice',
+		'diet',
+		'dish',
+		'does',
+		'done',
+		'door',
+		'down',
+		'draw',
+		'drop',
+		'drug',
+		'dust',
+		'duty',
+		'each',
+		'earn',
+		'ease',
+		'east',
+		'easy',
+		'edge',
+		'eggs',
+		'else',
+		'ends',
+		'euro',
+		'even',
+		'ever',
+		'exam',
+		'exit',
+		'face',
+		'fact',
+		'fail',
+		'fair',
+		'fall',
+		'farm',
+		'fast',
+		'fate',
+		'fear',
+		'fees',
+		'file',
+		'film',
+		'find',
+		'fine',
+		'fire',
+		'firm',
+		'fish',
+		'five',
+		'flag',
+		'flat',
+		'flow',
+		'food',
+		'foot',
+		'ford',
+		'form',
+		'fort',
+		'four',
+		'free',
+		'from',
+		'fuel',
+		'full',
+		'fund',
+		'gain',
+		'game',
+		'gate',
+		'gave',
+		'gear',
+		'gift',
+		'girl',
+		'give',
+		'glad',
+		'goal',
+		'goes',
+		'gold',
+		'golf',
+		'gone',
+		'good',
+		'grew',
+		'grow',
+		'gulf',
+		'hair',
+		'half',
+		'hall',
+		'hand',
+		'hang',
+		'hard',
+		'harm',
+		'hate',
+		'have',
+		'head',
+		'hear',
+		'heat',
+		'held',
+		'help',
+		'here',
+		'hide',
+		'high',
+		'hill',
+		'hire',
+		'hold',
+		'hole',
+		'holy',
+		'home',
+		'hope',
+		'host',
+		'hour',
+		'huge',
+		'hurt',
+		'idea',
+		'inch',
+		'info',
+		'into',
+		'iron',
+		'item',
+		'jobs',
+		'john',
+		'join',
+		'jump',
+		'jury',
+		'just',
+		'keen',
+		'keep',
+		'kent',
+		'kept',
+		'keys',
+		'kill',
+		'kind',
+		'king',
+		'knew',
+		'know',
+		'lack',
+		'lady',
+		'lake',
+		'land',
+		'lane',
+		'last',
+		'late',
+		'lead',
+		'left',
+		'legs',
+		'less',
+		'life',
+		'lift',
+		'like',
+		'line',
+		'link',
+		'list',
+		'live',
+		'load',
+		'loan',
+		'lock',
+		'logo',
+		'long',
+		'look',
+		'lord',
+		'lose',
+		'loss',
+		'lost',
+		'lots',
+		'love',
+		'luck',
+		'made',
+		'mail',
+		'main',
+		'make',
+		'male',
+		'many',
+		'mark',
+		'mass',
+		'math',
+		'meal',
+		'mean',
+		'meat',
+		'meet',
+		'menu',
+		'mere',
+		'mile',
+		'milk',
+		'mind',
+		'mine',
+		'miss',
+		'mode',
+		'mood',
+		'moon',
+		'more',
+		'most',
+		'move',
+		'much',
+		'must',
+		'name',
+		'navy',
+		'near',
+		'neck',
+		'need',
+		'news',
+		'next',
+		'nice',
+		'nine',
+		'none',
+		'norm',
+		'nose',
+		'note',
+		'okay',
+		'once',
+		'only',
+		'onto',
+		'open',
+		'oral',
+		'over',
+		'pace',
+		'pack',
+		'page',
+		'paid',
+		'pain',
+		'pair',
+		'palm',
+		'park',
+		'part',
+		'pass',
+		'past',
+		'path',
+		'peak',
+		'pick',
+		'pink',
+		'plan',
+		'play',
+		'plot',
+		'plus',
+		'poll',
+		'pool',
+		'poor',
+		'port',
+		'post',
+		'pull',
+		'pure',
+		'push',
+		'race',
+		'rail',
+		'rain',
+		'rank',
+		'rare',
+		'rate',
+		'read',
+		'real',
+		'rear',
+		'rely',
+		'rent',
+		'rest',
+		'rice',
+		'rich',
+		'ride',
+		'ring',
+		'rise',
+		'risk',
+		'road',
+		'rock',
+		'role',
+		'roll',
+		'roof',
+		'room',
+		'root',
+		'rose',
+		'rule',
+		'rush',
+		'ruth',
+		'safe',
+		'said',
+		'sake',
+		'sale',
+		'salt',
+		'same',
+		'sand',
+		'save',
+		'seat',
+		'seed',
+		'seek',
+		'seem',
+		'seen',
+		'self',
+		'sell',
+		'send',
+		'sent',
+		'sept',
+		'ship',
+		'shop',
+		'shot',
+		'show',
+		'shut',
+		'sick',
+		'side',
+		'sign',
+		'site',
+		'size',
+		'skin',
+		'slip',
+		'slow',
+		'snow',
+		'soft',
+		'soil',
+		'sold',
+		'sole',
+		'some',
+		'song',
+		'soon',
+		'sort',
+		'soul',
+		'soup',
+		'spot',
+		'star',
+		'stay',
+		'step',
+		'stop',
+		'such',
+		'suit',
+		'sure',
+		'take',
+		'tale',
+		'talk',
+		'tall',
+		'tank',
+		'tape',
+		'task',
+		'team',
+		'tech',
+		'tell',
+		'tend',
+		'term',
+		'test',
+		'text',
+		'than',
+		'that',
+		'them',
+		'then',
+		'they',
+		'thin',
+		'this',
+		'thus',
+		'time',
+		'tiny',
+		'told',
+		'toll',
+		'tone',
+		'tony',
+		'took',
+		'tool',
+		'tour',
+		'town',
+		'tree',
+		'trip',
+		'true',
+		'tune',
+		'turn',
+		'twin',
+		'type',
+		'unit',
+		'upon',
+		'used',
+		'user',
+		'vary',
+		'vast',
+		'very',
+		'vice',
+		'view',
+		'vote',
+		'wage',
+		'wait',
+		'wake',
+		'walk',
+		'wall',
+		'want',
+		'ward',
+		'warm',
+		'wash',
+		'wave',
+		'ways',
+		'weak',
+		'wear',
+		'week',
+		'well',
+		'went',
+		'were',
+		'west',
+		'what',
+		'when',
+		'whom',
+		'wide',
+		'wife',
+		'wild',
+		'will',
+		'wind',
+		'wine',
+		'wing',
+		'wire',
+		'wise',
+		'wish',
+		'with',
+		'wood',
+		'word',
+		'work',
+		'yard',
+		'yeah',
+		'year',
+		'your',
+		'zero',
+		'zone',
+		'zoom'
+	];
+
+	onMount(() => {
+		// Check localStorage for saved team code
+		const savedTeamCode = localStorage.getItem(`teamCode_${room.id}_${playerName}`);
+		if (savedTeamCode) {
+			teamCode = savedTeamCode;
+		}
+	});
+
+	// Replace the generateTeamCode function
+	function generateTeamCode() {
+		// Get two random words from the list and combine them
+		const word = FOUR_LETTER_WORDS[Math.floor(Math.random() * FOUR_LETTER_WORDS.length)];
+		return word.toUpperCase();
+	}
 
 	// Replacement rules for easier text matching
 	const ANIME_REGEX_REPLACE_RULES = [
@@ -51,6 +547,16 @@
 	function closeLeaderboardView() {
 		handRaiseResults = null;
 		handRaised = false;
+	}
+
+	function showLeaderboard() {
+		// Set handRaised to true to show the leaderboard
+		handRaised = true;
+		// If we don't have results yet, load them
+		if (!handRaiseResults) {
+			loadHandRaiseResults();
+		}
+		console.log(handRaiseResults);
 	}
 
 	async function checkHintStatus() {
@@ -295,44 +801,137 @@
 
 	async function joinGame() {
 		if (!playerName.trim()) {
-			toast.error('Wprowadź swoje imię');
+			toast.error('Wprowadź swój nick');
 			return;
 		}
+
 		loading = true;
 		try {
-			const { data: existingPlayers, error: fetchError } = await supabase.from('players').select('*').eq('room_id', room.id).ilike('name', playerName);
+			// First, normalize the player name for consistency (e.g., lowercase)
+			const normalizedPlayerName = playerName.trim().toLowerCase();
+
+			// Check if team exists using case-insensitive search
+			const { data: existingPlayers, error: fetchError } = await supabase.from('players').select('*').eq('room_id', room.id).ilike('name', normalizedPlayerName);
 
 			if (fetchError) throw fetchError;
 
 			if (existingPlayers?.length > 0) {
-				hasJoined = true; // Set hasJoined first
-				await checkAnswerStatus(); // Then check answer status
+				// Get the exact team name from the database to ensure consistency
+				const exactTeamName = existingPlayers[0].name;
+
+				// Team exists already - check if we need team code
+				const savedTeamCode = localStorage.getItem(`teamCode_${room.id}_${exactTeamName}`);
+
+				if (savedTeamCode) {
+					// Verify code against database
+					const { data: teamData, error: teamError } = await supabase.from('players').select('team_code').eq('room_id', room.id).eq('name', exactTeamName).single();
+
+					if (teamError) throw teamError;
+
+					if (teamData.team_code === savedTeamCode) {
+						// Code matches, allow join
+						playerName = exactTeamName; // Use the exact name from the database
+						hasJoined = true;
+						await checkAnswerStatus();
+
+						if (hasSubmitted) {
+							toast.success(`Dołączono ponownie jako ${playerName} - Odpowiedź już przesłana`);
+						} else {
+							toast.success(`Dołączono ponownie jako ${playerName}`);
+						}
+
+						teamCode = savedTeamCode;
+						subscribeToChanges();
+					} else {
+						// Code doesn't match what's in the database
+						localStorage.removeItem(`teamCode_${room.id}_${exactTeamName}`);
+						playerName = exactTeamName; // Use the exact name from the database
+						teamCodeRequired = true;
+						teamCodeCorrect = false;
+					}
+				} else {
+					// No saved code, we need to prompt
+					playerName = exactTeamName; // Use the exact name from the database
+					teamCodeRequired = true;
+				}
+			} else {
+				// New team, generate a code
+				const newTeamCode = generateTeamCode();
+				teamCode = newTeamCode;
+
+				// Insert player with code
+				const { error: insertError } = await supabase.from('players').insert({
+					room_id: room.id,
+					name: playerName.trim(), // Use the original case the user entered
+					score: 0,
+					tiebreaker: 0,
+					team_code: newTeamCode
+				});
+
+				if (insertError) throw insertError;
+
+				// Save to localStorage
+				localStorage.setItem(`teamCode_${room.id}_${playerName.trim()}`, newTeamCode);
+
+				hasJoined = true;
+				hasSubmitted = false;
+				toast.success('Dołączono jako ' + playerName);
+
+				subscribeToChanges();
+			}
+		} catch (error) {
+			if (!error.message.includes('No rows found')) {
+				toast.error('Błąd: ' + error.message);
+			}
+		} finally {
+			loading = false;
+		}
+	}
+
+	async function verifyTeamCode() {
+		if (!teamCodeInputValue.trim()) {
+			toast.error('Wprowadź kod zespołu');
+			return;
+		}
+
+		loading = true;
+		try {
+			const { data: teamData, error: teamError } = await supabase
+				.from('players')
+				.select('team_code')
+				.eq('room_id', room.id)
+				.eq('name', playerName) // This should now be the exact name from the database
+				.single();
+
+			if (teamError) throw teamError;
+
+			// Format the input code to uppercase for comparison
+			const formattedInput = teamCodeInputValue.trim().toUpperCase();
+
+			if (teamData.team_code === formattedInput) {
+				// Code is correct
+				teamCode = formattedInput;
+				localStorage.setItem(`teamCode_${room.id}_${playerName}`, teamCode);
+
+				teamCodeRequired = false;
+				hasJoined = true;
+
+				await checkAnswerStatus();
+
 				if (hasSubmitted) {
 					toast.success(`Dołączono ponownie jako ${playerName} - Odpowiedź już przesłana`);
 				} else {
 					toast.success(`Dołączono ponownie jako ${playerName}`);
 				}
-			} else {
-				const { error: insertError } = await supabase.from('players').insert({
-					room_id: room.id,
-					name: playerName,
-					score: 0,
-					tiebreaker: 0
-				});
-				console.log(insertError);
-				if (insertError) {
-					throw insertError;
-				}
-				hasJoined = true;
-				hasSubmitted = false;
-				toast.success('Dołączono jako ' + playerName);
-			}
 
-			subscribeToChanges();
-		} catch (error) {
-			if (!error.message.includes('No rows found')) {
-				toast.error('Błąd: ' + error.message);
+				subscribeToChanges();
+			} else {
+				// Incorrect code
+				teamCodeCorrect = false;
+				toast.error('Niepoprawny kod zespołu');
 			}
+		} catch (error) {
+			toast.error('Błąd: ' + error.message);
 		} finally {
 			loading = false;
 		}
@@ -616,6 +1215,21 @@
 </script>
 
 <div class="min-h-screen bg-gray-950">
+	{#if hasJoined && teamCode}
+		<div class="fixed left-4 top-4 z-20 flex items-center gap-2 rounded-md bg-gray-800/90 px-3 py-2 shadow-lg">
+			<span class="text-sm text-gray-300">Kod drużyny: <span class="font-mono font-bold text-cyan-400">{teamCode}</span></span>
+			<!-- svelte-ignore a11y_consider_explicit_label -->
+			<button
+				class="ml-2 rounded-full p-1 text-gray-400 hover:bg-gray-700 hover:text-white"
+				on:click={() => {
+					navigator.clipboard.writeText(teamCode);
+					toast.success('Kod skopiowany do schowka');
+				}}
+			>
+				<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" /></svg>
+			</button>
+		</div>
+	{/if}
 	<div class="container mx-auto flex min-h-screen max-w-2xl items-center justify-center p-6">
 		<Card.Root class="w-full border-gray-800 bg-gray-900 shadow-xl">
 			<Card.Header>
@@ -626,12 +1240,40 @@
 			</Card.Header>
 			<Card.Content>
 				{#if !hasJoined}
-					<form on:submit|preventDefault={joinGame} class="space-y-4">
-						<Input type="text" placeholder="Twój nick" bind:value={playerName} required disabled={loading} class="border-gray-700 bg-gray-800 text-gray-100 placeholder:text-gray-500 focus-visible:ring-1 focus-visible:ring-gray-600 focus-visible:ring-offset-0" />
-						<Button type="submit" disabled={loading} class="w-full border border-gray-700 bg-gray-800 text-white hover:bg-gray-700">
-							{loading ? 'Dołączanie...' : 'Dołącz do pokoju'}
-						</Button>
-					</form>
+					{#if teamCodeRequired}
+						<form on:submit|preventDefault={verifyTeamCode} class="space-y-4">
+							<div class="mb-4 text-center">
+								<p class="text-lg text-white">Drużyna "{playerName}" już istnieje</p>
+								<p class="text-sm text-gray-400">Wprowadź kod drużyny aby dołączyć</p>
+							</div>
+							<Input type="text" placeholder="Kod drużyny" bind:value={teamCodeInputValue} required class={`border-gray-700 bg-gray-800 text-gray-100 placeholder:text-gray-500 focus-visible:ring-1 focus-visible:ring-gray-600 focus-visible:ring-offset-0 ${!teamCodeCorrect ? 'border-red-500' : ''}`} />
+							{#if !teamCodeCorrect}
+								<p class="text-sm text-red-500">Niepoprawny kod drużyny</p>
+							{/if}
+							<div class="flex gap-2">
+								<Button
+									type="button"
+									on:click={() => {
+										teamCodeRequired = false;
+										teamCodeCorrect = true;
+									}}
+									class="flex-1 border border-gray-700 bg-gray-800 text-white hover:bg-gray-700"
+								>
+									Wróć
+								</Button>
+								<Button type="submit" disabled={loading} class="flex-1 border border-gray-700 bg-blue-800 text-white hover:bg-blue-700">
+									{loading ? 'Weryfikacja...' : 'Weryfikuj'}
+								</Button>
+							</div>
+						</form>
+					{:else}
+						<form on:submit|preventDefault={joinGame} class="space-y-4">
+							<Input type="text" placeholder="Twój nick" bind:value={playerName} required disabled={loading} class="border-gray-700 bg-gray-800 text-gray-100 placeholder:text-gray-500 focus-visible:ring-1 focus-visible:ring-gray-600 focus-visible:ring-offset-0" />
+							<Button type="submit" disabled={loading} class="w-full border border-gray-700 bg-gray-800 text-white hover:bg-gray-700">
+								{loading ? 'Dołączanie...' : 'Dołącz do pokoju'}
+							</Button>
+						</form>
+					{/if}
 				{:else if !hasSubmitted}
 					<div class="mb-6 overflow-hidden rounded-xl border border-gray-700 bg-gray-800/60 shadow-lg">
 						{#if !hintRequested && room.enabled_fields?.hint_mode}
@@ -732,7 +1374,10 @@
 							</span>
 						</span>
 					</div>
-					<Button on:click={exitTakeoverMode} class="border border-gray-700 bg-gray-800 text-white hover:bg-gray-700">Wyjdź</Button>
+					<div class="flex gap-2">
+						<Button on:click={exitTakeoverMode} class="border border-gray-700 bg-gray-800 text-white hover:bg-gray-700">Wyjdź</Button>
+						<Button on:click={showLeaderboard} class="border border-gray-700 bg-gray-800 text-white hover:bg-gray-700">Wyniki</Button>
+					</div>
 				</div>
 
 				{#if checkingHandRaiseStatus}
@@ -742,26 +1387,32 @@
 						<p class="text-xl text-white">Ładowanie...</p>
 					</div>
 				{:else if !handRaised}
-					<button on:click={raiseHand} class="flex h-full w-full items-center justify-center bg-blue-600 text-4xl font-bold text-white active:bg-blue-800"> DOTKNIJ BY PODNIEŚĆ ŁAPĘ </button>
+					<button on:mousedown={raiseHand} on:touchstart|preventDefault={raiseHand} class="flex h-full w-full items-center justify-center bg-blue-600 text-4xl font-bold text-white active:bg-blue-800"> DOTKNIJ BY PODNIEŚĆ ŁAPĘ </button>
 				{:else if handRaiseResults}
 					<div class="flex flex-col items-center justify-center rounded-lg bg-gray-800 p-8">
-						<!-- Rest of the results display remains the same -->
-						<h2 class="mb-4 text-3xl font-bold text-white">
-							Jesteś #{handRaiseResults.position}
-						</h2>
+						<!-- Show player's position only if they participated -->
+						{#if playerPositions.some((p) => p.name === playerName)}
+							<h2 class="mb-4 text-3xl font-bold text-white">
+								Jesteś #{handRaiseResults.position}
+							</h2>
 
-						{#if handRaiseResults.position > 1}
-							<p class="mb-2 text-xl text-white">
-								{(handRaiseResults.timeDifferenceMs / 1000).toFixed(3)}s za pierwszym miejscem
-							</p>
-							<p class="mb-6 text-sm text-gray-400">
-								Twój ping: <span class={getLatencyColorClass(handRaiseResults.latency)}>{handRaiseResults.latency}ms</span>
-							</p>
+							{#if handRaiseResults.position > 1}
+								<p class="mb-2 text-xl text-white">
+									{(handRaiseResults.timeDifferenceMs / 1000).toFixed(3)}s za pierwszym miejscem
+								</p>
+								<p class="mb-6 text-sm text-gray-400">
+									Twój ping: <span class={getLatencyColorClass(handRaiseResults.latency)}>{handRaiseResults.latency}ms</span>
+								</p>
+							{:else}
+								<p class="mb-2 text-xl text-green-400">Jesteś pierwszy!</p>
+								<p class="mb-6 text-sm text-gray-400">
+									Twój ping: <span class={getLatencyColorClass(handRaiseResults.latency)}>{handRaiseResults.latency}ms</span>
+								</p>
+							{/if}
 						{:else}
-							<p class="mb-2 text-xl text-green-400">Jesteś pierwszy!</p>
-							<p class="mb-6 text-sm text-gray-400">
-								Twój ping: <span class={getLatencyColorClass(handRaiseResults.latency)}>{handRaiseResults.latency}ms</span>
-							</p>
+							<!-- Spectator mode message -->
+							<h2 class="mb-4 text-3xl font-bold text-white">Wyniki przejęć</h2>
+							<p class="mb-6 text-xl text-gray-300">Jesteś obserwatorem</p>
 						{/if}
 
 						<h3 class="mb-2 text-xl font-semibold text-white">Kto był pierwszy?</h3>
@@ -793,6 +1444,7 @@
 								</tbody>
 							</table>
 						</div>
+						<p class="mb-2 text-center text-base text-yellow-400">Pamiętaj by wyjść z tego ekranu<br /> przed rozpoczęciem kolejnej rundy!</p>
 
 						<Button on:click={closeLeaderboardView} class="mt-6 border border-gray-700 bg-gray-800 text-white hover:bg-gray-700">Wróć</Button>
 					</div>

@@ -5,8 +5,10 @@
 	import ConfigureRoundAnswers from '$lib/components/admin/ConfigureRoundAnswers.svelte';
 	import * as Card from '$lib/components/ui/card';
 	import { Button } from '$lib/components/ui/button';
+	import { Input } from '$lib/components/ui/input';
 	import { toast } from 'svelte-sonner';
-	import { Plus, Trash2 } from 'lucide-svelte';
+	import { Plus, Trash2, Search } from 'lucide-svelte';
+	import Autocomplete from '$lib/components/player/Autocomplete.svelte';
 
 	export let data;
 	$: ({ supabase, room, rounds, currentRound } = data);
@@ -23,6 +25,111 @@
 	// Sort rounds by round_number
 	$: sortedRounds = [...rounds].sort((a, b) => a.round_number - b.round_number);
 
+	// AnisongDB search state
+	let animeSearchQuery = '';
+	let searchResults = [];
+	let isSearching = false;
+	let searchError = null;
+
+	// Function to search AnisongDB
+	async function searchAnisongDB() {
+		if (!animeSearchQuery.trim()) {
+			toast.error('Wprowadź tytuł anime do wyszukania');
+			return;
+		}
+
+		isSearching = true;
+		searchError = null;
+		searchResults = [];
+
+		try {
+			const response = await fetch('https://anisongdb.com/api/search_request', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify({
+					anime_search_filter: {
+						search: animeSearchQuery,
+						partial_match: true
+					},
+					and_logic: false,
+					ignore_duplicate: true,
+					opening_filter: true,
+					ending_filter: true,
+					insert_filter: false,
+					normal_broadcast: true,
+					dub: true,
+					rebroadcast: true,
+					standard: true,
+					instrumental: true,
+					chanting: true,
+					character: true
+				})
+			});
+
+			if (!response.ok) {
+				throw new Error(`API responded with status: ${response.status}`);
+			}
+
+			const data = await response.json();
+
+			// Create a map to deduplicate entries by animeName + songName + artist
+			const uniqueEntries = new Map();
+
+			// Process results
+			data.forEach((result) => {
+				const key = `${result.animeJPName || result.animeENName}|${result.songName}|${result.songArtist}`;
+
+				// Only add if this combination doesn't already exist
+				if (!uniqueEntries.has(key)) {
+					uniqueEntries.set(key, {
+						animeENName: result.animeENName,
+						animeJPName: result.animeJPName,
+						songName: result.songName,
+						songArtist: result.songArtist,
+						songType: result.songType
+					});
+				}
+			});
+
+			searchResults = Array.from(uniqueEntries.values());
+
+			if (searchResults.length === 0) {
+				toast.info('Nie znaleziono wyników dla podanego zapytania');
+			}
+		} catch (error) {
+			console.error('Error searching AnisongDB:', error);
+			searchError = error.message;
+			toast.error(`Błąd wyszukiwania: ${error.message}`);
+		} finally {
+			isSearching = false;
+		}
+	}
+
+	// Function to add a result to the batch import
+	function addToBatchImport(result) {
+		const animeName = result.animeJPName || result.animeENName;
+		const songName = result.songName || '';
+		const songArtist = result.songArtist || '';
+
+		// Append to batch fields
+		if (batchTitles) batchTitles += '\n';
+		batchTitles += animeName;
+
+		if (room.enabled_fields?.song_title) {
+			if (batchSongs) batchSongs += '\n';
+			batchSongs += songName;
+		}
+
+		if (room.enabled_fields?.song_artist) {
+			if (batchArtists) batchArtists += '\n';
+			batchArtists += songArtist;
+		}
+
+		toast.success(`Dodano "${animeName}" do listy importu`);
+	}
+
 	// Function to check title match against API results
 	async function checkTitleMatch(inputTitle) {
 		if (!inputTitle || inputTitle.trim().length < 2) {
@@ -30,24 +137,14 @@
 		}
 
 		try {
-			const response = await fetch(
-				`/api/search/substring?q=${encodeURIComponent(inputTitle)}&type=anime`
-			);
+			const response = await fetch(`/api/search/substring?q=${encodeURIComponent(inputTitle)}&type=anime`);
 			if (!response.ok) throw new Error('Failed to fetch title matches');
 
 			const data = await response.json();
 			const hits = data.hits || [];
 
 			// Find exact match
-			const exactMatch = hits.find(
-				(hit) =>
-					hit.document.displayTitle.toLowerCase() === inputTitle.toLowerCase() ||
-					hit.document.romajiTitle?.toLowerCase() === inputTitle.toLowerCase() ||
-					hit.document.englishTitle?.toLowerCase() === inputTitle.toLowerCase() ||
-					(hit.document.altTitles || []).some(
-						(alt) => alt.toLowerCase() === inputTitle.toLowerCase()
-					)
-			);
+			const exactMatch = hits.find((hit) => hit.document.displayTitle.toLowerCase() === inputTitle.toLowerCase() || hit.document.romajiTitle?.toLowerCase() === inputTitle.toLowerCase() || hit.document.englishTitle?.toLowerCase() === inputTitle.toLowerCase() || (hit.document.altTitles || []).some((alt) => alt.toLowerCase() === inputTitle.toLowerCase()));
 
 			if (exactMatch) {
 				return 'exact';
@@ -67,17 +164,13 @@
 		}
 
 		try {
-			const response = await fetch(
-				`/api/search/substring?q=${encodeURIComponent(songTitle)}&type=songs`
-			);
+			const response = await fetch(`/api/search/substring?q=${encodeURIComponent(songTitle)}&type=songs`);
 			if (!response.ok) throw new Error('Failed to fetch song matches');
 
 			const data = await response.json();
 			const hits = data.hits || [];
 
-			const exactMatch = hits.find(
-				(hit) => hit.document.songName?.toLowerCase() === songTitle.toLowerCase()
-			);
+			const exactMatch = hits.find((hit) => hit.document.songName?.toLowerCase() === songTitle.toLowerCase());
 
 			if (exactMatch) {
 				return 'exact';
@@ -97,17 +190,13 @@
 		}
 
 		try {
-			const response = await fetch(
-				`/api/search/substring?q=${encodeURIComponent(artist)}&type=artists`
-			);
+			const response = await fetch(`/api/search/substring?q=${encodeURIComponent(artist)}&type=artists`);
 			if (!response.ok) throw new Error('Failed to fetch artist matches');
 
 			const data = await response.json();
 			const hits = data.hits || [];
 
-			const exactMatch = hits.find(
-				(hit) => hit.document.artist?.toLowerCase() === artist.toLowerCase()
-			);
+			const exactMatch = hits.find((hit) => hit.document.artist?.toLowerCase() === artist.toLowerCase());
 
 			if (exactMatch) {
 				return 'exact';
@@ -150,38 +239,22 @@
 	// Fetch related anime titles
 	async function fetchRelatedTitles(selectedTitle) {
 		try {
-			const response = await fetch(
-				`/api/search/substring?q=${encodeURIComponent(selectedTitle)}&type=anime`
-			);
+			const response = await fetch(`/api/search/substring?q=${encodeURIComponent(selectedTitle)}&type=anime`);
 			if (!response.ok) throw new Error('Failed to fetch related titles');
 
 			const data = await response.json();
 			const hits = data.hits || [];
 
-			const matchingAnime = hits.find(
-				(hit) =>
-					hit.document.displayTitle.toLowerCase() === selectedTitle.toLowerCase() ||
-					hit.document.romajiTitle?.toLowerCase() === selectedTitle.toLowerCase() ||
-					hit.document.englishTitle?.toLowerCase() === selectedTitle.toLowerCase() ||
-					(hit.document.altTitles || []).some(
-						(alt) => alt.toLowerCase() === selectedTitle.toLowerCase()
-					)
-			);
+			const matchingAnime = hits.find((hit) => hit.document.displayTitle.toLowerCase() === selectedTitle.toLowerCase() || hit.document.romajiTitle?.toLowerCase() === selectedTitle.toLowerCase() || hit.document.englishTitle?.toLowerCase() === selectedTitle.toLowerCase() || (hit.document.altTitles || []).some((alt) => alt.toLowerCase() === selectedTitle.toLowerCase()));
 
 			if (matchingAnime) {
 				const titles = [];
 
-				if (
-					matchingAnime.document.englishTitle &&
-					matchingAnime.document.englishTitle.toLowerCase() !== selectedTitle.toLowerCase()
-				) {
+				if (matchingAnime.document.englishTitle && matchingAnime.document.englishTitle.toLowerCase() !== selectedTitle.toLowerCase()) {
 					titles.push(matchingAnime.document.englishTitle);
 				}
 
-				if (
-					matchingAnime.document.romajiTitle &&
-					matchingAnime.document.romajiTitle.toLowerCase() !== selectedTitle.toLowerCase()
-				) {
+				if (matchingAnime.document.romajiTitle && matchingAnime.document.romajiTitle.toLowerCase() !== selectedTitle.toLowerCase()) {
 					titles.push(matchingAnime.document.romajiTitle);
 				}
 
@@ -218,10 +291,7 @@
 			const artists = batchArtists.split('\n').filter((line) => line.trim());
 
 			// Get the highest round number
-			const highestRound = rounds.reduce(
-				(max, round) => (round.round_number > max ? round.round_number : max),
-				0
-			);
+			const highestRound = rounds.reduce((max, round) => (round.round_number > max ? round.round_number : max), 0);
 
 			let nextRoundNumber = highestRound + 1;
 			let createdRounds = 0;
@@ -252,24 +322,14 @@
 
 				// Check match status for each field
 				const titleMatch = await checkTitleMatch(title);
-				const songMatch =
-					room.enabled_fields?.song_title && song ? await checkSongMatch(song) : null;
-				const artistMatch =
-					room.enabled_fields?.song_artist && artist ? await checkArtistMatch(artist) : null;
+				const songMatch = room.enabled_fields?.song_title && song ? await checkSongMatch(song) : null;
+				const artistMatch = room.enabled_fields?.song_artist && artist ? await checkArtistMatch(artist) : null;
 
 				// Determine overall match status
 				let matchStatus;
-				if (
-					titleMatch === 'exact' &&
-					(!room.enabled_fields?.song_title || !song || songMatch === 'exact') &&
-					(!room.enabled_fields?.song_artist || !artist || artistMatch === 'exact')
-				) {
+				if (titleMatch === 'exact' && (!room.enabled_fields?.song_title || !song || songMatch === 'exact') && (!room.enabled_fields?.song_artist || !artist || artistMatch === 'exact')) {
 					matchStatus = 'match';
-				} else if (
-					titleMatch === 'exact' ||
-					(room.enabled_fields?.song_title && song && songMatch === 'exact') ||
-					(room.enabled_fields?.song_artist && artist && artistMatch === 'exact')
-				) {
+				} else if (titleMatch === 'exact' || (room.enabled_fields?.song_title && song && songMatch === 'exact') || (room.enabled_fields?.song_artist && artist && artistMatch === 'exact')) {
 					matchStatus = 'partial-match';
 				} else {
 					matchStatus = 'no-match';
@@ -339,10 +399,7 @@
 	async function createNewRound() {
 		try {
 			// Find the highest round number
-			const highestRound = rounds.reduce(
-				(max, round) => (round.round_number > max ? round.round_number : max),
-				0
-			);
+			const highestRound = rounds.reduce((max, round) => (round.round_number > max ? round.round_number : max), 0);
 
 			const nextRoundNumber = highestRound + 1;
 
@@ -391,10 +448,7 @@
 				const previousRound = rounds.find((r) => r.round_number === lastRound.round_number - 1);
 				if (!previousRound) throw new Error('No previous round found');
 
-				const { error: updateError } = await supabase
-					.from('rooms')
-					.update({ current_round: previousRound.id })
-					.eq('id', room.id);
+				const { error: updateError } = await supabase.from('rooms').update({ current_round: previousRound.id }).eq('id', room.id);
 
 				if (updateError) throw updateError;
 			}
@@ -451,30 +505,105 @@
 					</div>
 
 					<div class="!-mt-4 mb-2 flex items-center gap-2">
-						<Button
-							href="/admin"
-							variant="outline"
-							class="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700"
-						>
-							Powrót
-						</Button>
+						<Button href="/admin" variant="outline" class="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700">Powrót</Button>
 					</div>
 				</div>
 			</Card.Header>
 		</Card.Root>
 
+		<!-- AnisongDB Search Section -->
+		<Card.Root class="mb-6 border border-gray-800 bg-gray-900">
+			<Card.Header>
+				<Card.Title class="text-white">Wyszukiwanie w AnisongDB</Card.Title>
+				<Card.Description class="text-gray-400">Wyszukaj anime, piosenki i artystów bezpośrednio w bazie AnisongDB</Card.Description>
+			</Card.Header>
+			<Card.Content>
+				<div class="space-y-4">
+					<div class="flex items-end gap-4">
+						<div class="flex-1">
+							<Autocomplete bind:value={animeSearchQuery} placeholder="Wpisz tytuł anime" index="animeTitles" searchKey="animeTitle" type="anime" />
+						</div>
+						<Button on:click={searchAnisongDB} disabled={isSearching || !animeSearchQuery.trim()} class="border border-gray-700 bg-gray-800 text-white hover:bg-gray-700">
+							{#if isSearching}
+								<div class="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-gray-400 border-t-transparent"></div>
+								Szukanie...
+							{:else}
+								<Search class="mr-2 h-4 w-4" />
+								Szukaj
+							{/if}
+						</Button>
+					</div>
+
+					{#if searchError}
+						<div class="rounded-md bg-red-900/30 p-4 text-red-300">
+							<p>{searchError}</p>
+						</div>
+					{/if}
+
+					{#if searchResults.length > 0}
+						<div class="mt-4 rounded-md border border-gray-700 bg-gray-800/30">
+							<div class="overflow-x-auto">
+								<table class="w-full">
+									<thead>
+										<tr class="border-b border-gray-700 bg-gray-800/50">
+											<th class="p-3 text-left text-sm font-medium text-gray-300">Anime</th>
+											<th class="p-3 text-left text-sm font-medium text-gray-300">Piosenka</th>
+											<th class="p-3 text-left text-sm font-medium text-gray-300">Artysta</th>
+											<th class="p-3 text-left text-sm font-medium text-gray-300">Typ</th>
+											<th class="p-3 text-left text-sm font-medium text-gray-300">Akcje</th>
+										</tr>
+									</thead>
+									<tbody>
+										{#each searchResults as result, i}
+											<tr class={i % 2 === 0 ? 'bg-gray-800/10' : 'bg-gray-800/30'}>
+												<td class="p-3 text-gray-200">
+													<div>
+														{#if result.animeJPName}
+															<div class="font-medium text-white">{result.animeJPName}</div>
+														{/if}
+														{#if result.animeENName && result.animeENName !== result.animeJPName}
+															<div class="text-sm text-gray-400">{result.animeENName}</div>
+														{/if}
+													</div>
+												</td>
+												<td class="p-3 text-gray-200">{result.songName || '-'}</td>
+												<td class="p-3 text-gray-200">{result.songArtist || '-'}</td>
+												<td class="p-3 text-gray-200">
+													{#if result.songType}
+														<span class="rounded-full bg-blue-900/30 px-2 py-1 text-xs font-medium text-blue-300">
+															{result.songType}
+														</span>
+													{:else}
+														-
+													{/if}
+												</td>
+												<td class="p-3">
+													<Button on:click={() => addToBatchImport(result)} size="sm" class="border border-gray-700 bg-gray-800 text-gray-200 hover:bg-gray-700">
+														<Plus class="mr-2 h-3 w-3" />
+														Dodaj
+													</Button>
+												</td>
+											</tr>
+										{/each}
+									</tbody>
+								</table>
+							</div>
+						</div>
+					{/if}
+				</div>
+			</Card.Content>
+		</Card.Root>
+
 		<!-- Batch import section - always visible -->
 		<Card.Root class="mb-6 border border-gray-800 bg-gray-900">
 			<Card.Header>
-				<Card.Title class="text-white"
-					>Masowy import odpowiedzi - Każda linia = Nowa runda</Card.Title
-				>
+				<Card.Title class="text-white">Masowy import odpowiedzi - Każda linia = Nowa runda</Card.Title>
 				<Card.Description class="text-gray-400">
-					Każda linia utworzy nową rundę z podanym tytułem anime i odpowiadającymi danymi<br>
-					Dane anime brane są ze strony anisongdb.com<br><br>
-					Zielony rząd = Dane wprowadzone niżej zgadzają się dokładnie z danymi w bazie<br>
-					Żółty rząd = Wymaga sprawdzenia, przynajmniej jedno pole nie zgadza się dokładnie z danymi w bazie (choć mogło się dobrze zaimportować)<br>
-					Czerwony rząd = Wymaga sprawdzenia, wszystkie pola nie zgadzają się dokładnie z danymi w bazie (choć mogły się dobrze zaimportować)<br>
+					Każda linia utworzy nową rundę z podanym tytułem anime i odpowiadającymi danymi<br />
+					Dane anime brane są ze strony anisongdb.com<br /><br />
+					Zielony rząd = Dane wprowadzone niżej zgadzają się dokładnie z danymi w bazie<br />
+					Żółty rząd = Wymaga sprawdzenia, przynajmniej jedno pole nie zgadza się dokładnie z danymi w bazie (choć mogło się dobrze zaimportować)<br />
+					Czerwony rząd = Wymaga sprawdzenia, wszystkie pola nie zgadzają się dokładnie z danymi w bazie (choć mogły się dobrze zaimportować)<br />
 				</Card.Description>
 			</Card.Header>
 			<Card.Content>
@@ -482,25 +611,15 @@
 					<div class="grid grid-cols-1 gap-4 md:grid-cols-3">
 						<div>
 							<!-- svelte-ignore a11y_label_has_associated_control -->
-							<label class="mb-2 block text-sm text-gray-400">
-								Tytuły anime (jeden na linię = jedna runda)
-							</label>
-							<textarea
-								bind:value={batchTitles}
-								class="h-40 w-full rounded-md border border-gray-700 bg-gray-800 p-2 text-gray-100 focus-visible:ring-1 focus-visible:ring-gray-600"
-							></textarea>
+							<label class="mb-2 block text-sm text-gray-400"> Tytuły anime (jeden na linię = jedna runda) </label>
+							<textarea bind:value={batchTitles} class="h-40 w-full rounded-md border border-gray-700 bg-gray-800 p-2 text-gray-100 focus-visible:ring-1 focus-visible:ring-gray-600"></textarea>
 						</div>
 
 						{#if room.enabled_fields?.song_title}
 							<div>
 								<!-- svelte-ignore a11y_label_has_associated_control -->
-								<label class="mb-2 block text-sm text-gray-400">
-									Tytuły piosenek (jeden na linię)
-								</label>
-								<textarea
-									bind:value={batchSongs}
-									class="h-40 w-full rounded-md border border-gray-700 bg-gray-800 p-2 text-gray-100 focus-visible:ring-1 focus-visible:ring-gray-600"
-								></textarea>
+								<label class="mb-2 block text-sm text-gray-400"> Tytuły piosenek (jeden na linię) </label>
+								<textarea bind:value={batchSongs} class="h-40 w-full rounded-md border border-gray-700 bg-gray-800 p-2 text-gray-100 focus-visible:ring-1 focus-visible:ring-gray-600"></textarea>
 							</div>
 						{/if}
 
@@ -508,23 +627,14 @@
 							<div>
 								<!-- svelte-ignore a11y_label_has_associated_control -->
 								<label class="mb-2 block text-sm text-gray-400"> Artyści (jeden na linię) </label>
-								<textarea
-									bind:value={batchArtists}
-									class="h-40 w-full rounded-md border border-gray-700 bg-gray-800 p-2 text-gray-100 focus-visible:ring-1 focus-visible:ring-gray-600"
-								></textarea>
+								<textarea bind:value={batchArtists} class="h-40 w-full rounded-md border border-gray-700 bg-gray-800 p-2 text-gray-100 focus-visible:ring-1 focus-visible:ring-gray-600"></textarea>
 							</div>
 						{/if}
 					</div>
 
-					<Button
-						on:click={executeBatchImport}
-						disabled={batchImportLoading || !batchTitles.trim()}
-						class="mt-4 w-full border border-gray-700 bg-gray-800 text-white hover:bg-gray-700"
-					>
+					<Button on:click={executeBatchImport} disabled={batchImportLoading || !batchTitles.trim()} class="mt-4 w-full border border-gray-700 bg-gray-800 text-white hover:bg-gray-700">
 						{#if batchImportLoading}
-							<div
-								class="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-gray-400 border-t-transparent"
-							></div>
+							<div class="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-gray-400 border-t-transparent"></div>
 							Importowanie i tworzenie rund...
 						{:else}
 							<Plus class="mr-2 h-4 w-4" />
@@ -547,20 +657,12 @@
 
 		<!-- Add and Delete Last Round buttons at the bottom -->
 		<div class="mt-8 flex justify-between">
-			<Button
-				on:click={createNewRound}
-				class="border border-gray-700 bg-gray-800 text-white hover:bg-gray-700"
-			>
+			<Button on:click={createNewRound} class="border border-gray-700 bg-gray-800 text-white hover:bg-gray-700">
 				<Plus class="mr-2 h-4 w-4" />
 				Dodaj nową rundę
 			</Button>
 
-			<Button
-				on:click={deleteLastRound}
-				class={`border ${
-					confirmingDelete ? 'border-red-700 bg-red-900/30' : 'border-gray-700 bg-gray-800'
-				} text-white hover:bg-gray-700`}
-			>
+			<Button on:click={deleteLastRound} class={`border ${confirmingDelete ? 'border-red-700 bg-red-900/30' : 'border-gray-700 bg-gray-800'} text-white hover:bg-gray-700`}>
 				<Trash2 class="mr-2 h-4 w-4" />
 				{confirmingDelete ? 'Potwierdź usunięcie ostatniej rundy' : 'Usuń ostatnią rundę'}
 			</Button>

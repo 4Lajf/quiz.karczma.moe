@@ -115,6 +115,7 @@
 
 	async function handleNextRound() {
 		try {
+			clearAllHandRaises();
 			// Get current round number
 			const currentRound = rounds.find((r) => r.id === selectedRoundId);
 			if (!currentRound) throw new Error('Current round not found');
@@ -156,6 +157,7 @@
 	}
 
 	async function handlePreviousRound() {
+		clearAllHandRaises();
 		try {
 			const currentRoundNumber = rounds.find((r) => r.id === selectedRoundId)?.round_number;
 			if (!currentRoundNumber || currentRoundNumber <= 1) return;

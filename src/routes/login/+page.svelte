@@ -38,11 +38,11 @@
 	<div class="container flex flex-col items-center justify-center min-h-screen">
 		<Card.Root class="w-full max-w-md bg-gray-900 border-gray-800">
 			<Card.Header class="space-y-1">
-				<Card.Title class="text-2xl text-center text-white">Sign in to your account</Card.Title>
+				<Card.Title class="text-2xl text-center text-white">Zaloguj się do swojego konta</Card.Title>
 				<Card.Description class="text-center text-gray-400">
-					Don't have an account?
+					Nie masz konta?
 					<a href="/register" class="font-medium text-blue-400 hover:text-blue-300 hover:underline">
-						Create one now
+						Stwórz je.
 					</a>
 				</Card.Description>
 			</Card.Header>
@@ -50,14 +50,14 @@
 				<form method="POST" action="?/login" class="space-y-4" use:enhance={handleSubmit}>
 					{#if clientError}
 						<Alert.Root variant="destructive" class="border-red-900/50 bg-red-900/20">
-							<Alert.Title class="text-red-400">Login failed</Alert.Title>
+							<Alert.Title class="text-red-400">Logowanie nie powiodło się</Alert.Title>
 							<Alert.Description class="text-red-300">
 								{clientError}
 							</Alert.Description>
 						</Alert.Root>
 					{:else if form?.success}
 						<Alert.Root variant="default" class="border-green-900/50 bg-green-900/20">
-							<Alert.Title class="text-green-400">Success</Alert.Title>
+							<Alert.Title class="text-green-400">Sukces</Alert.Title>
 							<Alert.Description class="text-green-300">
 								{form.success}
 							</Alert.Description>
@@ -77,7 +77,7 @@
 					</div>
 
 					<div class="space-y-2">
-						<Label for="password" class="text-gray-200">Password</Label>
+						<Label for="password" class="text-gray-200">Hasło</Label>
 						<Input
 							id="password"
 							name="password"
