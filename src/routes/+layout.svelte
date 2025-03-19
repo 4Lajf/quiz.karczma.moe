@@ -2,6 +2,7 @@
 	//src/routes/+layout.svelte
 	import { goto, invalidate, invalidateAll } from '$app/navigation';
 	import { onMount } from 'svelte';
+	import { page } from '$app/stores';
 	import { Button } from '$lib/components/ui/button';
 	import { Toaster, toast } from 'svelte-sonner';
 	import { ModeWatcher } from 'mode-watcher';
@@ -10,6 +11,9 @@
 	export let data;
 
 	$: ({ supabase, session, profile } = data);
+
+	// Check if we're on the screen viewer page
+	$: isScreenViewerPage = $page.url.pathname.includes('/admin/rooms/') && $page.url.pathname.includes('/screen/viewer');
 
 	async function handleLogout() {
 		const { error } = await supabase.auth.signOut();
@@ -20,7 +24,7 @@
 	}
 </script>
 
-{#if session}
+{#if session && !isScreenViewerPage}
 	<header class="sticky top-0 z-50 w-full border-b border-gray-800 bg-gray-950">
 		<div class="container flex h-14 items-center justify-between">
 			<div class="flex items-center gap-4"></div>

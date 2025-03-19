@@ -115,7 +115,7 @@
 
 	async function handleNextRound() {
 		try {
-			clearAllHandRaises();
+			clearAllHandRaises(false);
 			// Get current round number
 			const currentRound = rounds.find((r) => r.id === selectedRoundId);
 			if (!currentRound) throw new Error('Current round not found');
@@ -157,7 +157,7 @@
 	}
 
 	async function handlePreviousRound() {
-		clearAllHandRaises();
+		clearAllHandRaises(false);
 		try {
 			const currentRoundNumber = rounds.find((r) => r.id === selectedRoundId)?.round_number;
 			if (!currentRoundNumber || currentRoundNumber <= 1) return;
@@ -458,14 +458,16 @@
 	}
 
 	// Add this to the admin-side script
-	async function clearAllHandRaises() {
+	async function clearAllHandRaises(notify = true) {
 		try {
 			const { error } = await supabase.from('hand_raises').delete().eq('room_id', room.id);
 
 			if (error) throw error;
 
 			handRaiseResults = [];
-			toast.success('Wszystkie podniesienia rąk wyczyszczone');
+			if (notify) {
+				toast.success('Wszystkie podniesienia rąk wyczyszczone');
+			}
 		} catch (error) {
 			toast.error('Nie udało się wyczyścić podniesień rąk: ' + error.message);
 		}

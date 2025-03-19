@@ -6,12 +6,14 @@ export const load = async ({ depends, locals: { supabase, user, profile } }) => 
     .from('rooms')
     .select(`
       id,
+      type,
       name,
       created_by,
       created_at,
       is_active,
       enabled_fields,
       settings,
+      screen_mode,
       profiles (
         id,
         username,
