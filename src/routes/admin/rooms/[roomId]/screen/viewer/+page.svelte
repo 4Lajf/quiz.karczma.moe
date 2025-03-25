@@ -5,6 +5,7 @@
 	import NormalnaScreenowka from './NormalnaScreenowka.svelte';
 	import ZakrywanaScreenowka from './ZakrywanaScreenowka.svelte';
 	import RozbitaScreenowka from './RozbitaScreenowka.svelte';
+	import SiatkaScreenowka from './SiatkaScreenowka.svelte';
 
 	export let data;
 	$: ({ supabase, room, rounds, currentRound, screenImage } = data);
@@ -39,9 +40,11 @@
 	{#if screenMode === 'normalna'}
 		<NormalnaScreenowka {screenImage} />
 	{:else if screenMode === 'zakrywana'}
-		<ZakrywanaScreenowka {screenImage} {room} {currentRound} />
+		<ZakrywanaScreenowka {screenImage} {room} {currentRound} {supabase} />
 	{:else if screenMode === 'rozbita'}
-		<RozbitaScreenowka {screenImage} {room} {currentRound} />
+		<RozbitaScreenowka {screenImage} {room} {currentRound} {supabase} />
+	{:else if screenMode === 'siatka'}
+		<SiatkaScreenowka {screenImage} {room} {currentRound} {supabase} />
 	{:else}
 		<!-- Fallback to normal mode if unknown mode -->
 		<NormalnaScreenowka {screenImage} />

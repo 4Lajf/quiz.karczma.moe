@@ -348,6 +348,11 @@
 					<RadioGroupItem value="rozbita" id="split-screen" />
 					<Label for="split-screen" class="cursor-pointer">Rozbita screenówka</Label>
 				</div>
+
+				<div class="flex items-center space-x-2">
+					<RadioGroupItem value="siatka" id="gird-screen" />
+					<Label for="grid-screen" class="cursor-pointer">Na bazie siatki (4x4, 8x8 itp.)</Label>
+				</div>
 			</RadioGroup>
 		</div>
 
