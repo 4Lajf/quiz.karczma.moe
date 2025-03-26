@@ -1,10 +1,33 @@
 <script>
 	import { onMount, onDestroy } from 'svelte';
 	import { browser } from '$app/environment';
+	import { Shell as Spirals } from 'lucide-svelte';
+	import FortuneWheel from './FortuneWheel.svelte';
 
 	export let screenImage;
 	export let room;
 	export let supabase;
+
+	let showFortuneWheel = false;
+	let fortuneWheelOptions = [
+		{ id: 'random', label: 'Losowo', color: '#3b82f6', enabled: true },
+		{ id: 'spiral', label: 'Spirala', color: '#8b5cf6', enabled: true },
+		{ id: 'left', label: 'Lewo', color: '#ec4899', enabled: true },
+		{ id: 'right', label: 'Prawo', color: '#f43f5e', enabled: true },
+		{ id: 'top', label: 'Góra', color: '#10b981', enabled: true },
+		{ id: 'bottom', label: 'Dół', color: '#f59e0b', enabled: true },
+		{ id: 'left-right', label: 'Lewo + Prawo', color: '#6366f1', enabled: true },
+		{ id: 'left-top', label: 'Lewo + Góra', color: '#84cc16', enabled: true },
+		{ id: 'left-bottom', label: 'Lewo + Dół', color: '#ef4444', enabled: true },
+		{ id: 'right-top', label: 'Prawo + Góra', color: '#06b6d4', enabled: true },
+		{ id: 'right-bottom', label: 'Prawo + Dół', color: '#8b5cf6', enabled: true },
+		{ id: 'top-bottom', label: 'Góra + Dół', color: '#d946ef', enabled: true },
+		{ id: 'left-right-top', label: 'L + P + G', color: '#f97316', enabled: false },
+		{ id: 'left-right-bottom', label: 'L + P + D', color: '#14b8a6', enabled: false },
+		{ id: 'left-top-bottom', label: 'L+ G + D', color: '#a3e635', enabled: false },
+		{ id: 'right-top-bottom', label: 'P + G + D', color: '#fb7185', enabled: false },
+		{ id: 'all', label: 'Wszystkie', color: '#fbbf24', enabled: true }
+	];
 
 	let gameContainer;
 	let countdown;
@@ -26,17 +49,244 @@
 	let isImagePlaying = false;
 	let isImagePaused = false;
 
-	// Configuration options with defaults
-	let config = {
-		numParts: 75, // Number of polygons (50-150)
-		animationSpeed: 400, // Animation speed in ms (100-1000)
-		revealOrder: 'random' // 'random' or 'spiral'
+	let showWheelSettings = false;
+	let wheelSettingOptions = [...fortuneWheelOptions]; // Create a copy for editing
+	let savedWheelOptions = [];
+
+	const DEFAULT_CONFIG = {
+		numParts: 75,
+		minParts: 50,
+		maxParts: 150,
+		randomPolygons: false,
+		animationSpeed: 400,
+		revealDirections: [], // Empty array = random
+		useSpiral: false, // Just one spiral mode now (center outward)
+		revealInBatches: false, // New option for batch reveals
+		numberOfBatches: 3 // Default number of batches
 	};
+
+	function loadWheelOptionsFromLocalStorage() {
+		if (browser) {
+			try {
+				const savedOptions = localStorage.getItem('rozbitaWheelOptions');
+				if (savedOptions) {
+					const parsedOptions = JSON.parse(savedOptions);
+					// Only use saved options if valid
+					if (Array.isArray(parsedOptions) && parsedOptions.length > 0) {
+						savedWheelOptions = parsedOptions;
+						fortuneWheelOptions = parsedOptions;
+					}
+				}
+			} catch (error) {
+				console.error('Failed to load wheel options from localStorage:', error);
+			}
+		}
+	}
+
+	function saveWheelOptionsToLocalStorage() {
+		if (browser) {
+			try {
+				localStorage.setItem('rozbitaWheelOptions', JSON.stringify(fortuneWheelOptions));
+				savedWheelOptions = [...fortuneWheelOptions];
+			} catch (error) {
+				console.error('Failed to save wheel options to localStorage:', error);
+			}
+		}
+	}
+
+	function openWheelSettings() {
+		// Reset the working copy of options
+		wheelSettingOptions = [...fortuneWheelOptions];
+		showWheelSettings = true;
+	}
+
+	function saveWheelSettings() {
+		// Filter out unchecked options
+		fortuneWheelOptions = wheelSettingOptions.filter((option) => option.enabled !== false);
+		saveWheelOptionsToLocalStorage();
+		showWheelSettings = false;
+	}
+
+	function cancelWheelSettings() {
+		showWheelSettings = false;
+	}
+
+	function resetWheelOptions() {
+		// Define all defaults again
+		const defaultOptions = [
+			{ id: 'random', label: 'Losowo', color: '#3b82f6', enabled: true },
+			{ id: 'spiral', label: 'Spirala', color: '#8b5cf6', enabled: true },
+			{ id: 'left', label: 'Lewo', color: '#ec4899', enabled: true },
+			{ id: 'right', label: 'Prawo', color: '#f43f5e', enabled: true },
+			{ id: 'top', label: 'Góra', color: '#10b981', enabled: true },
+			{ id: 'bottom', label: 'Dół', color: '#f59e0b', enabled: true },
+			{ id: 'left-right', label: 'Lewo+Prawo', color: '#6366f1', enabled: true },
+			{ id: 'left-top', label: 'Lewo+Góra', color: '#84cc16', enabled: true },
+			{ id: 'left-bottom', label: 'Lewo+Dół', color: '#ef4444', enabled: true },
+			{ id: 'right-top', label: 'Prawo+Góra', color: '#06b6d4', enabled: true },
+			{ id: 'right-bottom', label: 'Prawo+Dół', color: '#8b5cf6', enabled: true },
+			{ id: 'top-bottom', label: 'Góra+Dół', color: '#d946ef', enabled: true },
+			{ id: 'left-right-top', label: 'L+P+G', color: '#f97316', enabled: true },
+			{ id: 'left-right-bottom', label: 'L+P+D', color: '#14b8a6', enabled: true },
+			{ id: 'left-top-bottom', label: 'L+G+D', color: '#a3e635', enabled: true },
+			{ id: 'right-top-bottom', label: 'P+G+D', color: '#fb7185', enabled: true },
+			{ id: 'all', label: 'Wszystkie', color: '#fbbf24', enabled: true }
+		];
+
+		wheelSettingOptions = defaultOptions;
+	}
+
+	function handleWheelSelection(event) {
+		const selection = event.detail;
+		console.log('Selected option:', selection); // Debug logging
+
+		// Reset current config first
+		config.useSpiral = false;
+		config.revealDirections = [];
+
+		// Apply the selected option based on id
+		switch (selection.id) {
+			case 'spiral':
+				config.useSpiral = true;
+				break;
+			case 'left':
+				config.revealDirections = ['left'];
+				break;
+			case 'right':
+				config.revealDirections = ['right'];
+				break;
+			case 'top':
+				config.revealDirections = ['top'];
+				break;
+			case 'bottom':
+				config.revealDirections = ['bottom'];
+				break;
+			case 'left-right':
+				config.revealDirections = ['left', 'right'];
+				break;
+			case 'left-top':
+				config.revealDirections = ['left', 'top'];
+				break;
+			case 'left-bottom':
+				config.revealDirections = ['left', 'bottom'];
+				break;
+			case 'right-top':
+				config.revealDirections = ['right', 'top'];
+				break;
+			case 'right-bottom':
+				config.revealDirections = ['right', 'bottom'];
+				break;
+			case 'top-bottom':
+				config.revealDirections = ['top', 'bottom'];
+				break;
+			case 'left-right-top':
+				config.revealDirections = ['left', 'right', 'top'];
+				break;
+			case 'left-right-bottom':
+				config.revealDirections = ['left', 'right', 'bottom'];
+				break;
+			case 'left-top-bottom':
+				config.revealDirections = ['left', 'top', 'bottom'];
+				break;
+			case 'right-top-bottom':
+				config.revealDirections = ['right', 'top', 'bottom'];
+				break;
+			case 'all':
+				config.revealDirections = ['left', 'right', 'top', 'bottom'];
+				break;
+			case 'random':
+			default:
+				// For random, we leave both properties empty
+				break;
+		}
+
+		// For debugging
+		console.log('Applied config:', {
+			useSpiral: config.useSpiral,
+			revealDirections: [...config.revealDirections]
+		});
+
+		// Apply the changes
+		applyConfig();
+		showFortuneWheel = false;
+	}
+
+	function openFortuneWheel() {
+		showFortuneWheel = true;
+	}
+
+	function toggleDirection(direction) {
+		if (config.useSpiral) return;
+
+		const index = config.revealDirections.indexOf(direction);
+		if (index === -1) {
+			// Add direction
+			config.revealDirections = [...config.revealDirections, direction];
+		} else {
+			// Remove direction
+			config.revealDirections = config.revealDirections.filter((d) => d !== direction);
+		}
+	}
+
+	function toggleSpiral() {
+		config.useSpiral = !config.useSpiral;
+
+		// If enabling spiral, clear other directions
+		if (config.useSpiral) {
+			config.revealDirections = [];
+		}
+	}
+
+	function toggleSpiralDirection() {
+		config.spiralOutward = !config.spiralOutward;
+	}
+
+	// Configuration options with defaults
+	let config = { ...DEFAULT_CONFIG };
+
+	function saveConfigToLocalStorage() {
+		if (browser) {
+			try {
+				localStorage.setItem('rozbitaScreenowkaConfig', JSON.stringify(config));
+			} catch (error) {
+				console.error('Failed to save config to localStorage:', error);
+			}
+		}
+	}
+
+	function loadConfigFromLocalStorage() {
+		if (browser) {
+			try {
+				const savedConfig = localStorage.getItem('rozbitaScreenowkaConfig');
+				if (savedConfig) {
+					config = { ...config, ...JSON.parse(savedConfig) };
+				}
+			} catch (error) {
+				console.error('Failed to load config from localStorage:', error);
+			}
+		}
+	}
+
+	function resetConfig() {
+		config = { ...DEFAULT_CONFIG };
+		saveConfigToLocalStorage();
+		generateMasks(); // Regenerate masks with default settings
+	}
 
 	// Generate random points for polygon masks
 	function generateMasks() {
 		polygonMasks = [];
-		for (let i = 0; i < config.numParts; i++) {
+
+		// Determine how many polygons to generate
+		let partsToGenerate = config.numParts;
+
+		if (config.randomPolygons) {
+			// Generate a random number between min and max
+			partsToGenerate = Math.floor(config.minParts + Math.random() * (config.maxParts - config.minParts + 1));
+			console.log(`Generating ${partsToGenerate} random polygons`);
+		}
+
+		for (let i = 0; i < partsToGenerate; i++) {
 			const pointX = Math.random();
 			const pointY = Math.random();
 			polygonMasks.push([pointX, pointY]);
@@ -100,6 +350,8 @@
 
 	onMount(async () => {
 		if (browser) {
+			loadConfigFromLocalStorage();
+			loadWheelOptionsFromLocalStorage();
 			// Only create the Image object in browser context
 			image = new Image();
 			image.crossOrigin = 'anonymous';
@@ -227,6 +479,15 @@
 	}
 
 	function applyConfig() {
+		// Validate config values
+		if (config.randomPolygons) {
+			// Ensure min is at least 20
+			config.minParts = Math.max(20, config.minParts);
+
+			// Ensure max is at least min + 10 and at most 150
+			config.maxParts = Math.min(150, Math.max(config.minParts + 10, config.maxParts));
+		}
+
 		// Stop any ongoing animation
 		if (isImagePlaying) {
 			if (partInterval) {
@@ -239,10 +500,14 @@
 		// Generate new masks with updated config
 		generateMasks();
 
+		// Save configuration to localStorage
+		saveConfigToLocalStorage();
+
 		// Hide panel after applying
 		showConfigPanel = false;
 	}
 
+	// Toggle between play and pause states
 	// Toggle between play and pause states
 	function togglePlayPause() {
 		if (!isImageLoaded) {
@@ -265,8 +530,8 @@
 				if (initial) {
 					initial.textContent = '';
 				}
-				// Reset points to 100 only when starting for the first time
-				pointsValue = 100;
+				// Reset points based on the mode
+				pointsValue = config.revealInBatches ? config.numberOfBatches : 100;
 				isPointsEnlarged = false;
 			}
 		}
@@ -300,6 +565,38 @@
 			]);
 			const polygons = voronoi.polygons(polygonMasks.map((mask) => [mask[0] * screenWidth, mask[1] * screenHeight]));
 
+			// Calculate polygon areas and filter out tiny ones
+			const validPolygons = [];
+			const minArea = 400; // Minimum area in square pixels (e.g., 20x20)
+
+			for (let i = 0; i < polygons.length; i++) {
+				const polygon = polygons[i];
+
+				if (!polygon) continue;
+
+				// Calculate polygon area using shoelace formula
+				let area = 0;
+				for (let j = 0; j < polygon.length; j++) {
+					const k = (j + 1) % polygon.length;
+					area += polygon[j][0] * polygon[k][1];
+					area -= polygon[j][1] * polygon[k][0];
+				}
+				area = Math.abs(area) / 2;
+
+				// Only keep polygons larger than minimum area
+				if (area >= minArea) {
+					validPolygons.push(polygon);
+				}
+			}
+
+			// Replace original polygons with filtered ones
+			const filteredPolygons = validPolygons.length > 0 ? validPolygons : polygons;
+
+			// Log how many small polygons were filtered
+			if (validPolygons.length < polygons.length) {
+				console.log(`Filtered out ${polygons.length - validPolygons.length} small polygons`);
+			}
+
 			// Create canvas for the image
 			const partCanvas = document.createElement('canvas');
 			partCanvas.width = screenWidth;
@@ -327,7 +624,7 @@
 			const imageParts = []; // to store the image parts
 
 			// Create divs for each polygon
-			polygons.forEach((polygon) => {
+			filteredPolygons.forEach((polygon) => {
 				if (!polygon) return; // Skip if polygon is undefined
 
 				const part = document.createElement('div');
@@ -340,28 +637,33 @@
 				imageParts.push(part);
 			});
 
-			// Sort parts based on reveal order
-			if (config.revealOrder === 'spiral') {
+			// Helper function to get center of a polygon piece
+			const getCenter = (el) => {
+				const clipPath = el.style.clipPath;
+				const points = clipPath.match(/\d+(\.\d+)?px \d+(\.\d+)?px/g);
+				if (!points || points.length === 0) return [0, 0];
+
+				let sumX = 0,
+					sumY = 0;
+				points.forEach((point) => {
+					const [x, y] = point.split('px ');
+					sumX += parseFloat(x);
+					sumY += parseFloat(y.replace('px', ''));
+				});
+				return [sumX / points.length, sumY / points.length];
+			};
+
+			// Center of the screen
+			const centerScreenX = screenWidth / 2;
+			const centerScreenY = screenHeight / 2;
+
+			// Sort parts based on reveal settings
+			if (config.useSpiral) {
 				// Sort from center outward
 				const centerX = screenWidth / 2;
 				const centerY = screenHeight / 2;
+
 				imageParts.sort((a, b) => {
-					// Extract center point of polygon from clip-path style
-					const getCenter = (el) => {
-						const clipPath = el.style.clipPath;
-						const points = clipPath.match(/\d+(\.\d+)?px \d+(\.\d+)?px/g);
-						if (!points || points.length === 0) return [0, 0];
-
-						let sumX = 0,
-							sumY = 0;
-						points.forEach((point) => {
-							const [x, y] = point.split('px ');
-							sumX += parseFloat(x);
-							sumY += parseFloat(y.replace('px', ''));
-						});
-						return [sumX / points.length, sumY / points.length];
-					};
-
 					const centerA = getCenter(a);
 					const centerB = getCenter(b);
 
@@ -370,13 +672,74 @@
 
 					return distA - distB; // Center to outside
 				});
+			} else if (config.revealDirections.length > 0) {
+				// Calculate scores for each piece based on selected directions
+				const partsWithScores = imageParts.map((part) => {
+					const center = getCenter(part);
+
+					// Calculate a score for each direction (higher = further from center in that direction)
+					const scores = {
+						left: centerScreenX - center[0], // Higher when further left
+						right: center[0] - centerScreenX, // Higher when further right
+						top: centerScreenY - center[1], // Higher when further up
+						bottom: center[1] - centerScreenY // Higher when further down
+					};
+
+					// Normalize scores based on screen dimensions (0-1 scale)
+					const normalizedScores = {
+						left: scores.left / centerScreenX,
+						right: scores.right / centerScreenX,
+						top: scores.top / centerScreenY,
+						bottom: scores.bottom / centerScreenY
+					};
+
+					// For each piece, find its best score among the selected directions
+					let bestScore = -Infinity;
+					let bestDirection = null;
+
+					config.revealDirections.forEach((direction) => {
+						if (normalizedScores[direction] > bestScore) {
+							bestScore = normalizedScores[direction];
+							bestDirection = direction;
+						}
+					});
+
+					// If all scores are negative, this piece is not ideal for any of the selected directions
+					// In that case, use the direction with the least negative score
+					if (bestScore < 0 && bestDirection) {
+						bestScore = -100; // A very low score
+					}
+
+					return {
+						part,
+						score: bestScore,
+						direction: bestDirection
+					};
+				});
+
+				// Sort parts by their best score (highest first)
+				partsWithScores.sort((a, b) => b.score - a.score);
+
+				// Extract just the parts in the sorted order
+				imageParts.length = 0; // Clear array
+				partsWithScores.forEach((item) => {
+					imageParts.push(item.part);
+				});
 			} else {
-				// Random order (shuffle)
+				// Default: Random order (shuffle)
 				imageParts.sort(() => Math.random() - 0.5);
 			}
 
 			let counter = 0;
 			const totalParts = imageParts.length;
+			let batchSize = totalParts;
+			let batchCounter = 0;
+
+			// For batch reveals, calculate the size of each batch
+			if (config.revealInBatches) {
+				batchSize = Math.ceil(totalParts / config.numberOfBatches);
+				pointsValue = config.numberOfBatches; // Initial score is the number of batches
+			}
 
 			// Clear any existing interval
 			if (partInterval) {
@@ -385,7 +748,9 @@
 			}
 
 			// Reset points value
-			pointsValue = 100;
+			if (!config.revealInBatches) {
+				pointsValue = 100;
+			}
 
 			// Start the animation
 			partInterval = setInterval(() => {
@@ -414,8 +779,20 @@
 
 						counter++;
 
-						// Calculate and update points value (100 down to 0)
-						pointsValue = Math.ceil((1 - counter / totalParts) * 100);
+						// Calculate and update points value
+						if (config.revealInBatches) {
+							// In batch mode, only decrease score when starting a new batch
+							// (except the first batch)
+							const currentBatch = Math.floor(counter / batchSize);
+							if (currentBatch > batchCounter) {
+								batchCounter = currentBatch;
+								// Decrement score when a new batch starts (except the first batch which is already shown)
+								pointsValue = config.numberOfBatches - batchCounter;
+							}
+						} else {
+							// Original gradual reveal scoring (100 to 0)
+							pointsValue = Math.ceil((1 - counter / totalParts) * 100);
+						}
 					} catch (error) {
 						console.error('Error appending part:', error);
 						clearInterval(partInterval);
@@ -427,7 +804,7 @@
 					partInterval = null;
 					isImagePlaying = false;
 					isImagePaused = false; // Reset pause state
-					pointsValue = 0;
+					pointsValue = 0; // Final score is 0 in both modes
 				}
 			}, config.animationSpeed);
 		}, 500);
@@ -531,9 +908,27 @@
 			<h3 class="mb-4 text-lg font-bold">Ustawienia</h3>
 
 			<div class="mb-4">
-				<!-- svelte-ignore a11y_label_has_associated_control -->
-				<label class="mb-1 block">Ilość elementów ({config.numParts})</label>
-				<input type="range" min="20" max="150" bind:value={config.numParts} class="h-2 w-full appearance-none rounded-md bg-gray-700" />
+				<div class="mb-2 flex items-center">
+					<input type="checkbox" id="random-polygons" bind:checked={config.randomPolygons} class="mr-2 h-4 w-4 rounded border-gray-300 bg-gray-700" />
+					<label for="random-polygons">Losowa liczba elementów</label>
+				</div>
+
+				{#if !config.randomPolygons}
+					<!-- svelte-ignore a11y_label_has_associated_control -->
+					<label class="mb-1 block">Ilość elementów ({config.numParts})</label>
+					<input type="range" min="20" max="150" bind:value={config.numParts} class="h-2 w-full appearance-none rounded-md bg-gray-700" />
+				{:else}
+					<!-- svelte-ignore a11y_label_has_associated_control -->
+					<label class="mb-1 block">Zakres elementów ({config.minParts}-{config.maxParts})</label>
+					<div class="mb-1 flex items-center gap-2">
+						<span class="w-8 text-xs">{config.minParts}</span>
+						<input type="range" min="20" max={config.maxParts - 10} bind:value={config.minParts} class="h-2 flex-1 appearance-none rounded-md bg-gray-700" />
+					</div>
+					<div class="flex items-center gap-2">
+						<span class="w-8 text-xs">{config.maxParts}</span>
+						<input type="range" min={config.minParts + 10} max="150" bind:value={config.maxParts} class="h-2 flex-1 appearance-none rounded-md bg-gray-700" />
+					</div>
+				{/if}
 			</div>
 
 			<div class="mb-4">
@@ -543,15 +938,129 @@
 			</div>
 
 			<div class="mb-4">
-				<!-- svelte-ignore a11y_label_has_associated_control -->
-				<label class="mb-1 block">Styl odkrywania</label>
-				<select bind:value={config.revealOrder} class="w-full rounded-md border border-gray-600 bg-gray-700 p-1">
-					<option value="random">Losowo</option>
-					<option value="spiral">Od środka</option>
-				</select>
+				<div class="mb-2 flex items-center">
+					<input type="checkbox" id="reveal-in-batches" bind:checked={config.revealInBatches} class="mr-2 h-4 w-4 rounded border-gray-300 bg-gray-700" />
+					<label for="reveal-in-batches">Odsłaniaj w częściach</label>
+				</div>
+
+				{#if config.revealInBatches}
+					<!-- svelte-ignore a11y_label_has_associated_control -->
+					<label class="mb-1 block">Liczba części ({config.numberOfBatches})</label>
+					<input type="range" min="2" max="10" bind:value={config.numberOfBatches} class="h-2 w-full appearance-none rounded-md bg-gray-700" />
+				{/if}
 			</div>
 
-			<button on:click={applyConfig} class="w-full rounded-md bg-blue-600 py-2 text-white hover:bg-blue-700"> Zastosuj </button>
+			<!-- Visual Direction Selector -->
+			<div class="mb-4">
+				<!-- svelte-ignore a11y_label_has_associated_control -->
+				<label class="mb-2 block">Kierunek odkrywania</label>
+
+				<div class="mb-2 grid grid-cols-3 gap-1 rounded-md bg-gray-700/50 p-1" style="height: 120px;">
+					<!-- Top Left -->
+					<div class="corner-cell"></div>
+					<!-- Top -->
+					<div class="edge-cell flex items-center justify-center">
+						<!-- svelte-ignore a11y_consider_explicit_label -->
+						<button class="direction-button {config.revealDirections.includes('top') ? 'active' : ''}" on:click={() => toggleDirection('top')} disabled={config.useSpiral}>
+							<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+								<polyline points="18 15 12 9 6 15"></polyline>
+							</svg>
+						</button>
+					</div>
+					<!-- Top Right -->
+					<div class="corner-cell"></div>
+
+					<!-- Left -->
+					<div class="edge-cell flex items-center justify-center">
+						<!-- svelte-ignore a11y_consider_explicit_label -->
+						<button class="direction-button {config.revealDirections.includes('left') ? 'active' : ''}" on:click={() => toggleDirection('left')} disabled={config.useSpiral}>
+							<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+								<polyline points="15 18 9 12 15 6"></polyline>
+							</svg>
+						</button>
+					</div>
+
+					<!-- Center -->
+					<div class="center-cell flex items-center justify-center">
+						<button class="spiral-button {config.useSpiral ? 'active' : ''}" on:click={toggleSpiral} title="Od środka na zewnątrz">
+							<Spirals size={24} />
+						</button>
+					</div>
+
+					<!-- Right -->
+					<div class="edge-cell flex items-center justify-center">
+						<!-- svelte-ignore a11y_consider_explicit_label -->
+						<button class="direction-button {config.revealDirections.includes('right') ? 'active' : ''}" on:click={() => toggleDirection('right')} disabled={config.useSpiral}>
+							<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+								<polyline points="9 18 15 12 9 6"></polyline>
+							</svg>
+						</button>
+					</div>
+
+					<!-- Bottom Left -->
+					<div class="corner-cell"></div>
+					<!-- Bottom -->
+					<div class="edge-cell flex items-center justify-center">
+						<!-- svelte-ignore a11y_consider_explicit_label -->
+						<button class="direction-button {config.revealDirections.includes('bottom') ? 'active' : ''}" on:click={() => toggleDirection('bottom')} disabled={config.useSpiral}>
+							<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+								<polyline points="6 9 12 15 18 9"></polyline>
+							</svg>
+						</button>
+					</div>
+					<!-- Bottom Right -->
+					<div class="corner-cell"></div>
+				</div>
+
+				<div class="mt-1 text-xs text-gray-400">
+					{#if config.useSpiral}
+						Aktywny tryb spiralny (od środka)
+					{:else if config.revealDirections.length === 0}
+						Aktywny tryb losowy
+					{:else}
+						Aktywne kierunki: {config.revealDirections
+							.map((d) => {
+								if (d === 'left') return 'Lewy';
+								if (d === 'right') return 'Prawy';
+								if (d === 'top') return 'Góra';
+								if (d === 'bottom') return 'Dół';
+								return '';
+							})
+							.join(', ')}
+					{/if}
+				</div>
+			</div>
+
+			<!-- Wheel of Fortune buttons -->
+			<div class="mb-4">
+				<button on:click={openFortuneWheel} class="flex w-full items-center justify-center gap-2 rounded-md bg-purple-600 px-4 py-2 text-white hover:bg-purple-700">
+					<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						<circle cx="12" cy="12" r="10"></circle>
+						<path d="M12 2v4"></path>
+						<path d="M12 18v4"></path>
+						<path d="M4.93 4.93l2.83 2.83"></path>
+						<path d="M16.24 16.24l2.83 2.83"></path>
+						<path d="M2 12h4"></path>
+						<path d="M18 12h4"></path>
+						<path d="M4.93 19.07l2.83-2.83"></path>
+						<path d="M16.24 7.76l2.83-2.83"></path>
+					</svg>
+					Koło Fortuny
+				</button>
+				<button on:click={openWheelSettings} class="mt-2 flex w-full items-center justify-center gap-2 rounded-md bg-gray-600 px-4 py-2 text-white hover:bg-gray-700">
+					<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						<path d="M12 20h9"></path>
+						<path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
+					</svg>
+					Konfiguruj koło
+				</button>
+			</div>
+
+			<!-- Apply and Reset buttons -->
+			<div class="flex gap-2">
+				<button on:click={applyConfig} class="flex-1 rounded-md bg-blue-600 py-2 text-white hover:bg-blue-700"> Zastosuj </button>
+				<button on:click={resetConfig} class="rounded-md bg-gray-600 px-2 py-2 text-white hover:bg-gray-700"> Reset </button>
+			</div>
 		</div>
 	{/if}
 
@@ -561,6 +1070,53 @@
 		</div>
 	{/if}
 </div>
+
+{#if showFortuneWheel}
+	<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
+		<FortuneWheel options={fortuneWheelOptions} on:selection={handleWheelSelection} on:close={() => (showFortuneWheel = false)} />
+	</div>
+{/if}
+
+{#if showWheelSettings}
+	<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
+		<div class="wheel-settings-modal max-h-[80vh] w-[500px] overflow-y-auto rounded-lg border border-gray-700 bg-gray-900 p-4 shadow-xl">
+			<div class="mb-4 flex items-center justify-between">
+				<h2 class="text-xl font-bold text-white">Konfiguracja koła</h2>
+				<!-- svelte-ignore a11y_consider_explicit_label -->
+				<button class="text-gray-400 hover:text-white" on:click={cancelWheelSettings}>
+					<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						<line x1="18" y1="6" x2="6" y2="18"></line>
+						<line x1="6" y1="6" x2="18" y2="18"></line>
+					</svg>
+				</button>
+			</div>
+
+			<p class="mb-4 text-gray-300">Wybierz opcje, które mają być dostępne na kole fortuny:</p>
+
+			<div class="mb-6 grid grid-cols-2 gap-2">
+				{#each wheelSettingOptions as option, index}
+					<div class="flex items-center gap-2 rounded border border-gray-700 bg-gray-800 p-2">
+						<input type="checkbox" id={`wheel-option-${option.id}`} bind:checked={option.enabled} class="h-4 w-4 rounded border-gray-300 bg-gray-700" />
+						<label for={`wheel-option-${option.id}`} class="flex cursor-pointer items-center gap-2">
+							<span class="h-4 w-4 rounded-full" style="background-color: {option.color}"></span>
+							<span class="text-white">{option.label}</span>
+						</label>
+					</div>
+				{/each}
+			</div>
+
+			<div class="flex justify-between">
+				<button on:click={resetWheelOptions} class="rounded bg-amber-600 px-4 py-2 text-white hover:bg-amber-700"> Resetuj </button>
+
+				<div class="flex gap-2">
+					<button on:click={cancelWheelSettings} class="rounded bg-gray-700 px-4 py-2 text-white hover:bg-gray-600"> Anuluj </button>
+
+					<button on:click={saveWheelSettings} class="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"> Zapisz </button>
+				</div>
+			</div>
+		</div>
+	</div>
+{/if}
 
 <style>
 	:global(.image-part) {
@@ -611,5 +1167,79 @@
 			opacity: 1;
 			transform: translateY(0);
 		}
+	}
+
+	.corner-cell {
+		background-color: rgba(30, 30, 30, 0.5);
+		border-radius: 4px;
+	}
+
+	.edge-cell {
+		background-color: rgba(40, 40, 40, 0.7);
+		border-radius: 4px;
+	}
+
+	.center-cell {
+		background-color: rgba(50, 50, 50, 0.9);
+		border-radius: 4px;
+		position: relative;
+	}
+
+	.direction-button {
+		width: 32px;
+		height: 32px;
+		border-radius: 4px;
+		background-color: rgba(60, 60, 60, 0.7);
+		color: #9ca3af;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		transition: all 0.2s;
+	}
+
+	.direction-button:hover:not(:disabled) {
+		background-color: rgba(80, 80, 80, 0.9);
+		color: white;
+	}
+
+	.direction-button:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	.direction-button.active {
+		background-color: #2563eb;
+		color: white;
+	}
+
+	.spiral-button {
+		width: 36px;
+		height: 36px;
+		border-radius: 50%;
+		background-color: rgba(60, 60, 60, 0.7);
+		color: #9ca3af;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		transition: all 0.2s;
+	}
+
+	.spiral-button:hover {
+		background-color: rgba(80, 80, 80, 0.9);
+		color: white;
+	}
+
+	.spiral-button.active {
+		background-color: #2563eb;
+		color: white;
+	}
+
+	.wheel-settings-modal {
+		animation: fadeIn 0.2s ease-in-out;
+	}
+
+	/* Make sure to select only enabled options for the wheel */
+	:global(.wheel-option-hidden) {
+		display: none;
 	}
 </style>
