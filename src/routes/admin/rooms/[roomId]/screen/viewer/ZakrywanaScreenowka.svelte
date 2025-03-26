@@ -5,7 +5,6 @@
 	export let screenImage;
 	export let room;
 	export let supabase;
-	export let currentRound;
 
 	let gameContainer;
 	let initial;
@@ -414,6 +413,8 @@
 	</div>
 
 	<!-- Points counter -->
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div bind:this={pointsCounter} class="absolute bottom-4 right-4 z-20 flex items-center justify-center rounded-md bg-gray-800/80 p-2 font-bold text-white transition-all duration-300" class:text-2xl={!isPointsEnlarged} class:text-6xl={isPointsEnlarged} on:click={togglePointsEnlarged}>
 		{pointsValue}
 	</div>
