@@ -17,7 +17,7 @@
 
 	// Game state
 	let isImageLoaded = false;
-	let pointsValue = 10; // Start with 10 points
+	let pointsValue = 8; // Start with 10 points
 	let isPointsEnlarged = false;
 	let showConfigPanel = false;
 	let revealCount = 0;
@@ -172,7 +172,7 @@
 		gameContainer.appendChild(fullImageContainer);
 
 		// Reset game state
-		pointsValue = 10;
+		pointsValue = 8;
 		revealCount = 0;
 	}
 
@@ -198,18 +198,19 @@
 		const position = `${row},${col}`;
 		revealedPositions.add(position);
 
-		// Update score based on reveal count
 		revealCount++;
-		if (revealCount === 1) {
-			pointsValue -= 1; // 10 -> 9
-		} else if (revealCount === 2) {
-			pointsValue -= 2; // 9 -> 7
-		} else if (revealCount === 3) {
-			pointsValue -= 3; // 7 -> 4
-		} else if (revealCount === 4) {
-			pointsValue -= 3; // 4 -> 1
-		} else {
-			pointsValue = Math.max(0, pointsValue - 1); // Ensure score doesn't go below 0
+
+		// Check if this is a center tile
+		const isCenterTile = maskContainer && cellRow >= Math.floor(rows / 2) - 1 && cellRow <= Math.floor(rows / 2) && cellCol >= Math.floor(cols / 2) - 1 && cellCol <= Math.floor(cols / 2);
+
+		// Subtract extra point for center tiles
+		if (isCenterTile) {
+			pointsValue = Math.max(0, pointsValue - 1); // Center tiles cost an extra point
+		}
+
+		// Every 2 revealed tiles subtract 2 points
+		if (revealCount % 2 === 0) {
+			pointsValue = Math.max(0, pointsValue - 2);
 		}
 
 		// Update center tiles color if needed
@@ -260,7 +261,7 @@
 		imagePieces = [];
 		revealedPieces = new Set();
 		revealedPositions = new Set();
-		pointsValue = 10;
+		pointsValue = 8;
 		revealCount = 0;
 	}
 
