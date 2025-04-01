@@ -59,7 +59,13 @@
 		minParts: 50,
 		maxParts: 150,
 		randomPolygons: false,
+		speedMode: 'constant', // 'constant', 'randomOnce', or 'randomEach'
 		animationSpeed: 400,
+		minRandomSpeed: 100,
+		maxRandomSpeed: 600,
+		randomDelay: false,
+		minRandomDelay: 10,
+		maxRandomDelay: 200,
 		revealDirections: [], // Empty array = random
 		useSpiral: false, // Just one spiral mode now (center outward)
 		revealInBatches: false, // New option for batch reveals
@@ -798,8 +804,15 @@
 				pointsValue = 100;
 			}
 
+			// If using randomOnce mode, determine the animation speed now
+			let animationSpeedToUse = config.animationSpeed;
+			if (config.speedMode === 'randomOnce') {
+				animationSpeedToUse = Math.floor(config.minRandomSpeed + Math.random() * (config.maxRandomSpeed - config.minRandomSpeed));
+				console.log('Using random speed (once):', animationSpeedToUse);
+			}
+
 			// Start the animation
-			partInterval = setInterval(() => {
+			const animationFunc = function () {
 				// First check if component is still mounted
 				if (!gameContainer) {
 					clearInterval(partInterval);
@@ -816,12 +829,15 @@
 						const part = imageParts[counter];
 						gameContainer.appendChild(part);
 
+						// Apply a random delay if enabled
+						const revealDelay = config.randomDelay ? config.minRandomDelay + Math.random() * (config.maxRandomDelay - config.minRandomDelay) : 10;
+
 						setTimeout(() => {
 							if (part && part.parentNode) {
 								// Check if part is still in DOM
 								part.style.opacity = '1';
 							}
-						}, 10);
+						}, revealDelay);
 
 						counter++;
 
@@ -839,6 +855,13 @@
 							// Original gradual reveal scoring (100 to 0)
 							pointsValue = Math.ceil((1 - counter / totalParts) * 100);
 						}
+
+						// If using randomEach mode, update the interval timing
+						if (config.speedMode === 'randomEach' && partInterval) {
+							clearInterval(partInterval);
+							const newSpeed = Math.floor(config.minRandomSpeed + Math.random() * (config.maxRandomSpeed - config.minRandomSpeed));
+							partInterval = setInterval(animationFunc, newSpeed);
+						}
 					} catch (error) {
 						console.error('Error appending part:', error);
 						clearInterval(partInterval);
@@ -852,7 +875,10 @@
 					isImagePaused = false; // Reset pause state
 					pointsValue = 0; // Final score is 0 in both modes
 				}
-			}, config.animationSpeed);
+			};
+
+			// Start the interval with appropriate speed
+			partInterval = setInterval(animationFunc, config.speedMode === 'randomOnce' ? animationSpeedToUse : config.animationSpeed);
 		}, 500);
 	}
 
@@ -942,146 +968,199 @@
 		</svg>
 	</button>
 
-	<!-- Hand raise results display -->
-	{#if handRaiseResults.length > 0}
-		<div class="absolute left-4 top-4 z-30 flex items-center gap-2 rounded bg-black/70 px-3 py-2 text-white">
-			<span class="font-bold">Odpowiada: {handRaiseResults[0].name}</span>
-			<button on:click={handleNextTakeover} class="ml-2 rounded bg-black px-3 py-1 text-sm font-bold text-white transition-colors duration-300 hover:bg-black/30"> Next </button>
-		</div>
-	{/if}
-
 	<!-- Configuration panel -->
 	{#if showConfigPanel}
-		<div class="config-panel absolute right-4 top-14 z-20 w-64 rounded-md bg-gray-800 p-4 text-white shadow-md">
+		<div class="config-panel absolute right-4 top-14 z-20 w-auto max-w-4xl rounded-md bg-gray-800 p-4 text-white shadow-md">
 			<h3 class="mb-4 text-lg font-bold">Ustawienia</h3>
 
-			<div class="mb-4">
-				<div class="mb-2 flex items-center">
-					<input type="checkbox" id="random-polygons" bind:checked={config.randomPolygons} class="mr-2 h-4 w-4 rounded border-gray-300 bg-gray-700" />
-					<label for="random-polygons">Losowa liczba elementów</label>
+			<div class="grid grid-cols-2 gap-4">
+				<!-- Left Column -->
+				<div>
+					<!-- Polygon settings -->
+					<div class="mb-4">
+						<h4 class="mb-2 border-b border-gray-700 pb-1 text-sm font-medium uppercase tracking-wider">Elementy</h4>
+						<div class="mb-2 flex items-center">
+							<input type="checkbox" id="random-polygons" bind:checked={config.randomPolygons} class="mr-2 h-4 w-4 rounded border-gray-300 bg-gray-700" />
+							<label for="random-polygons">Losowa liczba elementów</label>
+						</div>
+
+						{#if !config.randomPolygons}
+							<div class="mb-2 flex items-center justify-between">
+								<label for="num-parts" class="block">Ilość elementów</label>
+								<span class="text-sm text-gray-300">{config.numParts}</span>
+							</div>
+							<input id="num-parts" type="range" min="20" max="150" bind:value={config.numParts} class="h-2 w-full appearance-none rounded-md bg-gray-700" />
+						{:else}
+							<div class="mb-1 flex items-center justify-between">
+								<!-- svelte-ignore a11y_label_has_associated_control -->
+								<label class="block">Zakres elementów</label>
+								<span class="text-sm text-gray-300">{config.minParts}-{config.maxParts}</span>
+							</div>
+							<div class="mb-1 flex items-center gap-2">
+								<span class="w-8 text-xs">{config.minParts}</span>
+								<input type="range" min="20" max={config.maxParts - 10} bind:value={config.minParts} class="h-2 flex-1 appearance-none rounded-md bg-gray-700" />
+							</div>
+							<div class="flex items-center gap-2">
+								<span class="w-8 text-xs">{config.maxParts}</span>
+								<input type="range" min={config.minParts + 10} max="150" bind:value={config.maxParts} class="h-2 flex-1 appearance-none rounded-md bg-gray-700" />
+							</div>
+						{/if}
+					</div>
+
+					<!-- Batch reveal settings -->
+					<div class="mb-4">
+						<h4 class="mb-2 border-b border-gray-700 pb-1 text-sm font-medium uppercase tracking-wider">Sposób odsłaniania</h4>
+						<div class="mb-2 flex items-center">
+							<input type="checkbox" id="reveal-in-batches" bind:checked={config.revealInBatches} class="mr-2 h-4 w-4 rounded border-gray-300 bg-gray-700" />
+							<label for="reveal-in-batches">Odsłaniaj w częściach</label>
+						</div>
+
+						{#if config.revealInBatches}
+							<div class="mb-2 flex items-center justify-between">
+								<label for="num-batches" class="block">Liczba części</label>
+								<span class="text-sm text-gray-300">{config.numberOfBatches}</span>
+							</div>
+							<input id="num-batches" type="range" min="2" max="10" bind:value={config.numberOfBatches} class="h-2 w-full appearance-none rounded-md bg-gray-700" />
+						{/if}
+					</div>
+
+					<!-- Animation speed settings (moved from right column) -->
+					<div class="mb-4">
+						<h4 class="mb-2 border-b border-gray-700 pb-1 text-sm font-medium uppercase tracking-wider">Szybkość animacji</h4>
+
+						<div class="mb-2">
+							<!-- svelte-ignore a11y_label_has_associated_control -->
+							<label class="block font-medium">Tryb szybkości animacji</label>
+						</div>
+
+						<div class="mb-2 flex items-center">
+							<input type="radio" id="speed-mode-constant" bind:group={config.speedMode} value="constant" class="mr-2 h-4 w-4 rounded border-gray-300 bg-gray-700" />
+							<label for="speed-mode-constant">Stała prędkość</label>
+						</div>
+
+						<div class="mb-2 flex items-center">
+							<input type="radio" id="speed-mode-random-once" bind:group={config.speedMode} value="randomOnce" class="mr-2 h-4 w-4 rounded border-gray-300 bg-gray-700" />
+							<label for="speed-mode-random-once">Losowa prędkość (na początku)</label>
+						</div>
+
+						<div class="mb-3 flex items-center">
+							<input type="radio" id="speed-mode-random-each" bind:group={config.speedMode} value="randomEach" class="mr-2 h-4 w-4 rounded border-gray-300 bg-gray-700" />
+							<label for="speed-mode-random-each">Losowa prędkość (dla każdego elementu)</label>
+						</div>
+
+						{#if config.speedMode === 'constant'}
+							<div class="mb-2 flex items-center justify-between">
+								<label for="animation-speed" class="block">Podstawowa szybkość</label>
+								<span class="text-sm text-gray-300">{config.animationSpeed}ms</span>
+							</div>
+							<input id="animation-speed" type="range" min="100" max="1000" step="50" bind:value={config.animationSpeed} class="h-2 w-full appearance-none rounded-md bg-gray-700" />
+						{/if}
+
+						{#if config.speedMode !== 'constant'}
+							<div class="mb-1 flex items-center justify-between">
+								<!-- svelte-ignore a11y_label_has_associated_control -->
+								<label class="block">Zakres losowej prędkości</label>
+								<span class="text-sm text-gray-300">{config.minRandomSpeed}-{config.maxRandomSpeed}ms</span>
+							</div>
+							<div class="mb-1 flex items-center gap-2">
+								<span class="w-8 text-xs">{config.minRandomSpeed}</span>
+								<input type="range" min="50" max={config.maxRandomSpeed - 50} bind:value={config.minRandomSpeed} class="h-2 flex-1 appearance-none rounded-md bg-gray-700" />
+							</div>
+							<div class="flex items-center gap-2">
+								<span class="w-8 text-xs">{config.maxRandomSpeed}</span>
+								<input type="range" min={config.minRandomSpeed + 50} max="1000" bind:value={config.maxRandomSpeed} class="h-2 flex-1 appearance-none rounded-md bg-gray-700" />
+							</div>
+						{/if}
+					</div>
 				</div>
 
-				{#if !config.randomPolygons}
-					<!-- svelte-ignore a11y_label_has_associated_control -->
-					<label class="mb-1 block">Ilość elementów ({config.numParts})</label>
-					<input type="range" min="20" max="150" bind:value={config.numParts} class="h-2 w-full appearance-none rounded-md bg-gray-700" />
-				{:else}
-					<!-- svelte-ignore a11y_label_has_associated_control -->
-					<label class="mb-1 block">Zakres elementów ({config.minParts}-{config.maxParts})</label>
-					<div class="mb-1 flex items-center gap-2">
-						<span class="w-8 text-xs">{config.minParts}</span>
-						<input type="range" min="20" max={config.maxParts - 10} bind:value={config.minParts} class="h-2 flex-1 appearance-none rounded-md bg-gray-700" />
+				<!-- Right Column -->
+				<div>
+					<!-- Visual Direction Selector -->
+					<div class="mb-4">
+						<h4 class="mb-2 border-b border-gray-700 pb-1 text-sm font-medium uppercase tracking-wider">Kierunek odkrywania</h4>
+
+						<div class="mb-2 grid grid-cols-3 gap-1 rounded-md bg-gray-700/50 p-1" style="height: 120px;">
+							<!-- Top Left -->
+							<div class="corner-cell"></div>
+							<!-- Top -->
+							<div class="edge-cell flex items-center justify-center">
+								<!-- svelte-ignore a11y_consider_explicit_label -->
+								<button class="direction-button {config.revealDirections.includes('top') ? 'active' : ''}" on:click={() => toggleDirection('top')} disabled={config.useSpiral}>
+									<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+										<polyline points="18 15 12 9 6 15"></polyline>
+									</svg>
+								</button>
+							</div>
+							<!-- Top Right -->
+							<div class="corner-cell"></div>
+
+							<!-- Left -->
+							<div class="edge-cell flex items-center justify-center">
+								<!-- svelte-ignore a11y_consider_explicit_label -->
+								<button class="direction-button {config.revealDirections.includes('left') ? 'active' : ''}" on:click={() => toggleDirection('left')} disabled={config.useSpiral}>
+									<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+										<polyline points="15 18 9 12 15 6"></polyline>
+									</svg>
+								</button>
+							</div>
+
+							<!-- Center -->
+							<div class="center-cell flex items-center justify-center">
+								<button class="spiral-button {config.useSpiral ? 'active' : ''}" on:click={toggleSpiral} title="Od środka na zewnątrz">
+									<Spirals size={24} />
+								</button>
+							</div>
+
+							<!-- Right -->
+							<div class="edge-cell flex items-center justify-center">
+								<!-- svelte-ignore a11y_consider_explicit_label -->
+								<button class="direction-button {config.revealDirections.includes('right') ? 'active' : ''}" on:click={() => toggleDirection('right')} disabled={config.useSpiral}>
+									<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+										<polyline points="9 18 15 12 9 6"></polyline>
+									</svg>
+								</button>
+							</div>
+
+							<!-- Bottom Left -->
+							<div class="corner-cell"></div>
+							<!-- Bottom -->
+							<div class="edge-cell flex items-center justify-center">
+								<!-- svelte-ignore a11y_consider_explicit_label -->
+								<button class="direction-button {config.revealDirections.includes('bottom') ? 'active' : ''}" on:click={() => toggleDirection('bottom')} disabled={config.useSpiral}>
+									<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+										<polyline points="6 9 12 15 18 9"></polyline>
+									</svg>
+								</button>
+							</div>
+							<!-- Bottom Right -->
+							<div class="corner-cell"></div>
+						</div>
+
+						<div class="mt-1 text-xs text-gray-400">
+							{#if config.useSpiral}
+								Aktywny tryb spiralny (od środka)
+							{:else if config.revealDirections.length === 0}
+								Aktywny tryb losowy
+							{:else}
+								Aktywne kierunki: {config.revealDirections
+									.map((d) => {
+										if (d === 'left') return 'Lewy';
+										if (d === 'right') return 'Prawy';
+										if (d === 'top') return 'Góra';
+										if (d === 'bottom') return 'Dół';
+										return '';
+									})
+									.join(', ')}
+							{/if}
+						</div>
 					</div>
-					<div class="flex items-center gap-2">
-						<span class="w-8 text-xs">{config.maxParts}</span>
-						<input type="range" min={config.minParts + 10} max="150" bind:value={config.maxParts} class="h-2 flex-1 appearance-none rounded-md bg-gray-700" />
-					</div>
-				{/if}
-			</div>
-
-			<div class="mb-4">
-				<!-- svelte-ignore a11y_label_has_associated_control -->
-				<label class="mb-1 block">Szybkość animacji ({config.animationSpeed}ms)</label>
-				<input type="range" min="100" max="1000" step="50" bind:value={config.animationSpeed} class="h-2 w-full appearance-none rounded-md bg-gray-700" />
-			</div>
-
-			<div class="mb-4">
-				<div class="mb-2 flex items-center">
-					<input type="checkbox" id="reveal-in-batches" bind:checked={config.revealInBatches} class="mr-2 h-4 w-4 rounded border-gray-300 bg-gray-700" />
-					<label for="reveal-in-batches">Odsłaniaj w częściach</label>
-				</div>
-
-				{#if config.revealInBatches}
-					<!-- svelte-ignore a11y_label_has_associated_control -->
-					<label class="mb-1 block">Liczba części ({config.numberOfBatches})</label>
-					<input type="range" min="2" max="10" bind:value={config.numberOfBatches} class="h-2 w-full appearance-none rounded-md bg-gray-700" />
-				{/if}
-			</div>
-
-			<!-- Visual Direction Selector -->
-			<div class="mb-4">
-				<!-- svelte-ignore a11y_label_has_associated_control -->
-				<label class="mb-2 block">Kierunek odkrywania</label>
-
-				<div class="mb-2 grid grid-cols-3 gap-1 rounded-md bg-gray-700/50 p-1" style="height: 120px;">
-					<!-- Top Left -->
-					<div class="corner-cell"></div>
-					<!-- Top -->
-					<div class="edge-cell flex items-center justify-center">
-						<!-- svelte-ignore a11y_consider_explicit_label -->
-						<button class="direction-button {config.revealDirections.includes('top') ? 'active' : ''}" on:click={() => toggleDirection('top')} disabled={config.useSpiral}>
-							<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-								<polyline points="18 15 12 9 6 15"></polyline>
-							</svg>
-						</button>
-					</div>
-					<!-- Top Right -->
-					<div class="corner-cell"></div>
-
-					<!-- Left -->
-					<div class="edge-cell flex items-center justify-center">
-						<!-- svelte-ignore a11y_consider_explicit_label -->
-						<button class="direction-button {config.revealDirections.includes('left') ? 'active' : ''}" on:click={() => toggleDirection('left')} disabled={config.useSpiral}>
-							<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-								<polyline points="15 18 9 12 15 6"></polyline>
-							</svg>
-						</button>
-					</div>
-
-					<!-- Center -->
-					<div class="center-cell flex items-center justify-center">
-						<button class="spiral-button {config.useSpiral ? 'active' : ''}" on:click={toggleSpiral} title="Od środka na zewnątrz">
-							<Spirals size={24} />
-						</button>
-					</div>
-
-					<!-- Right -->
-					<div class="edge-cell flex items-center justify-center">
-						<!-- svelte-ignore a11y_consider_explicit_label -->
-						<button class="direction-button {config.revealDirections.includes('right') ? 'active' : ''}" on:click={() => toggleDirection('right')} disabled={config.useSpiral}>
-							<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-								<polyline points="9 18 15 12 9 6"></polyline>
-							</svg>
-						</button>
-					</div>
-
-					<!-- Bottom Left -->
-					<div class="corner-cell"></div>
-					<!-- Bottom -->
-					<div class="edge-cell flex items-center justify-center">
-						<!-- svelte-ignore a11y_consider_explicit_label -->
-						<button class="direction-button {config.revealDirections.includes('bottom') ? 'active' : ''}" on:click={() => toggleDirection('bottom')} disabled={config.useSpiral}>
-							<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-								<polyline points="6 9 12 15 18 9"></polyline>
-							</svg>
-						</button>
-					</div>
-					<!-- Bottom Right -->
-					<div class="corner-cell"></div>
-				</div>
-
-				<div class="mt-1 text-xs text-gray-400">
-					{#if config.useSpiral}
-						Aktywny tryb spiralny (od środka)
-					{:else if config.revealDirections.length === 0}
-						Aktywny tryb losowy
-					{:else}
-						Aktywne kierunki: {config.revealDirections
-							.map((d) => {
-								if (d === 'left') return 'Lewy';
-								if (d === 'right') return 'Prawy';
-								if (d === 'top') return 'Góra';
-								if (d === 'bottom') return 'Dół';
-								return '';
-							})
-							.join(', ')}
-					{/if}
 				</div>
 			</div>
 
 			<!-- Wheel of Fortune buttons -->
-			<div class="mb-4">
-				<button on:click={openFortuneWheel} class="flex w-full items-center justify-center gap-2 rounded-md bg-purple-600 px-4 py-2 text-white hover:bg-purple-700">
+			<div class="mb-4 grid grid-cols-2 gap-4">
+				<button on:click={openFortuneWheel} class="flex items-center justify-center gap-2 rounded-md bg-purple-600 px-4 py-2 text-white hover:bg-purple-700">
 					<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 						<circle cx="12" cy="12" r="10"></circle>
 						<path d="M12 2v4"></path>
@@ -1095,7 +1174,7 @@
 					</svg>
 					Koło Fortuny
 				</button>
-				<button on:click={openWheelSettings} class="mt-2 flex w-full items-center justify-center gap-2 rounded-md bg-gray-600 px-4 py-2 text-white hover:bg-gray-700">
+				<button on:click={openWheelSettings} class="flex items-center justify-center gap-2 rounded-md bg-gray-600 px-4 py-2 text-white hover:bg-gray-700">
 					<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 						<path d="M12 20h9"></path>
 						<path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
@@ -1104,11 +1183,11 @@
 				</button>
 			</div>
 
-			<!-- Apply and Reset buttons -->
+			<!-- Bottom Action Buttons -->
 			<div class="flex gap-2">
 				<button on:click={applyConfig} class="flex-1 rounded-md bg-blue-600 py-2 text-white hover:bg-blue-700"> Zastosuj </button>
-				<button on:click={resetConfig} class="rounded-md bg-gray-600 px-2 py-2 text-white hover:bg-gray-700"> Reset </button>
-				<button on:click={revealAllTiles} class="rounded-md bg-amber-600 py-2 text-white hover:bg-amber-700">Odkryj wszystkie</button>
+				<button on:click={resetConfig} class="rounded-md bg-gray-600 px-4 py-2 text-white hover:bg-gray-700"> Reset </button>
+				<button on:click={revealAllTiles} class="rounded-md bg-amber-600 px-4 py-2 text-white hover:bg-amber-700">Odkryj wszystkie</button>
 			</div>
 		</div>
 	{/if}

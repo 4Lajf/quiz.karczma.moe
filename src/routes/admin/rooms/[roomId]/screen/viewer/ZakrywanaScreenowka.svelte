@@ -27,7 +27,6 @@
 
 	// Takeover and hand raise state
 	let isTakeoverActive = false;
-	let handRaiseResults = [];
 	let channel;
 
 	// Image and piece management
@@ -339,52 +338,6 @@
 		}
 	}
 
-	async function loadHandRaiseResults() {
-		try {
-			const { data, error } = await supabase.from('hand_raises').select('*').eq('room_id', room.id).order('server_timestamp', { ascending: true });
-
-			if (error) throw error;
-
-			if (data && data.length > 0) {
-				const firstTimestamp = new Date(data[0].server_timestamp).getTime();
-				const firstLatency = data[0].measured_latency || 0;
-				const adjustedFirstTime = firstTimestamp - firstLatency;
-
-				handRaiseResults = data.map((result, index) => {
-					const timestamp = new Date(result.server_timestamp).getTime();
-					const latency = result.measured_latency || 0;
-					const adjustedTime = timestamp - latency;
-					const timeDifferenceMs = index === 0 ? 0 : adjustedTime - adjustedFirstTime;
-
-					return {
-						name: result.player_name,
-						position: index + 1,
-						timestamp: result.server_timestamp,
-						timeDifferenceMs,
-						latency
-					};
-				});
-
-				// Enlarge points when there are hand raises
-				isPointsEnlarged = true;
-			} else {
-				handRaiseResults = [];
-			}
-		} catch (error) {
-			console.error('Failed to load hand raise results:', error);
-		}
-	}
-
-	function handleNextTakeover() {
-		// Remove the first entry from handRaiseResults if it exists
-		if (handRaiseResults.length > 1) {
-			handRaiseResults = handRaiseResults.slice(1);
-		} else {
-			// If no more takeovers, clear the list
-			handRaiseResults = [];
-		}
-	}
-
 	function setupHoverDetection() {
 		let timeout;
 		const cornerSize = 100; // Size of the corner area that activates the button
@@ -451,36 +404,6 @@
 			if (screenImage && screenImage.url) {
 				image.src = screenImage.url;
 			}
-
-			// Check current takeover mode status
-			try {
-				const { data, error } = await supabase.from('hand_raises').select('player_name').eq('room_id', room.id).limit(1).maybeSingle();
-
-				if (!error && data) {
-					isTakeoverActive = true;
-					isPointsEnlarged = true;
-					await loadHandRaiseResults();
-				}
-			} catch (error) {
-				console.error('Error checking takeover mode:', error);
-			}
-
-			// Set up subscription to hand raises
-			channel = supabase
-				.channel(`screen-takeover-${room.id}`)
-				.on(
-					'postgres_changes',
-					{
-						event: '*',
-						schema: 'public',
-						table: 'hand_raises',
-						filter: `room_id=eq.${room.id}`
-					},
-					async () => {
-						await loadHandRaiseResults();
-					}
-				)
-				.subscribe();
 		}
 	});
 
@@ -521,14 +444,6 @@
 			></path>
 		</svg>
 	</button>
-
-	<!-- Hand raise results -->
-	{#if handRaiseResults.length > 0}
-		<div class="absolute left-4 top-4 z-30 flex items-center gap-2 rounded bg-black/70 px-3 py-2 text-white">
-			<span class="font-bold">Odpowiada: {handRaiseResults[0].name}</span>
-			<button on:click={handleNextTakeover} class="ml-2 rounded bg-black px-3 py-1 text-sm font-bold text-white transition-colors duration-300 hover:bg-black/30"> Next </button>
-		</div>
-	{/if}
 
 	<!-- Configuration Panel -->
 	{#if showConfigPanel}

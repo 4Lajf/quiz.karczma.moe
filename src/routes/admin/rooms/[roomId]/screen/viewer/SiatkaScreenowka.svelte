@@ -19,8 +19,13 @@
 	let config = {
 		gridRows: 8,
 		gridColumns: 8,
-		animationSpeed: 3000, // 3 seconds between reveals
-		randomReveal: true
+		animationSpeed: 1000,
+		randomReveal: true,
+		speedMode: 'constant', // 'constant', 'randomOnce', or 'randomEach'
+		minRandomSpeed: 100,
+		maxRandomSpeed: 2000,
+		gridMode: 'grid', // 'grid' or 'crosshatch'
+		stripeCount: 10 // Number of stripes for crosshatch mode
 	};
 
 	// Game state
@@ -144,8 +149,8 @@
 		fullImageContainer.style.left = '0';
 		fullImageContainer.style.width = '100%';
 		fullImageContainer.style.height = '100%';
-		fullImageContainer.style.backgroundColor = 'white'; // Changed to white
-		fullImageContainer.style.opacity = '1'; // Fully opaque white
+		fullImageContainer.style.backgroundColor = 'white';
+		fullImageContainer.style.opacity = '1';
 
 		// Calculate image scaling to fit screen while maintaining aspect ratio
 		const imgRatio = image.width / image.height;
@@ -174,42 +179,106 @@
 		maskContainer.style.left = `${offsetX}px`;
 		maskContainer.style.width = `${displayWidth}px`;
 		maskContainer.style.height = `${displayHeight}px`;
-		maskContainer.style.overflow = 'hidden'; // Critical for preventing overflow
-
-		// Calculate piece dimensions
-		const pieceWidth = displayWidth / config.gridColumns;
-		const pieceHeight = displayHeight / config.gridRows;
+		maskContainer.style.overflow = 'hidden';
 
 		imagePieces = [];
 		revealedPieces = [];
 
-		// Create grid pieces
-		for (let row = 0; row < config.gridRows; row++) {
-			for (let col = 0; col < config.gridColumns; col++) {
-				const pieceElement = document.createElement('div');
-				pieceElement.className = 'image-piece';
+		// Generate pieces based on selected grid mode
+		if (config.gridMode === 'crosshatch') {
+			// Create horizontal stripes
+			const stripeHeight = displayHeight / config.stripeCount;
 
-				// Position and size the piece
-				pieceElement.style.width = `${pieceWidth}px`;
-				pieceElement.style.height = `${pieceHeight}px`;
-				pieceElement.style.position = 'absolute';
-				pieceElement.style.top = `${row * pieceHeight}px`;
-				pieceElement.style.left = `${col * pieceWidth}px`;
+			for (let i = 0; i < config.stripeCount; i++) {
+				const stripeElement = document.createElement('div');
+				stripeElement.className = 'image-piece stripe horizontal-stripe';
+
+				// Position and size the stripe
+				stripeElement.style.width = `${displayWidth}px`;
+				stripeElement.style.height = `${stripeHeight}px`;
+				stripeElement.style.position = 'absolute';
+				stripeElement.style.top = `${i * stripeHeight}px`;
+				stripeElement.style.left = '0';
 
 				// Background settings
-				pieceElement.style.backgroundImage = `url(${image.src})`;
-				pieceElement.style.backgroundSize = `${displayWidth}px ${displayHeight}px`;
-				pieceElement.style.backgroundPosition = `-${col * pieceWidth}px -${row * pieceHeight}px`;
+				stripeElement.style.backgroundImage = `url(${image.src})`;
+				stripeElement.style.backgroundSize = `${displayWidth}px ${displayHeight}px`;
+				stripeElement.style.backgroundPosition = `0 -${i * stripeHeight}px`;
 
 				// Initially hidden
-				pieceElement.style.opacity = '0';
-				pieceElement.style.backgroundColor = 'white'; // Changed to white
+				stripeElement.style.opacity = '0';
+				stripeElement.style.backgroundColor = 'white';
 
 				// Store metadata
-				pieceElement.dataset.row = row.toString();
-				pieceElement.dataset.col = col.toString();
+				stripeElement.dataset.index = i.toString();
+				stripeElement.dataset.type = 'horizontal';
 
-				imagePieces.push(pieceElement);
+				imagePieces.push(stripeElement);
+			}
+
+			// Create vertical stripes
+			const stripeWidth = displayWidth / config.stripeCount;
+
+			for (let i = 0; i < config.stripeCount; i++) {
+				const stripeElement = document.createElement('div');
+				stripeElement.className = 'image-piece stripe vertical-stripe';
+
+				// Position and size the stripe
+				stripeElement.style.width = `${stripeWidth}px`;
+				stripeElement.style.height = `${displayHeight}px`;
+				stripeElement.style.position = 'absolute';
+				stripeElement.style.top = '0';
+				stripeElement.style.left = `${i * stripeWidth}px`;
+
+				// Background settings
+				stripeElement.style.backgroundImage = `url(${image.src})`;
+				stripeElement.style.backgroundSize = `${displayWidth}px ${displayHeight}px`;
+				stripeElement.style.backgroundPosition = `-${i * stripeWidth}px 0`;
+
+				// Initially hidden
+				stripeElement.style.opacity = '0';
+				stripeElement.style.backgroundColor = 'white';
+
+				// Store metadata
+				stripeElement.dataset.index = i.toString();
+				stripeElement.dataset.type = 'vertical';
+
+				imagePieces.push(stripeElement);
+			}
+		} else {
+			// Default grid mode
+			// Calculate piece dimensions
+			const pieceWidth = displayWidth / config.gridColumns;
+			const pieceHeight = displayHeight / config.gridRows;
+
+			// Create grid pieces
+			for (let row = 0; row < config.gridRows; row++) {
+				for (let col = 0; col < config.gridColumns; col++) {
+					const pieceElement = document.createElement('div');
+					pieceElement.className = 'image-piece';
+
+					// Position and size the piece
+					pieceElement.style.width = `${pieceWidth}px`;
+					pieceElement.style.height = `${pieceHeight}px`;
+					pieceElement.style.position = 'absolute';
+					pieceElement.style.top = `${row * pieceHeight}px`;
+					pieceElement.style.left = `${col * pieceWidth}px`;
+
+					// Background settings
+					pieceElement.style.backgroundImage = `url(${image.src})`;
+					pieceElement.style.backgroundSize = `${displayWidth}px ${displayHeight}px`;
+					pieceElement.style.backgroundPosition = `-${col * pieceWidth}px -${row * pieceHeight}px`;
+
+					// Initially hidden
+					pieceElement.style.opacity = '0';
+					pieceElement.style.backgroundColor = 'white';
+
+					// Store metadata
+					pieceElement.dataset.row = row.toString();
+					pieceElement.dataset.col = col.toString();
+
+					imagePieces.push(pieceElement);
+				}
 			}
 		}
 
@@ -246,7 +315,15 @@
 
 			let revealedCount = 0;
 
-			partInterval = setInterval(() => {
+			// If using randomOnce mode, determine the animation speed now
+			let animationSpeedToUse = config.animationSpeed;
+			if (config.speedMode === 'randomOnce') {
+				animationSpeedToUse = Math.floor(config.minRandomSpeed + Math.random() * (config.maxRandomSpeed - config.minRandomSpeed));
+				console.log('Using random speed (once):', animationSpeedToUse);
+			}
+
+			// Create animation function for reuse
+			const animationFunc = function () {
 				if (!gameContainer) {
 					clearInterval(partInterval);
 					partInterval = null;
@@ -274,6 +351,13 @@
 					pointsValue = Math.ceil((1 - revealedCount / totalPieces) * 100);
 
 					revealedPieces.push(piece);
+
+					// If using randomEach mode, update the interval timing
+					if (config.speedMode === 'randomEach' && partInterval) {
+						clearInterval(partInterval);
+						const newSpeed = Math.floor(config.minRandomSpeed + Math.random() * (config.maxRandomSpeed - config.minRandomSpeed));
+						partInterval = setInterval(animationFunc, newSpeed);
+					}
 				} else {
 					// All pieces revealed
 					clearInterval(partInterval);
@@ -282,7 +366,10 @@
 					isImagePaused = false;
 					pointsValue = 0;
 				}
-			}, config.animationSpeed);
+			};
+
+			// Start the interval with appropriate speed
+			partInterval = setInterval(animationFunc, config.speedMode === 'randomOnce' ? animationSpeedToUse : config.animationSpeed);
 		}, 500);
 	}
 
@@ -346,8 +433,8 @@
 
 	function updateConfig() {
 		// Validate config
-		config.gridRows = Math.max(2, Math.min(config.gridRows, 20));
-		config.gridColumns = Math.max(2, Math.min(config.gridColumns, 20));
+		config.gridRows = Math.max(1, Math.min(config.gridRows, 20));
+		config.gridColumns = Math.max(1, Math.min(config.gridColumns, 20));
 
 		// Save to localStorage
 		saveConfigToLocalStorage();
@@ -389,14 +476,6 @@
 			}
 		} catch (error) {
 			console.error('Failed to load hand raise results:', error);
-		}
-	}
-
-	function handleNextTakeover() {
-		if (handRaiseResults.length > 1) {
-			handRaiseResults = handRaiseResults.slice(1);
-		} else {
-			handRaiseResults = [];
 		}
 	}
 
@@ -578,39 +657,104 @@
 		</svg>
 	</button>
 
-	<!-- Hand raise results -->
-	{#if handRaiseResults.length > 0}
-		<div class="absolute left-4 top-4 z-30 flex items-center gap-2 rounded bg-black/70 px-3 py-2 text-white">
-			<span class="font-bold">Odpowiada: {handRaiseResults[0].name}</span>
-			<button on:click={handleNextTakeover} class="ml-2 rounded bg-black px-3 py-1 text-sm font-bold text-white transition-colors duration-300 hover:bg-black/30"> Next </button>
-		</div>
-	{/if}
-
 	<!-- Configuration Panel -->
 	{#if showConfigPanel}
-		<div class="config-panel absolute right-4 top-14 z-20 w-64 rounded-md bg-gray-800 p-4 text-white shadow-md">
+		<div class="config-panel absolute right-4 top-14 z-20 w-auto max-w-xl rounded-md bg-gray-800 p-4 text-white shadow-md">
 			<h3 class="mb-4 text-lg font-bold">Ustawienia siatki</h3>
 
-			<div class="mb-4">
-				<!-- Continuing from previous code -->
-				<label for="grid-rows" class="mb-2 block">Liczba wierszy ({config.gridRows})</label>
-				<input type="range" id="grid-rows" min="2" max="20" bind:value={config.gridRows} class="h-2 w-full appearance-none rounded-md bg-gray-700" />
-			</div>
+			<div class="grid grid-cols-2 gap-4">
+				<!-- Left Column -->
+				<div>
+					<div class="mb-4">
+						<h4 class="mb-2 border-b border-gray-700 pb-1 text-sm font-medium uppercase tracking-wider">Tryb podziału</h4>
 
-			<div class="mb-4">
-				<label for="grid-columns" class="mb-2 block">Liczba kolumn ({config.gridColumns})</label>
-				<input type="range" id="grid-columns" min="2" max="20" bind:value={config.gridColumns} class="h-2 w-full appearance-none rounded-md bg-gray-700" />
-			</div>
+						<div class="mb-2 flex items-center">
+							<input type="radio" id="grid-mode-grid" bind:group={config.gridMode} value="grid" class="mr-2 h-4 w-4 rounded border-gray-300 bg-gray-700" />
+							<label for="grid-mode-grid">Siatka</label>
+						</div>
 
-			<div class="mb-4">
-				<label for="reveal-speed" class="mb-2 block">Prędkość odkrywania ({config.animationSpeed}ms)</label>
-				<input type="range" id="reveal-speed" min="1000" max="5000" step="500" bind:value={config.animationSpeed} class="h-2 w-full appearance-none rounded-md bg-gray-700" />
-			</div>
+						<div class="mb-3 flex items-center">
+							<input type="radio" id="grid-mode-crosshatch" bind:group={config.gridMode} value="crosshatch" class="mr-2 h-4 w-4 rounded border-gray-300 bg-gray-700" />
+							<label for="grid-mode-crosshatch">Kratka (paski krzyżowe)</label>
+						</div>
 
-			<div class="mb-4">
-				<div class="flex items-center">
-					<input type="checkbox" id="random-reveal" bind:checked={config.randomReveal} class="mr-2 h-4 w-4 rounded border-gray-300 bg-gray-700" />
-					<label for="random-reveal">Losowe odkrywanie elementów</label>
+						{#if config.gridMode === 'grid'}
+							<div class="mb-2 flex items-center justify-between">
+								<label for="grid-rows" class="block">Liczba wierszy</label>
+								<span class="text-sm text-gray-300">{config.gridRows}</span>
+							</div>
+							<input type="range" id="grid-rows" min="1" max="20" bind:value={config.gridRows} class="h-2 w-full appearance-none rounded-md bg-gray-700" />
+
+							<div class="mb-2 mt-2 flex items-center justify-between">
+								<label for="grid-columns" class="block">Liczba kolumn</label>
+								<span class="text-sm text-gray-300">{config.gridColumns}</span>
+							</div>
+							<input type="range" id="grid-columns" min="1" max="20" bind:value={config.gridColumns} class="h-2 w-full appearance-none rounded-md bg-gray-700" />
+						{:else}
+							<div class="mb-2 flex items-center justify-between">
+								<label for="stripe-count" class="block">Liczba pasków</label>
+								<span class="text-sm text-gray-300">{config.stripeCount}</span>
+							</div>
+							<input type="range" id="stripe-count" min="2" max="30" bind:value={config.stripeCount} class="h-2 w-full appearance-none rounded-md bg-gray-700" />
+						{/if}
+
+						<div class="mt-4 flex items-center">
+							<input type="checkbox" id="random-reveal" bind:checked={config.randomReveal} class="mr-2 h-4 w-4 rounded border-gray-300 bg-gray-700" />
+							<label for="random-reveal">Losowe odkrywanie elementów</label>
+						</div>
+					</div>
+				</div>
+
+				<!-- Right Column -->
+				<div>
+					<!-- Animation speed settings -->
+					<div class="mb-4">
+						<h4 class="mb-2 border-b border-gray-700 pb-1 text-sm font-medium uppercase tracking-wider">Szybkość animacji</h4>
+
+						<div class="mb-2">
+							<!-- svelte-ignore a11y_label_has_associated_control -->
+							<label class="block font-medium">Tryb szybkości animacji</label>
+						</div>
+
+						<div class="mb-2 flex items-center">
+							<input type="radio" id="speed-mode-constant" bind:group={config.speedMode} value="constant" class="mr-2 h-4 w-4 rounded border-gray-300 bg-gray-700" />
+							<label for="speed-mode-constant">Stała prędkość</label>
+						</div>
+
+						<div class="mb-2 flex items-center">
+							<input type="radio" id="speed-mode-random-once" bind:group={config.speedMode} value="randomOnce" class="mr-2 h-4 w-4 rounded border-gray-300 bg-gray-700" />
+							<label for="speed-mode-random-once">Losowa prędkość (na początku)</label>
+						</div>
+
+						<div class="mb-3 flex items-center">
+							<input type="radio" id="speed-mode-random-each" bind:group={config.speedMode} value="randomEach" class="mr-2 h-4 w-4 rounded border-gray-300 bg-gray-700" />
+							<label for="speed-mode-random-each">Losowa prędkość (dla każdego elementu)</label>
+						</div>
+
+						{#if config.speedMode === 'constant'}
+							<div class="mb-2 flex items-center justify-between">
+								<label for="animation-speed" class="block">Podstawowa szybkość</label>
+								<span class="text-sm text-gray-300">{config.animationSpeed}ms</span>
+							</div>
+							<input id="animation-speed" type="range" min="100" max="3000" step="100" bind:value={config.animationSpeed} class="h-2 w-full appearance-none rounded-md bg-gray-700" />
+						{/if}
+
+						{#if config.speedMode !== 'constant'}
+							<div class="mb-1 flex items-center justify-between">
+								<!-- svelte-ignore a11y_label_has_associated_control -->
+								<label class="block">Zakres losowej prędkości</label>
+								<span class="text-sm text-gray-300">{config.minRandomSpeed}-{config.maxRandomSpeed}ms</span>
+							</div>
+							<div class="mb-1 flex items-center gap-2">
+								<span class="w-8 text-xs">{config.minRandomSpeed}</span>
+								<input type="range" min="100" max={config.maxRandomSpeed - 100} step="100" bind:value={config.minRandomSpeed} class="h-2 flex-1 appearance-none rounded-md bg-gray-700" />
+							</div>
+							<div class="flex items-center gap-2">
+								<span class="w-8 text-xs">{config.maxRandomSpeed}</span>
+								<input type="range" min={config.minRandomSpeed + 100} max="3000" step="100" bind:value={config.maxRandomSpeed} class="h-2 flex-1 appearance-none rounded-md bg-gray-700" />
+							</div>
+						{/if}
+					</div>
 				</div>
 			</div>
 
@@ -622,8 +766,13 @@
 						config = {
 							gridRows: 8,
 							gridColumns: 8,
-							animationSpeed: 3000,
-							randomReveal: true
+							animationSpeed: 1000,
+							randomReveal: true,
+							speedMode: 'constant',
+							minRandomSpeed: 100,
+							maxRandomSpeed: 2000,
+							gridMode: 'grid',
+							stripeCount: 10
 						};
 						updateConfig();
 					}}
@@ -708,5 +857,17 @@
 			opacity: 1;
 			transform: translateY(0);
 		}
+	}
+
+	:global(.horizontal-stripe) {
+		z-index: 11; /* Horizontal stripes should appear on top of vertical ones */
+	}
+
+	:global(.vertical-stripe) {
+		z-index: 10;
+	}
+
+	:global(.image-piece.stripe) {
+		clip-path: none; /* Ensure stripes don't get clipped by other pieces */
 	}
 </style>
