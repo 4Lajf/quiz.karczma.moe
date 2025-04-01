@@ -6,6 +6,7 @@
 	export let screenImage;
 	export let room;
 	export let supabase;
+	export let currentRound;
 
 	let gameContainer;
 	let countdown;
@@ -49,6 +50,67 @@
 		loadNewImage();
 	}
 
+	async function savePointsValue() {
+		if (!currentRound || !room) return;
+
+		try {
+			// Store points in the same 'screen_game_points' table used by other components
+			const { error } = await supabase.from('screen_game_points').upsert(
+				{
+					room_id: room.id,
+					round_id: currentRound.id,
+					points_value: pointsValue,
+					updated_at: new Date().toISOString()
+				},
+				{ onConflict: 'room_id,round_id' }
+			);
+
+			if (error) throw error;
+			console.log('Saved current points value:', pointsValue);
+		} catch (error) {
+			console.error('Failed to save points value:', error);
+		}
+	}
+
+	async function loadCurrentPoints() {
+		if (!currentRound || !room) return;
+
+		try {
+			// Check if there are any saved points for this round
+			const { data, error } = await supabase.from('screen_game_points').select('points_value').eq('room_id', room.id).eq('round_id', currentRound.id).maybeSingle();
+
+			if (error) throw error;
+
+			// If we have saved data, use it, otherwise default to 100
+			if (data?.points_value !== undefined) {
+				console.log('Loaded saved points value:', data.points_value);
+				pointsValue = data.points_value;
+			} else {
+				pointsValue = 100;
+			}
+		} catch (error) {
+			console.error('Failed to load points value:', error);
+			// Default to 100 if there's an error
+			pointsValue = 100;
+		}
+	}
+
+	function revealAllTiles() {
+		imagePieces.forEach((piece) => {
+			if (!revealedPieces.has(piece)) {
+				const row = parseInt(piece.dataset.row);
+				const col = parseInt(piece.dataset.col);
+				revealTile(piece, row, col);
+			}
+		});
+
+		// Set points to 0 after revealing all
+		pointsValue = 0;
+		gameCompleted = true;
+		savePointsValue(); // Save final points
+	}
+
+	// Update in the loadNewImage function
 	function loadNewImage() {
 		if (partInterval) {
 			clearInterval(partInterval);
@@ -64,6 +126,7 @@
 		image.onload = () => {
 			isImageLoaded = true;
 			generateImagePieces();
+			loadCurrentPoints(); // Load saved points after generating pieces
 		};
 	}
 
@@ -231,6 +294,9 @@
 			isImagePlaying = false;
 			isImagePaused = true;
 			isPointsEnlarged = true;
+
+			// Save current points when pausing
+			savePointsValue();
 		} else {
 			if (isImagePaused) {
 				// Resume
@@ -241,6 +307,11 @@
 				// Start new reveal
 				splitImage();
 				if (initial) initial.textContent = '';
+
+				// Set initial points value and save it
+				pointsValue = 100;
+				savePointsValue();
+
 				isPointsEnlarged = false;
 			}
 		}
@@ -263,6 +334,9 @@
 		isImagePlaying = false;
 		isImagePaused = false;
 		pointsValue = 100;
+
+		// Save reset points value
+		savePointsValue();
 
 		if (partInterval) {
 			clearInterval(partInterval);
@@ -306,7 +380,9 @@
 
 				// Pause game and enlarge points if hand raises exist
 				if (handRaiseResults.length > 0) {
-					togglePlayPause();
+					if (!isImagePaused) {
+						togglePlayPause();
+					}
 				}
 			} else {
 				handRaiseResults = [];
@@ -555,6 +631,7 @@
 				>
 					Reset
 				</button>
+				<button on:click={revealAllTiles} class="rounded-md bg-amber-600 py-2 text-white hover:bg-amber-700">Odkryj wszystkie</button>
 			</div>
 		</div>
 	{/if}

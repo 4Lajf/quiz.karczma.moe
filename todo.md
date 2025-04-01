@@ -1,9 +1,3 @@
-Wiecej checkow zeby hinty byly poprawne
-kafelki sie nie zmieniaja i punkty sie nie odejmuja show all przycisk
-sprezzyc punkty z widoku z punktami na adminie na zakrywanej i 
-jak druga osoba klika przejecie to niech sie nie odtrzymuje
-przeskalowac zakrywana do 100 punktow skali
-przycisk na minus
 nastepna runda czysci na UI przejecia
 odslaniaj w czesciach nie dziala
 dodac losowy delay przycisk
@@ -13,3 +7,6 @@ losowe ustawienia do paskówki
 
 TODO:
 Pixelówka (tak jak rozbita)
+
+FIXME (?):
+Wiecej checkow zeby hinty byly poprawne (cos sie z odpowiedziami dzieje przy slabym polaczeniu czy cos)

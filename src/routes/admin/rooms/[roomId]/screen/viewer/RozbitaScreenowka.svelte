@@ -7,6 +7,7 @@
 	export let screenImage;
 	export let room;
 	export let supabase;
+	export let currentRound;
 
 	let showFortuneWheel = false;
 	let fortuneWheelOptions = [
@@ -64,6 +65,28 @@
 		revealInBatches: false, // New option for batch reveals
 		numberOfBatches: 3 // Default number of batches
 	};
+
+	async function savePointsValue() {
+		if (!currentRound || !room) return;
+
+		try {
+			// Store points in the same 'screen_game_points' table used by ZakrywanaScreenowka
+			const { error } = await supabase.from('screen_game_points').upsert(
+				{
+					room_id: room.id,
+					round_id: currentRound.id,
+					points_value: pointsValue,
+					updated_at: new Date().toISOString()
+				},
+				{ onConflict: 'room_id,round_id' }
+			);
+
+			if (error) throw error;
+			console.log('Saved current points value:', pointsValue);
+		} catch (error) {
+			console.error('Failed to save points value:', error);
+		}
+	}
 
 	function loadWheelOptionsFromLocalStorage() {
 		if (browser) {
@@ -134,6 +157,21 @@
 		];
 
 		wheelSettingOptions = defaultOptions;
+	}
+
+	function revealAllTiles() {
+		imagePieces.forEach((piece) => {
+			if (!revealedPieces.has(piece)) {
+				const row = parseInt(piece.dataset.row);
+				const col = parseInt(piece.dataset.col);
+				revealTile(piece, row, col);
+			}
+		});
+
+		// Set points to 0 after revealing all
+		pointsValue = 0;
+		gameCompleted = true;
+		savePointsValue(); // Save final points
 	}
 
 	function handleWheelSelection(event) {
@@ -328,7 +366,9 @@
 
 				// Set takeover as active and enlarge points when there are hand raises
 				if (handRaiseResults.length > 0) {
-					togglePlayPause();
+					if (!isImagePaused) {
+						togglePlayPause();
+					}
 				}
 			} else {
 				handRaiseResults = [];
@@ -508,7 +548,6 @@
 	}
 
 	// Toggle between play and pause states
-	// Toggle between play and pause states
 	function togglePlayPause() {
 		if (!isImageLoaded) {
 			return;
@@ -518,6 +557,9 @@
 			isImagePlaying = false;
 			isImagePaused = true;
 			isPointsEnlarged = true;
+
+			// Save current points when pausing
+			savePointsValue();
 		} else {
 			if (isImagePaused) {
 				// Resume animation that was paused
@@ -532,6 +574,10 @@
 				}
 				// Reset points based on the mode
 				pointsValue = config.revealInBatches ? config.numberOfBatches : 100;
+
+				// Save initial points value
+				savePointsValue();
+
 				isPointsEnlarged = false;
 			}
 		}
@@ -833,6 +879,9 @@
 
 	// Ensure cleanup on component destroy
 	onDestroy(() => {
+		// Save final points value when component is destroyed
+		savePointsValue();
+
 		if (partInterval) {
 			clearInterval(partInterval);
 			partInterval = null;
@@ -843,7 +892,6 @@
 			channel.unsubscribe();
 		}
 	});
-
 	// Watch for changes to screenImage
 	$: if (browser && screenImage && screenImage.url && image && image.src !== screenImage.url) {
 		// Load the new image
@@ -1060,6 +1108,7 @@
 			<div class="flex gap-2">
 				<button on:click={applyConfig} class="flex-1 rounded-md bg-blue-600 py-2 text-white hover:bg-blue-700"> Zastosuj </button>
 				<button on:click={resetConfig} class="rounded-md bg-gray-600 px-2 py-2 text-white hover:bg-gray-700"> Reset </button>
+				<button on:click={revealAllTiles} class="rounded-md bg-amber-600 py-2 text-white hover:bg-amber-700">Odkryj wszystkie</button>
 			</div>
 		</div>
 	{/if}

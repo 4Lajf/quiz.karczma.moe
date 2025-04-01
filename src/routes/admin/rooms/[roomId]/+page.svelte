@@ -24,6 +24,8 @@
 	let editType = null; // 'score' or 'tiebreaker'
 	let pointsAddedForRounds = {};
 	let isAddingPoints = false;
+	let minusPointsAddedForRounds = {};
+	let isAddingMinusPoints = false;
 
 	$: if (selectedRoundId && selectedRoundId !== room.current_round) {
 		// Reset points added tracking when switching to a different round
@@ -69,6 +71,140 @@
 		} catch (error) {
 			console.error('Failed to load correct answers:', error);
 			toast.error('Nie udało się załadować prawidłowych odpowiedzi');
+		}
+	}
+
+	async function awardPointsToPlayer(playerId) {
+		if (!isCurrentRound) {
+			toast.error('Nie można przyznawać punktów w poprzednich rundach');
+			return;
+		}
+
+		const player = players.find((p) => p.id === playerId);
+		if (!player) {
+			toast.error('Nie znaleziono gracza');
+			return;
+		}
+
+		// Get the base points to award
+		let pointsToAdd = 0;
+
+		// Check if we have saved points from ZakrywanaScreenowka for this round
+		if (room.type === 'screen') {
+			const { data: screenPointsData, error: screenPointsError } = await supabase.from('screen_game_points').select('points_value').eq('room_id', room.id).eq('round_id', selectedRoundId).maybeSingle();
+
+			if (!screenPointsError && screenPointsData) {
+				pointsToAdd = screenPointsData.points_value;
+			} else {
+				pointsToAdd = room.points_config.main_answer; // Fall back to default
+			}
+		} else {
+			pointsToAdd = room.points_config.main_answer;
+		}
+
+		try {
+			// Get current player score
+			const { data: currentPlayer, error: playerError } = await supabase.from('players').select('score').eq('id', playerId).single();
+
+			if (playerError) throw playerError;
+
+			// Update the player score
+			const { error } = await supabase
+				.from('players')
+				.update({ score: currentPlayer.score + pointsToAdd })
+				.eq('id', playerId);
+
+			if (error) throw error;
+
+			toast.success(`Dodano ${pointsToAdd} punktów dla ${player.name}`);
+			await invalidateAll();
+		} catch (error) {
+			toast.error(`Nie udało się przyznać punktów: ${error.message}`);
+		}
+	}
+
+	async function awardNegativePointsToPlayer(playerId) {
+		if (!isCurrentRound) {
+			toast.error('Nie można przyznawać punktów ujemnych w poprzednich rundach');
+			return;
+		}
+
+		const player = players.find((p) => p.id === playerId);
+		if (!player) {
+			toast.error('Nie znaleziono gracza');
+			return;
+		}
+
+		// Get the base points to deduct
+		let pointsToDeduct = 0;
+
+		// Check if we have saved points from ZakrywanaScreenowka for this round
+		if (room.type === 'screen') {
+			const { data: screenPointsData, error: screenPointsError } = await supabase.from('screen_game_points').select('points_value').eq('room_id', room.id).eq('round_id', selectedRoundId).maybeSingle();
+
+			if (!screenPointsError && screenPointsData) {
+				pointsToDeduct = screenPointsData.points_value / 2; // Half the points for negative
+			} else {
+				pointsToDeduct = room.points_config.main_answer / 2; // Fall back to default
+			}
+		} else {
+			pointsToDeduct = room.points_config.main_answer / 2;
+		}
+
+		try {
+			// Get current player score
+			const { data: currentPlayer, error: playerError } = await supabase.from('players').select('score').eq('id', playerId).single();
+
+			if (playerError) throw playerError;
+
+			// Update the player score
+			const { error } = await supabase
+				.from('players')
+				.update({ score: currentPlayer.score - pointsToDeduct })
+				.eq('id', playerId);
+
+			if (error) throw error;
+
+			toast.success(`Odjęto ${pointsToDeduct} punktów dla ${player.name}`);
+			await invalidateAll();
+		} catch (error) {
+			toast.error(`Nie udało się odjąć punktów: ${error.message}`);
+		}
+	}
+
+	async function addTiebreakerToPlayer(playerId) {
+		if (!isCurrentRound) {
+			toast.error('Nie można przyznawać punktów tiebreaker w poprzednich rundach');
+			return;
+		}
+
+		const player = players.find((p) => p.id === playerId);
+		if (!player) {
+			toast.error('Nie znaleziono gracza');
+			return;
+		}
+
+		// Get tiebreaker point to add
+		const tiebreakerToAdd = room.points_config.tiebreaker.main_answer || 1;
+
+		try {
+			// Get current player tiebreaker
+			const { data: currentPlayer, error: playerError } = await supabase.from('players').select('tiebreaker').eq('id', playerId).single();
+
+			if (playerError) throw playerError;
+
+			// Update the player tiebreaker
+			const { error } = await supabase
+				.from('players')
+				.update({ tiebreaker: currentPlayer.tiebreaker + tiebreakerToAdd })
+				.eq('id', playerId);
+
+			if (error) throw error;
+
+			toast.success(`Dodano ${tiebreakerToAdd} punktów tiebreaker dla ${player.name}`);
+			await invalidateAll();
+		} catch (error) {
+			toast.error(`Nie udało się przyznać punktów tiebreaker: ${error.message}`);
 		}
 	}
 
@@ -260,6 +396,17 @@
 			// Get hint penalty percentage from room settings (default to 40% if not set)
 			const hintPenaltyPercent = room.points_config.hint_penalty_percent || 40;
 
+			// Check if we have saved points from ZakrywanaScreenowka for this round
+			let screenPoints = null;
+			if (room.type === 'screen') {
+				const { data: screenPointsData, error: screenPointsError } = await supabase.from('screen_game_points').select('points_value').eq('room_id', room.id).eq('round_id', selectedRoundId).maybeSingle();
+
+				if (!screenPointsError && screenPointsData) {
+					screenPoints = screenPointsData.points_value;
+					console.log('Using saved screen points:', screenPoints);
+				}
+			}
+
 			for (const answer of displayedAnswers) {
 				const player = players.find((p) => p.name === answer.player_name);
 				if (!player) continue;
@@ -269,7 +416,11 @@
 
 				// Main answer points with hint deduction if applicable
 				if (answer.answer_status.main_answer) {
-					let mainPoints = room.points_config.main_answer;
+					// If we have screen points and this is a screen type room, use those instead of default
+					let mainPoints =
+						screenPoints !== null && room.type === 'screen'
+							? screenPoints // Use screen points if available
+							: room.points_config.main_answer; // Otherwise use default point config
 
 					// Apply hint penalty if hint was used
 					if (hintUsedByPlayer.has(answer.player_name)) {
@@ -323,6 +474,101 @@
 			// Reset loading state after a delay to prevent immediate re-clicks
 			setTimeout(() => {
 				isAddingPoints = false;
+			}, 1000);
+		}
+	}
+
+	async function awardNegativePointsToIncorrectAnswers() {
+		if (!isCurrentRound) {
+			toast.error('Nie można przyznawać punktów ujemnych w poprzednich rundach');
+			return;
+		}
+
+		// Check if negative points were already added for this round
+		if (minusPointsAddedForRounds[selectedRoundId]) {
+			// Confirm with the user before adding negative points again
+			if (!confirm('Punkty ujemne zostały już dodane dla tej rundy. Czy na pewno chcesz dodać je ponownie?')) {
+				return;
+			}
+		}
+
+		// Set loading state
+		isAddingMinusPoints = true;
+
+		try {
+			// Fetch hint usages for this round
+			const { data: hintUsages, error: hintError } = await supabase.from('hint_usages').select('player_name').eq('round_id', selectedRoundId);
+
+			if (hintError) throw hintError;
+
+			// Create a set of player names that used hints for easy lookup
+			const hintUsedByPlayer = new Set(hintUsages?.map((h) => h.player_name) || []);
+
+			// Check if we have saved points from ZakrywanaScreenowka for this round
+			let screenPoints = null;
+			if (room.type === 'screen') {
+				const { data: screenPointsData, error: screenPointsError } = await supabase.from('screen_game_points').select('points_value').eq('room_id', room.id).eq('round_id', selectedRoundId).maybeSingle();
+
+				if (!screenPointsError && screenPointsData) {
+					screenPoints = screenPointsData.points_value;
+					console.log('Using saved screen points for negative:', screenPoints);
+				}
+			}
+
+			for (const answer of displayedAnswers) {
+				const player = players.find((p) => p.name === answer.player_name);
+				if (!player) continue;
+
+				let points = 0;
+
+				// Only apply negative points to incorrect answers
+				if (!answer.answer_status.main_answer) {
+					// If we have screen points and this is a screen type room, use those instead of default
+					let basePoints =
+						screenPoints !== null && room.type === 'screen'
+							? screenPoints // Use screen points if available
+							: room.points_config.main_answer; // Otherwise use default point config
+
+					// Calculate half value and make it negative
+					points -= basePoints / 2;
+				}
+
+				// Extra fields negative points - only for incorrect fields
+				if (answer.extra_fields?.song_title && !answer.answer_status.song_title) {
+					points -= room.points_config.song_title / 2;
+				}
+				if (answer.extra_fields?.song_artist && !answer.answer_status.song_artist) {
+					points -= room.points_config.song_artist / 2;
+				}
+				if (answer.extra_fields?.other && !answer.answer_status.other) {
+					points -= room.points_config.other / 2;
+				}
+
+				if (points !== 0) {
+					// Round final points to 2 decimal places
+					points = Math.ceil(points * 100) / 100;
+
+					const { error } = await supabase
+						.from('players')
+						.update({
+							score: player.score + points // Points are already negative here
+						})
+						.eq('id', player.id);
+
+					if (error) throw error;
+				}
+			}
+
+			// Mark that negative points have been added for this round
+			minusPointsAddedForRounds[selectedRoundId] = true;
+
+			toast.success('Punkty ujemne za błędne odpowiedzi przyznane pomyślnie');
+		} catch (error) {
+			toast.error(`Nie udało się przyznać punktów ujemnych: ${error.message}`);
+		} finally {
+			// Reset loading state after a delay to prevent immediate re-clicks
+			setTimeout(() => {
+				isAddingMinusPoints = false;
 			}, 1000);
 		}
 	}
@@ -697,13 +943,23 @@
 							<div class="p-4 text-center text-gray-400">Brak odpowiedzi w tej rundzie</div>
 						{:else}
 							<div class="mb-4">
-								<Button on:click={awardPointsToCorrectAnswers} disabled={!isCurrentRound || isAddingPoints} class="bg-green-600/50 text-white hover:bg-green-500/50">
-									{#if isAddingPoints}
+								<Button on:click={awardPointsToCorrectAnswers} disabled={!isCurrentRound || isAddingPoints} class="mr-2 bg-green-600/50 text-white hover:bg-green-500/50">
+									{#if isAddingPoints && !isAddingMinusPoints}
 										Przyznawanie punktów...
 									{:else if pointsAddedForRounds[selectedRoundId]}
 										Dodaj punkty ponownie
 									{:else}
 										Dodaj punkty do dobrych odpowiedzi
+									{/if}
+								</Button>
+
+								<Button on:click={awardNegativePointsToIncorrectAnswers} disabled={!isCurrentRound || isAddingPoints || isAddingMinusPoints} class="bg-red-600/50 text-white hover:bg-red-500/50">
+									{#if isAddingMinusPoints}
+										Przyznawanie punktów ujemnych...
+									{:else if minusPointsAddedForRounds[selectedRoundId]}
+										Odejmij punkty za błędy ponownie
+									{:else}
+										Odejmij punkty za błędne odpowiedzi (50%)
 									{/if}
 								</Button>
 							</div>
@@ -835,6 +1091,7 @@
 									<Table.Head class="text-gray-300">Wynik</Table.Head>
 									<Table.Head class="text-gray-300">Tiebreaker</Table.Head>
 									<Table.Head class="text-gray-300">Status</Table.Head>
+									<Table.Head class="text-gray-300">Akcje punktowe</Table.Head>
 									<Table.Head class="text-gray-300">Akcje</Table.Head>
 								</Table.Row>
 							</Table.Header>
@@ -900,6 +1157,15 @@
 											<span class={hasAnswered ? 'text-green-400' : 'text-gray-400'}>
 												{hasAnswered ? 'Odpowiedział' : 'Brak odpowiedzi'}
 											</span>
+										</Table.Cell>
+
+										<!-- New cell for point action buttons -->
+										<Table.Cell>
+											<div class="flex gap-1">
+												<Button size="sm" disabled={!isCurrentRound} on:click={() => awardPointsToPlayer(player.id)} class="bg-green-600/50 text-white hover:bg-green-500/50">+P</Button>
+												<Button size="sm" disabled={!isCurrentRound} on:click={() => awardNegativePointsToPlayer(player.id)} class="bg-red-600/50 text-white hover:bg-red-500/50">-P</Button>
+												<Button size="sm" disabled={!isCurrentRound} on:click={() => addTiebreakerToPlayer(player.id)} class="bg-blue-600/50 text-white hover:bg-blue-500/50">+T</Button>
+											</div>
 										</Table.Cell>
 
 										<Table.Cell>

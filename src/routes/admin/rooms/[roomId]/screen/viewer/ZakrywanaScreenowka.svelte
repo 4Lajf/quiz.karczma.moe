@@ -4,6 +4,7 @@
 
 	export let screenImage;
 	export let room;
+	export let currentRound;
 	export let supabase;
 
 	let gameContainer;
@@ -17,10 +18,12 @@
 
 	// Game state
 	let isImageLoaded = false;
-	let pointsValue = 8; // Start with 10 points
+	let pointsValue = 8; // Default to 8 points for 8-scale
+	let pointsScale = 'scale8'; // Default scale: 'scale8' or 'scale100' (local preference only)
 	let isPointsEnlarged = false;
 	let showConfigPanel = false;
 	let revealCount = 0;
+	let gameCompleted = false;
 
 	// Takeover and hand raise state
 	let isTakeoverActive = false;
@@ -32,13 +35,39 @@
 	let fullImageContainer = null;
 	let imagePieces = [];
 	let revealedPieces = new Set();
+	let centerPieces = [];
 
 	// Track which pieces have been revealed
 	let revealedPositions = new Set();
 
+	// Get current points based on scale
+	$: currentPoints = pointsScale === 'scale100' ? Math.round((pointsValue / 8) * 100) : pointsValue;
+
 	// Load image when screenImage changes
 	$: if (browser && screenImage && screenImage.url && image && image.src !== screenImage.url) {
 		loadNewImage();
+	}
+
+	async function savePointsValue() {
+		if (!currentRound || !room) return;
+
+		try {
+			// Store points in 'screen_game_points' table without the scale information
+			const { error } = await supabase.from('screen_game_points').upsert(
+				{
+					room_id: room.id,
+					round_id: currentRound.id,
+					points_value: pointsScale === 'scale100' ? Math.round((pointsValue / 8) * 100) : pointsValue,
+					updated_at: new Date().toISOString()
+				},
+				{ onConflict: 'room_id,round_id' }
+			);
+
+			if (error) throw error;
+			console.log('Saved current points value:', pointsValue);
+		} catch (error) {
+			console.error('Failed to save points value:', error);
+		}
 	}
 
 	function loadNewImage() {
@@ -103,8 +132,10 @@
 		const pieceHeight = displayHeight / GRID_ROWS;
 
 		imagePieces = [];
+		centerPieces = [];
 		revealedPieces = new Set();
 		revealedPositions = new Set();
+		gameCompleted = false;
 
 		// Create grid pieces
 		for (let row = 0; row < GRID_ROWS; row++) {
@@ -161,6 +192,11 @@
 				pieceElement.addEventListener('click', () => revealTile(pieceElement, row, col));
 
 				imagePieces.push(pieceElement);
+
+				// Keep track of center pieces for easy access
+				if (isCenter) {
+					centerPieces.push(pieceElement);
+				}
 			}
 		}
 
@@ -171,8 +207,6 @@
 		fullImageContainer.appendChild(maskContainer);
 		gameContainer.appendChild(fullImageContainer);
 
-		// Reset game state
-		pointsValue = 8;
 		revealCount = 0;
 	}
 
@@ -201,26 +235,30 @@
 		revealCount++;
 
 		// Check if this is a center tile
-		const isCenterTile = maskContainer && cellRow >= Math.floor(rows / 2) - 1 && cellRow <= Math.floor(rows / 2) && cellCol >= Math.floor(cols / 2) - 1 && cellCol <= Math.floor(cols / 2);
+		const isCenter = pieceElement.dataset.isCenter === 'true';
 
-		// Subtract extra point for center tiles
-		if (isCenterTile) {
-			pointsValue = Math.max(0, pointsValue - 1); // Center tiles cost an extra point
-		}
-
-		// Every 2 revealed tiles subtract 2 points
+		// Deduct points
 		if (revealCount % 2 === 0) {
+			// Every 2 tiles revealed, subtract 2 points
 			pointsValue = Math.max(0, pointsValue - 2);
 		}
 
-		// Update center tiles color if needed
+		// Update center tiles color
 		updateCenterTilesColor();
+
+		// Save points after every tile click
+		savePointsValue();
+
+		// Check if all tiles are revealed
+		if (revealedPieces.size === imagePieces.length && !gameCompleted) {
+			gameCompleted = true;
+		}
 	}
 
 	function updateCenterTilesColor() {
-		// Check all pieces to see if they are center tiles and need color update
-		imagePieces.forEach((piece) => {
-			if (piece.dataset.isCenter === 'true' && !revealedPieces.has(piece)) {
+		// Check all center pieces to see if they need color updates
+		centerPieces.forEach((piece) => {
+			if (!revealedPieces.has(piece)) {
 				const row = parseInt(piece.dataset.row);
 				const col = parseInt(piece.dataset.col);
 
@@ -249,6 +287,21 @@
 		});
 	}
 
+	function revealAllTiles() {
+		imagePieces.forEach((piece) => {
+			if (!revealedPieces.has(piece)) {
+				const row = parseInt(piece.dataset.row);
+				const col = parseInt(piece.dataset.col);
+				revealTile(piece, row, col);
+			}
+		});
+
+		// Set points to 0 after revealing all
+		pointsValue = 0;
+		gameCompleted = true;
+		savePointsValue(); // Save final points
+	}
+
 	function resetGame() {
 		if (!gameContainer) return;
 
@@ -259,10 +312,31 @@
 
 		// Reset state
 		imagePieces = [];
+		centerPieces = [];
 		revealedPieces = new Set();
 		revealedPositions = new Set();
-		pointsValue = 8;
+		pointsValue = 8; // Always reset to 8 in raw scale
 		revealCount = 0;
+		gameCompleted = false;
+
+		// Generate pieces again if image is loaded
+		if (isImageLoaded) {
+			generateImagePieces();
+		}
+	}
+
+	function togglePointsScale() {
+		// Toggle between 8-scale and 100-scale
+		pointsScale = pointsScale === 'scale8' ? 'scale100' : 'scale8';
+
+		// Save to localStorage if available
+		if (browser && window.localStorage) {
+			try {
+				localStorage.setItem('screenowka-points-scale', pointsScale);
+			} catch (e) {
+				console.error('Could not save points scale to localStorage:', e);
+			}
+		}
 	}
 
 	async function loadHandRaiseResults() {
@@ -350,6 +424,18 @@
 
 	onMount(async () => {
 		if (browser) {
+			// Load points scale preference from localStorage if available
+			if (window.localStorage) {
+				try {
+					const savedScale = localStorage.getItem('screenowka-points-scale');
+					if (savedScale && (savedScale === 'scale8' || savedScale === 'scale100')) {
+						pointsScale = savedScale;
+					}
+				} catch (e) {
+					console.error('Could not load points scale from localStorage:', e);
+				}
+			}
+
 			// Create image object
 			image = new Image();
 			image.crossOrigin = 'anonymous';
@@ -399,6 +485,11 @@
 	});
 
 	onDestroy(() => {
+		// Save final points state when component is destroyed
+		if (room && currentRound) {
+			savePointsValue();
+		}
+
 		if (channel) channel.unsubscribe();
 	});
 </script>
@@ -417,7 +508,7 @@
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div bind:this={pointsCounter} class="absolute bottom-4 right-4 z-20 flex items-center justify-center rounded-md bg-gray-800/80 p-2 font-bold text-white transition-all duration-300" class:text-2xl={!isPointsEnlarged} class:text-6xl={isPointsEnlarged} on:click={togglePointsEnlarged}>
-		{pointsValue}
+		{currentPoints}
 	</div>
 
 	<!-- Configuration button -->
@@ -444,20 +535,23 @@
 		<div class="config-panel absolute right-4 top-14 z-20 w-64 rounded-md bg-gray-800 p-4 text-white shadow-md">
 			<h3 class="mb-4 text-lg font-bold">Ustawienia</h3>
 
-			<p class="mb-2">Ten tryb pozwala na ręczne odkrywanie kafelków przez kliknięcie. Każdy kafelek ma numer od 1 do 16.</p>
+			<p class="mb-4">Ten tryb pozwala na ręczne odkrywanie kafelków przez kliknięcie. Za każde 2 odkryte kafelki tracisz 2 punkty.</p>
 
-			<p class="mb-2">Punktacja:</p>
-			<ul class="mb-4 list-inside list-disc text-sm">
-				<li>Start: 10 punktów</li>
-				<li>Pierwsza kafelka: -1 punkt</li>
-				<li>Druga kafelka: -2 punkty</li>
-				<li>Trzecia kafelka: -3 punkty</li>
-				<li>Czwarta kafelka: -3 punkty</li>
-				<li>Kolejne: -1 punkt (minimum 0)</li>
-			</ul>
+			<div class="mb-4">
+				<label class="flex items-center gap-2 text-sm">
+					<span>Skala punktów:</span>
+					<button on:click={togglePointsScale} class="rounded bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-700">
+						{pointsScale === 'scale8' ? '8 → 100' : '100 → 8'}
+					</button>
+				</label>
+				<p class="mt-1 text-xs text-gray-400">
+					{pointsScale === 'scale8' ? 'Obecna skala: 0-8 punktów' : 'Obecna skala: 0-100 punktów'}
+				</p>
+			</div>
 
-			<div class="flex gap-2">
-				<button on:click={resetGame} class="flex-1 rounded-md bg-blue-600 py-2 text-white hover:bg-blue-700"> Resetuj grę </button>
+			<div class="flex flex-col gap-2">
+				<button on:click={resetGame} class="rounded-md bg-blue-600 py-2 text-white hover:bg-blue-700">Resetuj grę</button>
+				<button on:click={revealAllTiles} class="rounded-md bg-amber-600 py-2 text-white hover:bg-amber-700">Odkryj wszystkie</button>
 			</div>
 		</div>
 	{/if}
