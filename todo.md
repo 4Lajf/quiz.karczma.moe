@@ -1,4 +1,3 @@
-screen leci za wczesnie jak ktos kliknie przejecie
 odkryj wszystko nie dziala rozbita scrrenowka
 reset do neutral po dodaniu odpwoiedzi na zakrywanej
 DODAC NEUTRAL SETTING

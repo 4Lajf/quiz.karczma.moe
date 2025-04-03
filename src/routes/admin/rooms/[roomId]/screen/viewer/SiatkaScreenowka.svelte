@@ -41,12 +41,13 @@
 	let handRaiseResults = [];
 	let channel;
 	let lastChangedPlayer = null;
+	let roundStarted = false;
 
 	// Image and piece management
 	let image = null;
 	let fullImageContainer = null;
 	let imagePieces = [];
-	let revealedPieces = [];
+	let revealedPieces = new Set();
 	let totalPieces = 0;
 	let partInterval = null;
 
@@ -98,21 +99,6 @@
 			// Default to 100 if there's an error
 			pointsValue = 100;
 		}
-	}
-
-	function revealAllTiles() {
-		imagePieces.forEach((piece) => {
-			if (!revealedPieces.has(piece)) {
-				const row = parseInt(piece.dataset.row);
-				const col = parseInt(piece.dataset.col);
-				revealTile(piece, row, col);
-			}
-		});
-
-		// Set points to 0 after revealing all
-		pointsValue = 0;
-		gameCompleted = true;
-		savePointsValue(); // Save final points
 	}
 
 	// Update in the loadNewImage function
@@ -467,7 +453,7 @@
 
 				// Pause game and enlarge points if hand raises exist
 				if (handRaiseResults.length > 0) {
-					if (!isImagePaused) {
+					if (!isImagePaused && roundStarted) {
 						togglePlayPause();
 					}
 				}
@@ -609,6 +595,7 @@
 		if (event.code === 'Space') {
 			event.preventDefault();
 			togglePlayPause();
+			roundStarted = true;
 		}
 	}
 
@@ -618,6 +605,7 @@
 			return;
 		}
 		togglePlayPause();
+		roundStarted = true;
 	}
 
 	onDestroy(() => {

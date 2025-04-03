@@ -43,12 +43,15 @@
 	let channel;
 	let handRaiseResults = [];
 	let lastChangedPlayer = null;
+	let roundStarted = false;
 
 	let partInterval;
 	let polygonMasks = [];
 	let isImageLoaded = false;
 	let isImagePlaying = false;
 	let isImagePaused = false;
+	let imagePieces = [];
+	let revealedPieces = new Set();
 
 	let showWheelSettings = false;
 	let wheelSettingOptions = [...fortuneWheelOptions]; // Create a copy for editing
@@ -163,21 +166,6 @@
 		];
 
 		wheelSettingOptions = defaultOptions;
-	}
-
-	function revealAllTiles() {
-		imagePieces.forEach((piece) => {
-			if (!revealedPieces.has(piece)) {
-				const row = parseInt(piece.dataset.row);
-				const col = parseInt(piece.dataset.col);
-				revealTile(piece, row, col);
-			}
-		});
-
-		// Set points to 0 after revealing all
-		pointsValue = 0;
-		gameCompleted = true;
-		savePointsValue(); // Save final points
 	}
 
 	function handleWheelSelection(event) {
@@ -327,7 +315,7 @@
 		if (config.randomPolygons) {
 			// Generate a random number between min and max
 			partsToGenerate = Math.floor(config.minParts + Math.random() * (config.maxParts - config.minParts + 1));
-			console.log(`Generating ${partsToGenerate} random polygons`);
+			console.log(`Gene	rating ${partsToGenerate} random polygons`);
 		}
 
 		for (let i = 0; i < partsToGenerate; i++) {
@@ -372,7 +360,7 @@
 
 				// Set takeover as active and enlarge points when there are hand raises
 				if (handRaiseResults.length > 0) {
-					if (!isImagePaused) {
+					if (!isImagePaused && roundStarted) {
 						togglePlayPause();
 					}
 				}
@@ -479,6 +467,7 @@
 		if (event.code === 'Space') {
 			event.preventDefault();
 			togglePlayPause();
+			roundStarted = true;
 		}
 	}
 
@@ -489,6 +478,7 @@
 		}
 		console.log('before play pause', isImagePlaying);
 		togglePlayPause();
+		roundStarted = true;
 	}
 
 	function setupHoverDetection() {
