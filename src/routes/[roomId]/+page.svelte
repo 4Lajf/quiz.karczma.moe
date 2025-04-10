@@ -938,12 +938,22 @@
 	}
 
 	async function submitAnswer() {
-		if (!answer.trim() || hasSubmitted) {
+		// Only validate anime title if it's enabled or not explicitly disabled
+		if ((room.enabled_fields?.anime_title !== false) && (!answer.trim() || hasSubmitted)) {
 			toast.error(hasSubmitted ? 'Już przesłano' : 'Wprowadź odpowiedź');
 			return;
 		}
 
-		if (answer.trim().length > 512) {
+		// If anime title is disabled but we have no other fields filled, prevent submission
+		if (room.enabled_fields?.anime_title === false &&
+			(!room.enabled_fields?.song_title || !songTitle) &&
+			(!room.enabled_fields?.song_artist || !songArtist) &&
+			(!room.enabled_fields?.other || !otherAnswer)) {
+			toast.error('Wprowadź przynajmniej jedną odpowiedź');
+			return;
+		}
+
+		if (answer.trim() && answer.trim().length > 512) {
 			toast.error('Odpowiedź musi mieć 512 znaków lub mniej');
 			return;
 		}
@@ -953,7 +963,7 @@
 			const extraFields = {};
 
 			// Apply regex rules to input fields
-			const processedAnswer = answer.trim();
+			const processedAnswer = answer ? answer.trim() : '';
 
 			if (room.enabled_fields?.song_title && songTitle) {
 				extraFields.song_title = songTitle;
@@ -965,18 +975,32 @@
 				extraFields.other = otherAnswer;
 			}
 
+			// Get current player score and tiebreaker
+			const { data: playerData, error: playerError } = await supabase
+				.from('players')
+				.select('score, tiebreaker')
+				.eq('room_id', room.id)
+				.eq('name', playerName)
+				.single();
+
+			if (playerError) throw playerError;
+
 			const { error } = await supabase.from('answers').insert({
 				room_id: room.id,
 				round_id: room.current_round,
 				player_name: playerName,
-				content: processedAnswer,
+				// Only include content if anime_title is not explicitly disabled or if there's an answer
+				content: room.enabled_fields?.anime_title === false ? '' : processedAnswer,
 				extra_fields: Object.keys(extraFields).length > 0 ? extraFields : null,
 				answer_status: {
 					main_answer: false,
 					song_title: false,
 					song_artist: false,
 					other: false
-				}
+				},
+				// Save current score and tiebreaker
+				score_snapshot: playerData.score || 0,
+				tiebreaker_snapshot: playerData.tiebreaker || 0
 			});
 
 			if (error) throw error;
@@ -1325,7 +1349,9 @@
 					</div>
 
 					<form on:submit|preventDefault={submitAnswer} class="space-y-4">
-						<Autocomplete bind:value={answer} placeholder="Nazwa anime" index="animeTitles" searchKey="animeTitle" type="anime" />
+						{#if room.enabled_fields?.anime_title !== false}
+							<Autocomplete bind:value={answer} placeholder="Nazwa anime" index="animeTitles" searchKey="animeTitle" type="anime" />
+						{/if}
 
 						{#if room.enabled_fields?.song_title}
 							<Autocomplete bind:value={songTitle} placeholder="Tytuł piosenki" index="songNames" searchKey="songName" type="songs" />

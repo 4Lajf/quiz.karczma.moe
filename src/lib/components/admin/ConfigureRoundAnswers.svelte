@@ -314,7 +314,17 @@
 
 	// Add an answer to the round
 	async function addAnswer() {
-		if (!newAnswer.answer.trim()) return;
+		// Only validate anime title if it's enabled or not explicitly disabled
+		if (room.enabled_fields?.anime_title !== false && !newAnswer.answer.trim()) return;
+
+		// If anime title is disabled but we have no other fields filled, prevent submission
+		if (room.enabled_fields?.anime_title === false &&
+			(!room.enabled_fields?.song_title || !newAnswer.songTitle.trim()) &&
+			(!room.enabled_fields?.song_artist || !newAnswer.songArtist.trim()) &&
+			(!room.enabled_fields?.other || !newAnswer.other.trim())) {
+			toast.error('Wprowadź przynajmniej jedną odpowiedź');
+			return;
+		}
 
 		loading = true;
 		try {
@@ -360,17 +370,20 @@
 			}
 
 			// Process the answer
-			const processedAnswer = newAnswer.answer.trim();
+			const processedAnswer = newAnswer.answer ? newAnswer.answer.trim() : '';
 
-			// Call the API to generate hint
-			await getHintFromAPI(processedAnswer);
+			// Call the API to generate hint if anime title is provided
+			if (processedAnswer) {
+				await getHintFromAPI(processedAnswer);
+			}
 
 			// Add main answer
 			const { data, error } = await supabase
 				.from('correct_answers')
 				.insert({
 					round_id: roundId,
-					content: processedAnswer,
+					// Only include content if anime_title is not explicitly disabled or if there's an answer
+					content: room.enabled_fields?.anime_title === false ? '' : processedAnswer,
 					extra_fields: extraFields
 					// We don't need to set the hint field as the API will handle this
 				})
@@ -447,8 +460,23 @@
 
 	// Update an existing answer
 	async function updateAnswer() {
-		if (!newAnswer.answer.trim() || !editingId) {
+		if (!editingId) {
+			toast.error('Brak identyfikatora edytowanej odpowiedzi');
+			return;
+		}
+
+		// Only validate anime title if it's enabled or not explicitly disabled
+		if (room.enabled_fields?.anime_title !== false && !newAnswer.answer.trim()) {
 			toast.error('Tytuł anime jest wymagany');
+			return;
+		}
+
+		// If anime title is disabled but we have no other fields filled, prevent submission
+		if (room.enabled_fields?.anime_title === false &&
+			(!room.enabled_fields?.song_title || !newAnswer.songTitle.trim()) &&
+			(!room.enabled_fields?.song_artist || !newAnswer.songArtist.trim()) &&
+			(!room.enabled_fields?.other || !newAnswer.other.trim())) {
+			toast.error('Wprowadź przynajmniej jedną odpowiedź');
 			return;
 		}
 
@@ -482,15 +510,18 @@
 			}
 
 			// Process the answer
-			const processedAnswer = newAnswer.answer.trim();
+			const processedAnswer = newAnswer.answer ? newAnswer.answer.trim() : '';
 
-			// Call API to generate new hint
-			await getHintFromAPI(processedAnswer);
+			// Call API to generate new hint if anime title is provided
+			if (processedAnswer) {
+				await getHintFromAPI(processedAnswer);
+			}
 
 			const { data, error } = await supabase
 				.from('correct_answers')
 				.update({
-					content: processedAnswer,
+					// Only include content if anime_title is not explicitly disabled or if there's an answer
+					content: room.enabled_fields?.anime_title === false ? '' : processedAnswer,
 					extra_fields: extraFields
 					// We don't need to set the hint field as the API will handle this
 				})
@@ -637,7 +668,9 @@
 									<div class="absolute left-2 top-2 rounded-full bg-blue-500 px-2 py-1 text-xs text-white">Tryb edycji</div>
 								{/if}
 								<div class="relative">
-									<Autocomplete bind:value={newAnswer.answer} placeholder="Nazwa anime" index="animeTitles" searchKey="animeTitle" type="anime" disabled={loading} on:input={handleTitleInput} />
+									{#if room.enabled_fields?.anime_title !== false}
+										<Autocomplete bind:value={newAnswer.answer} placeholder="Nazwa anime" index="animeTitles" searchKey="animeTitle" type="anime" disabled={loading} on:input={handleTitleInput} />
+									{/if}
 								</div>
 							</div>
 
@@ -658,7 +691,10 @@
 							{/if}
 
 							<div class="flex gap-2">
-								<Button type="submit" disabled={loading || !newAnswer.answer?.trim()} class="flex-1 border border-gray-700 bg-gray-800 text-white hover:bg-gray-700">
+								<Button
+									type="submit"
+									disabled={loading || (room.enabled_fields?.anime_title !== false && !newAnswer.answer?.trim())}
+									class="flex-1 border border-gray-700 bg-gray-800 text-white hover:bg-gray-700">
 									{#if editMode}
 										<Save class="mr-2 h-4 w-4" />
 										Zapisz zmiany
@@ -685,7 +721,9 @@
 						<Table.Root>
 							<Table.Header>
 								<Table.Row class="border-gray-800">
-									<Table.Head class="text-gray-300">Nazwa anime</Table.Head>
+									{#if room.enabled_fields?.anime_title !== false}
+										<Table.Head class="text-gray-300">Nazwa anime</Table.Head>
+									{/if}
 									{#if room.enabled_fields?.song_title}
 										<Table.Head class="text-gray-300">Tytuł piosenki</Table.Head>
 									{/if}
@@ -701,7 +739,9 @@
 							<Table.Body>
 								{#each answers as answer}
 									<Table.Row class={`border-gray-800 ${getRowBackgroundClass(answer.extra_fields?.match_status)}`}>
-										<Table.Cell class="text-gray-200">{answer.content}</Table.Cell>
+										{#if room.enabled_fields?.anime_title !== false}
+											<Table.Cell class="text-gray-200">{answer.content}</Table.Cell>
+										{/if}
 										{#if room.enabled_fields?.song_title}
 											<Table.Cell class="text-gray-200">
 												{answer.extra_fields?.song_title || '-'}

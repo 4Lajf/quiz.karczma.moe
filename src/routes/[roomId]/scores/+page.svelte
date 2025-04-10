@@ -25,7 +25,6 @@
 	});
 
 	onDestroy(() => {
-		window.removeEventListener('resize', checkScreenSize);
 		if (channel) channel.unsubscribe();
 	});
 

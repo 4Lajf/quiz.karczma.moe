@@ -390,6 +390,56 @@
 		}
 	}
 
+	function revealAllTiles() {
+		if (!gameContainer || !isImageLoaded || !image || !image.complete) return;
+
+		// Stop any ongoing animation
+		if (partInterval) {
+			clearInterval(partInterval);
+			partInterval = null;
+		}
+
+		// Clear existing pieces first
+		const existingPieces = gameContainer.querySelectorAll('.image-piece');
+		existingPieces.forEach((piece) => {
+			if (piece && piece.parentNode) {
+				piece.parentNode.removeChild(piece);
+			}
+		});
+
+		// Remove any existing full image container
+		if (fullImageContainer && fullImageContainer.parentNode) {
+			fullImageContainer.parentNode.removeChild(fullImageContainer);
+		}
+
+		// Create a new full image container
+		const newFullImageContainer = document.createElement('div');
+		newFullImageContainer.className = 'full-image-container';
+		newFullImageContainer.style.position = 'absolute';
+		newFullImageContainer.style.top = '0';
+		newFullImageContainer.style.left = '0';
+		newFullImageContainer.style.width = '100%';
+		newFullImageContainer.style.height = '100%';
+		newFullImageContainer.style.backgroundImage = `url(${image.src})`;
+		newFullImageContainer.style.backgroundSize = 'contain';
+		newFullImageContainer.style.backgroundPosition = 'center';
+		newFullImageContainer.style.backgroundRepeat = 'no-repeat';
+		newFullImageContainer.style.backgroundColor = 'white';
+		newFullImageContainer.style.opacity = '1';
+		newFullImageContainer.style.zIndex = '100';
+
+		// Add the full image to the container
+		gameContainer.appendChild(newFullImageContainer);
+
+		// Set points to 0 after revealing all
+		pointsValue = 0;
+		isImagePlaying = false;
+		isImagePaused = false;
+
+		// Save final points value
+		savePointsValue();
+	}
+
 	function resetGame() {
 		if (!gameContainer) return;
 

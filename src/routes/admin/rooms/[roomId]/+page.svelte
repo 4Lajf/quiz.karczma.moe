@@ -8,7 +8,7 @@
 	import * as Tabs from '$lib/components/ui/tabs';
 	import { Button } from '$lib/components/ui/button';
 	import { toast } from 'svelte-sonner';
-	import { Check, X } from 'lucide-svelte';
+	import { Check, X, Circle } from 'lucide-svelte';
 	import PointsConfigModal from '$lib/components/admin/PointsConfigModal.svelte';
 	import { Plus } from 'lucide-svelte';
 	import { Input } from '$lib/components/ui/input';
@@ -44,6 +44,47 @@
 		editType = null;
 	}
 
+	// Helper function to update answer snapshots for a player in the current round
+	async function updateAnswerSnapshots(playerId, score, tiebreaker) {
+		if (!isCurrentRound) return; // Only update snapshots for current round
+
+		try {
+			// Find the player's name
+			const player = players.find(p => p.id === playerId);
+			if (!player) return;
+
+			// Find the player's answer in the current round
+			const { data: answers, error: answersError } = await supabase
+				.from('answers')
+				.select('id')
+				.eq('room_id', room.id)
+				.eq('round_id', selectedRoundId)
+				.eq('player_name', player.name);
+
+			if (answersError) throw answersError;
+			if (!answers || answers.length === 0) return; // No answers to update
+
+			// Update each answer's snapshot values
+			for (const answer of answers) {
+				const updateData = {};
+
+				if (score !== undefined) updateData.score_snapshot = score;
+				if (tiebreaker !== undefined) updateData.tiebreaker_snapshot = tiebreaker;
+
+				if (Object.keys(updateData).length > 0) {
+					const { error: updateError } = await supabase
+						.from('answers')
+						.update(updateData)
+						.eq('id', answer.id);
+
+					if (updateError) throw updateError;
+				}
+			}
+		} catch (error) {
+			console.error('Failed to update answer snapshots:', error);
+		}
+	}
+
 	async function saveEditedValue() {
 		if (!editingPlayer || editValue === null) return;
 
@@ -54,6 +95,14 @@
 				.eq('id', editingPlayer);
 
 			if (error) throw error;
+
+			// Update answer snapshots
+			if (editType === 'score') {
+				await updateAnswerSnapshots(editingPlayer, editValue, undefined);
+			} else if (editType === 'tiebreaker') {
+				await updateAnswerSnapshots(editingPlayer, undefined, editValue);
+			}
+
 			toast.success(`${editType === 'score' ? 'Wynik' : 'Tiebreaker'} zaktualizowany`);
 			cancelEditing();
 			await invalidateAll();
@@ -108,13 +157,19 @@
 
 			if (playerError) throw playerError;
 
+			// Calculate new score
+			const newScore = currentPlayer.score + pointsToAdd;
+
 			// Update the player score
 			const { error } = await supabase
 				.from('players')
-				.update({ score: currentPlayer.score + pointsToAdd })
+				.update({ score: newScore })
 				.eq('id', playerId);
 
 			if (error) throw error;
+
+			// Update answer snapshots with the new score
+			await updateAnswerSnapshots(playerId, newScore, undefined);
 
 			toast.success(`Dodano ${pointsToAdd} punktów dla ${player.name}`);
 			await invalidateAll();
@@ -157,13 +212,19 @@
 
 			if (playerError) throw playerError;
 
+			// Calculate new score
+			const newScore = currentPlayer.score - pointsToDeduct;
+
 			// Update the player score
 			const { error } = await supabase
 				.from('players')
-				.update({ score: currentPlayer.score - pointsToDeduct })
+				.update({ score: newScore })
 				.eq('id', playerId);
 
 			if (error) throw error;
+
+			// Update answer snapshots with the new score
+			await updateAnswerSnapshots(playerId, newScore, undefined);
 
 			toast.success(`Odjęto ${pointsToDeduct} punktów dla ${player.name}`);
 			await invalidateAll();
@@ -193,13 +254,19 @@
 
 			if (playerError) throw playerError;
 
+			// Calculate new tiebreaker
+			const newTiebreaker = currentPlayer.tiebreaker + tiebreakerToAdd;
+
 			// Update the player tiebreaker
 			const { error } = await supabase
 				.from('players')
-				.update({ tiebreaker: currentPlayer.tiebreaker + tiebreakerToAdd })
+				.update({ tiebreaker: newTiebreaker })
 				.eq('id', playerId);
 
 			if (error) throw error;
+
+			// Update answer snapshots with the new tiebreaker
+			await updateAnswerSnapshots(playerId, undefined, newTiebreaker);
 
 			toast.success(`Dodano ${tiebreakerToAdd} punktów tiebreaker dla ${player.name}`);
 			await invalidateAll();
@@ -318,15 +385,36 @@
 			return;
 		}
 
-		// Create a local copy of the current displayed answers
+		// Get the current answer
+		const currentAnswer = displayedAnswers.find((a) => a.id === answerId);
+		if (!currentAnswer) return;
+
+		// Determine the next status in the cycle: null (neutral) -> false -> true -> null
+		let nextStatus;
+		// Use strict equality to check for true and false, and treat everything else as neutral
+		if (currentStatus === true) {
+			// If current is true (correct), next is null (neutral)
+			nextStatus = null;
+		} else if (currentStatus === false) {
+			// If current is false (incorrect), next is true (correct)
+			nextStatus = true;
+		} else {
+			// If current is null/undefined/anything else (neutral), next is false (incorrect)
+			nextStatus = false;
+		}
+
+		// Create a local copy of the current displayed answers with the new status
 		const optimisticAnswers = displayedAnswers.map((answer) => {
 			if (answer.id === answerId) {
+				// Create a new answer_status object with the updated field
+				const newAnswerStatus = { ...(answer.answer_status || {}) };
+
+				// Set the field value (null for neutral, true/false for others)
+				newAnswerStatus[field] = nextStatus;
+
 				return {
 					...answer,
-					answer_status: {
-						...(answer.answer_status || {}),
-						[field]: field === 'main_answer' ? !answer.answer_status?.main_answer : !answer.answer_status?.[field]
-					}
+					answer_status: newAnswerStatus
 				};
 			}
 			return answer;
@@ -336,30 +424,36 @@
 		displayedAnswers = optimisticAnswers;
 
 		try {
-			let updateData = {};
-			if (field === 'main_answer') {
-				updateData = {
-					answer_status: {
-						...(displayedAnswers.find((a) => a.id === answerId).answer_status || {}),
-						main_answer: !currentStatus
-					}
-				};
-			} else {
-				updateData = {
-					answer_status: {
-						...(displayedAnswers.find((a) => a.id === answerId).answer_status || {}),
-						[field]: !currentStatus
-					}
-				};
-			}
+			// Prepare the update data
+			const newAnswerStatus = { ...(currentAnswer.answer_status || {}) };
 
+			// Set the field value (null for neutral, true/false for others)
+			newAnswerStatus[field] = nextStatus;
+
+			const updateData = {
+				answer_status: newAnswerStatus
+			};
+
+			// Update in the database
 			const { error } = await supabase.from('answers').update(updateData).eq('id', answerId);
-
 			if (error) {
 				// If update fails, revert to original state
-				displayedAnswers = displayedAnswers.map((answer) => (answer.id === answerId ? { ...answer, answer_status: { ...answer.answer_status, [field]: currentStatus } } : answer));
+				displayedAnswers = displayedAnswers.map((answer) => {
+					if (answer.id === answerId) {
+						const revertedStatus = { ...(answer.answer_status || {}) };
+
+						// Always set the field back to its original value
+						revertedStatus[field] = currentStatus;
+
+						return { ...answer, answer_status: revertedStatus };
+					}
+					return answer;
+				});
 				throw error;
 			}
+
+			// Force a refresh of the data to ensure we have the latest state from the server
+			await invalidateAll();
 
 			toast.success('Zaktualizowano status odpowiedzi');
 		} catch (error) {
@@ -403,7 +497,6 @@
 
 				if (!screenPointsError && screenPointsData) {
 					screenPoints = screenPointsData.points_value;
-					console.log('Using saved screen points:', screenPoints);
 				}
 			}
 
@@ -415,7 +508,8 @@
 				let tiebreaker = 0;
 
 				// Main answer points with hint deduction if applicable
-				if (answer.answer_status.main_answer) {
+				// Only award points for main_answer if anime_title is not disabled
+				if (room.enabled_fields?.anime_title !== false && answer.answer_status.main_answer) {
 					// If we have screen points and this is a screen type room, use those instead of default
 					let mainPoints =
 						screenPoints !== null && room.type === 'screen'
@@ -452,20 +546,30 @@
 					// Round final points to 2 decimal places
 					points = Math.ceil(points * 100) / 100;
 
+					// Calculate new values
+					const newScore = player.score + points;
+					const newTiebreaker = player.tiebreaker + tiebreaker;
+
 					const { error } = await supabase
 						.from('players')
 						.update({
-							score: player.score + points,
-							tiebreaker: player.tiebreaker + tiebreaker
+							score: newScore,
+							tiebreaker: newTiebreaker
 						})
 						.eq('id', player.id);
 
 					if (error) throw error;
+
+					// Update answer snapshots
+					await updateAnswerSnapshots(player.id, newScore, newTiebreaker);
 				}
 			}
 
 			// Mark that points have been added for this round
 			pointsAddedForRounds[selectedRoundId] = true;
+
+			// Force a refresh of the data to ensure we have the latest state from the server
+			await invalidateAll();
 
 			toast.success('Punkty przyznane pomyślnie');
 		} catch (error) {
@@ -511,7 +615,6 @@
 
 				if (!screenPointsError && screenPointsData) {
 					screenPoints = screenPointsData.points_value;
-					console.log('Using saved screen points for negative:', screenPoints);
 				}
 			}
 
@@ -521,8 +624,9 @@
 
 				let points = 0;
 
-				// Only apply negative points to incorrect answers
-				if (!answer.answer_status.main_answer) {
+				// Only apply negative points to incorrect answers (false), not to neutral (null) or correct (true) answers
+				// And only if anime_title is not disabled
+				if (room.enabled_fields?.anime_title !== false && answer.answer_status.main_answer === false) {
 					// If we have screen points and this is a screen type room, use those instead of default
 					let basePoints =
 						screenPoints !== null && room.type === 'screen'
@@ -533,14 +637,14 @@
 					points -= basePoints / 2;
 				}
 
-				// Extra fields negative points - only for incorrect fields
-				if (answer.extra_fields?.song_title && !answer.answer_status.song_title) {
+				// Extra fields negative points - only for incorrect fields (false), not for neutral (null) or correct (true)
+				if (answer.extra_fields?.song_title && answer.answer_status.song_title === false) {
 					points -= room.points_config.song_title / 2;
 				}
-				if (answer.extra_fields?.song_artist && !answer.answer_status.song_artist) {
+				if (answer.extra_fields?.song_artist && answer.answer_status.song_artist === false) {
 					points -= room.points_config.song_artist / 2;
 				}
-				if (answer.extra_fields?.other && !answer.answer_status.other) {
+				if (answer.extra_fields?.other && answer.answer_status.other === false) {
 					points -= room.points_config.other / 2;
 				}
 
@@ -548,14 +652,20 @@
 					// Round final points to 2 decimal places
 					points = Math.ceil(points * 100) / 100;
 
+					// Calculate new score (points are already negative here)
+					const newScore = player.score + points;
+
 					const { error } = await supabase
 						.from('players')
 						.update({
-							score: player.score + points // Points are already negative here
+							score: newScore
 						})
 						.eq('id', player.id);
 
 					if (error) throw error;
+
+					// Update answer snapshots
+					await updateAnswerSnapshots(player.id, newScore, undefined);
 				}
 			}
 
@@ -586,12 +696,23 @@
 		}
 
 		try {
+			// Calculate new value
+			const newValue = player[field] + amount;
+
 			const { error } = await supabase
 				.from('players')
-				.update({ [field]: player[field] + amount })
+				.update({ [field]: newValue })
 				.eq('id', playerId);
 
 			if (error) throw error;
+
+			// Update answer snapshots
+			if (field === 'score') {
+				await updateAnswerSnapshots(playerId, newValue, undefined);
+			} else if (field === 'tiebreaker') {
+				await updateAnswerSnapshots(playerId, undefined, newValue);
+			}
+
 			toast.success(`${field === 'score' ? 'Score' : 'Tiebreaker'} updated`);
 		} catch (error) {
 			toast.error(`Aktualizacja nie powiodła się: ${error.message}`);
@@ -601,7 +722,6 @@
 	async function deletePlayer(playerId) {
 		try {
 			const { error } = await supabase.from('players').delete().eq('id', playerId);
-			console.log(playerId);
 			if (error) throw error;
 			toast.success('Gracz usunięty z gry');
 		} catch (error) {
@@ -744,7 +864,6 @@
 					filter: `room_id=eq.${room.id}`
 				},
 				async (payload) => {
-					console.log('Answer change detected:', payload);
 					if (payload.eventType === 'DELETE') {
 						const deletedAnswer = payload.old;
 						if (deletedAnswer.round_id === selectedRoundId) {
@@ -798,7 +917,6 @@
 					filter: `room_id=eq.${room.id}`
 				},
 				async (payload) => {
-					console.log('Hand raise change detected:', payload);
 					try {
 						// Show update indicator
 						const takeoverTab = document.querySelector('[data-value="takeover"]');
@@ -899,9 +1017,11 @@
 						<p class="text-gray-400">Brak prawidłowych odpowiedzi dla tej rundy</p>
 					{:else}
 						<div class="flex-1 rounded-md bg-gray-800/50 p-3">
-							<div class="whitespace-pre-line text-sm font-medium text-gray-300">
-								{currentCorrectAnswers.map((answer) => answer.content).join('\n')}
-							</div>
+							{#if room.enabled_fields?.anime_title !== false}
+								<div class="whitespace-pre-line text-sm font-medium text-gray-300">
+									{currentCorrectAnswers.map((answer) => answer.content).join('\n')}
+								</div>
+							{/if}
 
 							{#if currentCorrectAnswers[0]?.extra_fields}
 								<div class="mt-3 flex gap-4 border-t border-gray-700 pt-2 text-sm">
@@ -967,7 +1087,9 @@
 								<Table.Header>
 									<Table.Row class="border-gray-800">
 										<Table.Head class="text-gray-300">Drużyna</Table.Head>
-										<Table.Head class="text-gray-300">Nazwa anime</Table.Head>
+										{#if room.enabled_fields?.anime_title !== false}
+											<Table.Head class="text-gray-300">Nazwa anime</Table.Head>
+										{/if}
 										{#if room.enabled_fields?.song_title}
 											<Table.Head class="text-gray-300">Nazwa piosenki</Table.Head>
 										{/if}
@@ -989,18 +1111,22 @@
 										{@const player = players.find((p) => p.name === answer.player_name)}
 										<Table.Row class="border-gray-800 hover:bg-gray-800/30">
 											<Table.Cell class="font-medium text-gray-200">{answer.player_name}</Table.Cell>
-											<Table.Cell>
-												<div class="flex items-center gap-2">
-													<span class="text-gray-200">{answer.content}</span>
-													<button on:click={() => toggleAnswerStatus(answer.id, 'main_answer', answer.answer_status?.main_answer)} disabled={!isCurrentRound} class="flex h-10 w-10 items-center justify-center rounded-full p-2 transition-colors hover:bg-gray-800">
-														{#if answer.answer_status?.main_answer}
-															<Check class="h-6 w-6 text-green-500" />
-														{:else}
-															<X class="h-6 w-6 text-red-500" />
-														{/if}
-													</button>
-												</div>
-											</Table.Cell>
+											{#if room.enabled_fields?.anime_title !== false}
+												<Table.Cell>
+													<div class="flex items-center gap-2">
+														<span class="text-gray-200">{answer.content}</span>
+														<button on:click={() => toggleAnswerStatus(answer.id, 'main_answer', answer.answer_status?.main_answer)} disabled={!isCurrentRound} class="flex h-10 w-10 items-center justify-center rounded-full p-2 transition-colors hover:bg-gray-800">
+															{#if answer.answer_status?.main_answer === true}
+																<Check class="h-6 w-6 text-green-500" />
+															{:else if answer.answer_status?.main_answer === false}
+																<X class="h-6 w-6 text-red-500" />
+															{:else}
+																<Circle class="h-6 w-6 text-gray-500" />
+															{/if}
+														</button>
+													</div>
+												</Table.Cell>
+											{/if}
 
 											{#if room.enabled_fields?.song_title}
 												<Table.Cell>
@@ -1008,10 +1134,12 @@
 														<span class="text-gray-200">{answer.extra_fields?.song_title || '-'}</span>
 														{#if answer.extra_fields?.song_title}
 															<button on:click={() => toggleAnswerStatus(answer.id, 'song_title', answer.answer_status?.song_title)} disabled={!isCurrentRound} class="flex h-10 w-10 items-center justify-center rounded-full p-2 transition-colors hover:bg-gray-800">
-																{#if answer.answer_status?.song_title}
+																{#if answer.answer_status?.song_title === true}
 																	<Check class="h-6 w-6 text-green-500" />
-																{:else}
+																{:else if answer.answer_status?.song_title === false}
 																	<X class="h-6 w-6 text-red-500" />
+																{:else}
+																	<Circle class="h-6 w-6 text-gray-500" />
 																{/if}
 															</button>
 														{/if}
@@ -1025,10 +1153,12 @@
 														<span class="text-gray-200">{answer.extra_fields?.song_artist || '-'}</span>
 														{#if answer.extra_fields?.song_artist}
 															<button on:click={() => toggleAnswerStatus(answer.id, 'song_artist', answer.answer_status?.song_artist)} disabled={!isCurrentRound} class="flex h-10 w-10 items-center justify-center rounded-full p-2 transition-colors hover:bg-gray-800">
-																{#if answer.answer_status?.song_artist}
+																{#if answer.answer_status?.song_artist === true}
 																	<Check class="h-6 w-6 text-green-500" />
-																{:else}
+																{:else if answer.answer_status?.song_artist === false}
 																	<X class="h-6 w-6 text-red-500" />
+																{:else}
+																	<Circle class="h-6 w-6 text-gray-500" />
 																{/if}
 															</button>
 														{/if}
@@ -1042,10 +1172,12 @@
 														<span class="text-gray-200">{answer.extra_fields?.other || '-'}</span>
 														{#if answer.extra_fields?.other}
 															<button on:click={() => toggleAnswerStatus(answer.id, 'other', answer.answer_status?.other)} disabled={!isCurrentRound} class="flex h-10 w-10 items-center justify-center rounded-full p-2 transition-colors hover:bg-gray-800">
-																{#if answer.answer_status?.other}
+																{#if answer.answer_status?.other === true}
 																	<Check class="h-6 w-6 text-green-500" />
-																{:else}
+																{:else if answer.answer_status?.other === false}
 																	<X class="h-6 w-6 text-red-500" />
+																{:else}
+																	<Circle class="h-6 w-6 text-gray-500" />
 																{/if}
 															</button>
 														{/if}
@@ -1058,11 +1190,15 @@
 											</Table.Cell>
 
 											<Table.Cell>
-												<span class="text-center text-gray-200">{player?.score || 0}</span>
+												<span class="text-center text-gray-200">
+													{isCurrentRound ? (player?.score || 0) : (answer.score_snapshot !== undefined ? answer.score_snapshot : (player?.score || 0))}
+												</span>
 											</Table.Cell>
 
 											<Table.Cell>
-												<span class="text-center text-gray-200">{player?.tiebreaker || 0}</span>
+												<span class="text-center text-gray-200">
+													{isCurrentRound ? (player?.tiebreaker || 0) : (answer.tiebreaker_snapshot !== undefined ? answer.tiebreaker_snapshot : (player?.tiebreaker || 0))}
+												</span>
 											</Table.Cell>
 
 											<Table.Cell class="text-center">

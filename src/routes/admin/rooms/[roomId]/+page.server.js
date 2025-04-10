@@ -99,13 +99,21 @@ export const load = async ({ depends, params, locals: { supabase } }) => {
 
     // Annotate answers with correct status based on correct_answers
     const annotatedAnswers = allAnswers.map(answer => {
-      // If the answer already has a status set (any field is true), 
+      // If the answer already has a status set (any field is true, false, or explicitly null),
       // respect the manually set values
       const hasManualChanges = answer.answer_status && (
         answer.answer_status.main_answer === true ||
+        answer.answer_status.main_answer === false ||
+        answer.answer_status.main_answer === null ||
         answer.answer_status.song_title === true ||
+        answer.answer_status.song_title === false ||
+        answer.answer_status.song_title === null ||
         answer.answer_status.song_artist === true ||
-        answer.answer_status.other === true
+        answer.answer_status.song_artist === false ||
+        answer.answer_status.song_artist === null ||
+        answer.answer_status.other === true ||
+        answer.answer_status.other === false ||
+        answer.answer_status.other === null
       );
 
       // If manually edited, keep the existing status
@@ -117,13 +125,14 @@ export const load = async ({ depends, params, locals: { supabase } }) => {
       const roundCorrectAnswers = correctAnswers.filter(ca => ca.round_id === answer.round_id);
 
       // Start with existing answer status or default
-      const newAnswerStatus = {
-        ...(answer.answer_status || {}),
-        main_answer: false,
-        song_title: false,
-        song_artist: false,
-        other: false
-      };
+      // Only set default values for fields that don't already exist
+      const newAnswerStatus = { ...(answer.answer_status || {}) };
+
+      // Only set defaults for fields that don't exist yet
+      if (newAnswerStatus.main_answer === undefined) newAnswerStatus.main_answer = false;
+      if (newAnswerStatus.song_title === undefined) newAnswerStatus.song_title = false;
+      if (newAnswerStatus.song_artist === undefined) newAnswerStatus.song_artist = false;
+      if (newAnswerStatus.other === undefined) newAnswerStatus.other = false;
 
       // Helper for text normalization
       const normalizeText = (text) => (text ? text.toLowerCase().trim() : '');
