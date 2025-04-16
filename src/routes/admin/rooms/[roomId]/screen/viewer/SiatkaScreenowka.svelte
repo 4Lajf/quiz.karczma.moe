@@ -25,7 +25,9 @@
 		minRandomSpeed: 100,
 		maxRandomSpeed: 2000,
 		gridMode: 'grid', // 'grid' or 'crosshatch'
-		stripeCount: 10 // Number of stripes for crosshatch mode
+		stripeCount: 10, // Number of stripes for crosshatch mode
+		revealInBatches: false, // New option for batch reveals
+		numberOfBatches: 3 // Default number of batches
 	};
 
 	// Game state
@@ -283,8 +285,14 @@
 		}
 	}
 
-	function splitImage() {
+	function splitImage(continueFromPrevious = false) {
 		if (!gameContainer || !isImageLoaded) return;
+
+		// Reset batch information if starting fresh
+		if (!continueFromPrevious) {
+			currentBatchIndex = 0;
+			batchSizes = [];
+		}
 
 		// Set loading text
 		if (countdown) countdown.textContent = 'Ładowanie...';
@@ -297,8 +305,44 @@
 			if (countdown) countdown.textContent = '';
 
 			// Shuffle pieces if random reveal is enabled
-			const piecesToReveal = config.randomReveal ? imagePieces.sort(() => Math.random() - 0.5) : [...imagePieces];
+			storedPiecesToReveal = config.randomReveal ? imagePieces.sort(() => Math.random() - 0.5) : [...imagePieces];
 
+			// For batch reveals, calculate the batch sizes
+			if (config.revealInBatches) {
+				console.log('SiatkaScreenowka: Batch reveal mode enabled');
+				// If we're not continuing from a previous batch, calculate the batch sizes
+				if (!continueFromPrevious) {
+					console.log('Calculating batch sizes for', totalPieces, 'pieces and', config.numberOfBatches, 'batches');
+					// Calculate batch sizes - divide total pieces into equal batches
+					const baseBatchSize = Math.floor(totalPieces / config.numberOfBatches);
+					const remainder = totalPieces % config.numberOfBatches;
+
+					console.log('baseBatchSize:', baseBatchSize, 'remainder:', remainder);
+
+					// Distribute the remainder across the first few batches
+					batchSizes = [];
+					for (let i = 0; i < config.numberOfBatches; i++) {
+						if (i < remainder) {
+							batchSizes.push(baseBatchSize + 1);
+						} else {
+							batchSizes.push(baseBatchSize);
+						}
+					}
+
+					console.log('batchSizes:', batchSizes);
+
+					// Set initial points
+					pointsValue = 100;
+					currentBatchIndex = 0;
+				}
+
+				// Start the batch reveal process
+				console.log('Starting batch reveal process');
+				continueBatchReveal();
+				return; // Exit early as we're handling the animation differently
+			}
+
+			// For non-batch reveals, continue with the original logic
 			let revealedCount = 0;
 
 			// If using randomOnce mode, determine the animation speed now
@@ -320,23 +364,75 @@
 					return;
 				}
 
-				if (revealedCount < piecesToReveal.length) {
-					const piece = piecesToReveal[revealedCount];
+				if (revealedCount < storedPiecesToReveal.length) {
+					// In batch mode, reveal multiple pieces at once
+					if (config.revealInBatches) {
+						// Calculate how many pieces to reveal in this iteration
+						const currentBatch = Math.floor(revealedCount / batchSize);
+						const nextBatchStart = (currentBatch + 1) * batchSize;
+						const piecesToRevealNow = Math.min(nextBatchStart - revealedCount, storedPiecesToReveal.length - revealedCount);
 
-					setTimeout(() => {
-						if (piece) {
-							// Remove black overlay and show piece
-							piece.style.backgroundColor = 'transparent';
-							piece.style.opacity = '1';
+						// Reveal all pieces in this batch
+						for (let i = 0; i < piecesToRevealNow; i++) {
+							if (revealedCount + i < storedPiecesToReveal.length) {
+								const piece = storedPiecesToReveal[revealedCount + i];
+
+								setTimeout(() => {
+									if (piece) {
+										// Remove black overlay and show piece
+										piece.style.backgroundColor = 'transparent';
+										piece.style.opacity = '1';
+									}
+								}, 10);
+
+								revealedPieces.push(piece);
+							}
 						}
-					}, 10);
 
-					revealedCount++;
+						// Update counter
+						revealedCount += piecesToRevealNow;
 
-					// Calculate points
-					pointsValue = Math.ceil((1 - revealedCount / totalPieces) * 100);
+						// Calculate and update points value
+						const newBatchCounter = Math.floor(revealedCount / batchSize);
+						if (newBatchCounter > batchCounter) {
+							batchCounter = newBatchCounter;
+							// Calculate points based on how many batches are left to reveal
+							const batchesRevealed = batchCounter;
+							const totalBatches = config.numberOfBatches;
+							pointsValue = Math.ceil((1 - batchesRevealed / totalBatches) * 100);
 
-					revealedPieces.push(piece);
+							// Pause after revealing one batch to wait for user interaction
+							isImagePlaying = false;
+							isImagePaused = true;
+							isPointsEnlarged = true;
+
+							// Save current points
+							savePointsValue();
+
+							// Clear the interval
+							clearInterval(partInterval);
+							partInterval = null;
+							return;
+						}
+					} else {
+						// Original single piece reveal
+						const piece = storedPiecesToReveal[revealedCount];
+
+						setTimeout(() => {
+							if (piece) {
+								// Remove black overlay and show piece
+								piece.style.backgroundColor = 'transparent';
+								piece.style.opacity = '1';
+							}
+						}, 10);
+
+						revealedCount++;
+
+						// Calculate points
+						pointsValue = Math.ceil((1 - revealedCount / totalPieces) * 100);
+
+						revealedPieces.push(piece);
+					}
 
 					// If using randomEach mode, update the interval timing
 					if (config.speedMode === 'randomEach' && partInterval) {
@@ -372,10 +468,17 @@
 			savePointsValue();
 		} else {
 			if (isImagePaused) {
-				// Resume
-				isImagePlaying = true;
-				isImagePaused = false;
-				isPointsEnlarged = false;
+				// Check if we're in batch reveal mode and need to continue to the next batch
+				if (config.revealInBatches) {
+					console.log('Continuing to next batch in SiatkaScreenowka');
+					// Continue with the next batch
+					continueNextBatch();
+				} else {
+					// Resume normal animation that was paused
+					isImagePlaying = true;
+					isImagePaused = false;
+					isPointsEnlarged = false;
+				}
 			} else {
 				// Start new reveal
 				splitImage();
@@ -387,6 +490,104 @@
 
 				isPointsEnlarged = false;
 			}
+		}
+	}
+
+	// Store batch information for consistent batch sizes
+	let batchSizes = [];
+	let currentBatchIndex = 0;
+
+	// Function to continue to the next batch in batch reveal mode
+	function continueNextBatch() {
+		console.log('SiatkaScreenowka continueNextBatch called');
+		console.log('config.revealInBatches:', config.revealInBatches);
+		console.log('isImagePaused:', isImagePaused);
+		console.log('currentBatchIndex:', currentBatchIndex);
+		console.log('batchSizes:', batchSizes);
+
+		if (!config.revealInBatches) {
+			console.log('Not in batch reveal mode');
+			return;
+		}
+
+		// Reset pause state
+		isImagePaused = false;
+		isPointsEnlarged = false;
+
+		// Increment the batch index
+		currentBatchIndex++;
+		console.log('New currentBatchIndex:', currentBatchIndex);
+
+		// Calculate points based on remaining batches
+		const totalBatches = config.numberOfBatches;
+		pointsValue = Math.ceil((1 - currentBatchIndex / totalBatches) * 100);
+		console.log('New pointsValue:', pointsValue);
+
+		// Continue the animation for the next batch
+		continueBatchReveal();
+	}
+
+	// Store the pieces to reveal for batch mode
+	let storedPiecesToReveal = [];
+
+	// Function to continue revealing the next batch
+	function continueBatchReveal() {
+		console.log('SiatkaScreenowka continueBatchReveal called');
+		if (!gameContainer || !isImageLoaded) {
+			console.log('gameContainer or image not loaded');
+			return;
+		}
+
+		isImagePlaying = true;
+
+		// Get the current batch of pieces to reveal
+		console.log('batchSizes:', batchSizes);
+		console.log('currentBatchIndex:', currentBatchIndex);
+		console.log('storedPiecesToReveal.length:', storedPiecesToReveal.length);
+
+		if (batchSizes.length === 0 || currentBatchIndex >= batchSizes.length) {
+			console.error('Invalid batch configuration');
+			return;
+		}
+
+		const startIndex = batchSizes.slice(0, currentBatchIndex).reduce((sum, size) => sum + size, 0);
+		const batchSize = batchSizes[currentBatchIndex];
+		const endIndex = startIndex + batchSize;
+
+		console.log('startIndex:', startIndex);
+		console.log('batchSize:', batchSize);
+		console.log('endIndex:', endIndex);
+
+		// Reveal all pieces in this batch
+		for (let i = startIndex; i < endIndex && i < storedPiecesToReveal.length; i++) {
+			const piece = storedPiecesToReveal[i];
+
+			setTimeout(() => {
+				if (piece) {
+					// Remove black overlay and show piece
+					piece.style.backgroundColor = 'transparent';
+					piece.style.opacity = '1';
+				}
+			}, 10);
+
+			revealedPieces.push(piece);
+		}
+
+		// Check if this was the last batch
+		if (currentBatchIndex >= config.numberOfBatches - 1 || endIndex >= storedPiecesToReveal.length) {
+			// All pieces revealed, set final state
+			isImagePlaying = false;
+			isImagePaused = false;
+			pointsValue = 0;
+			savePointsValue();
+		} else {
+			// Pause after revealing this batch
+			setTimeout(() => {
+				isImagePlaying = false;
+				isImagePaused = true;
+				isPointsEnlarged = true;
+				savePointsValue();
+			}, 500);
 		}
 	}
 
@@ -740,6 +941,23 @@
 							<input type="checkbox" id="random-reveal" bind:checked={config.randomReveal} class="mr-2 h-4 w-4 rounded border-gray-300 bg-gray-700" />
 							<label for="random-reveal">Losowe odkrywanie elementów</label>
 						</div>
+
+						<!-- Batch reveal settings -->
+						<div class="mt-4">
+							<h4 class="mb-2 border-b border-gray-700 pb-1 text-sm font-medium uppercase tracking-wider">Sposób odsłaniania</h4>
+							<div class="mb-2 flex items-center">
+								<input type="checkbox" id="reveal-in-batches" bind:checked={config.revealInBatches} class="mr-2 h-4 w-4 rounded border-gray-300 bg-gray-700" />
+								<label for="reveal-in-batches">Odsłaniaj w częściach</label>
+							</div>
+
+							{#if config.revealInBatches}
+								<div class="mb-2 flex items-center justify-between">
+									<label for="num-batches" class="block">Liczba części</label>
+									<span class="text-sm text-gray-300">{config.numberOfBatches}</span>
+								</div>
+								<input id="num-batches" type="range" min="2" max="10" bind:value={config.numberOfBatches} class="h-2 w-full appearance-none rounded-md bg-gray-700" />
+							{/if}
+						</div>
 					</div>
 				</div>
 
@@ -749,48 +967,57 @@
 					<div class="mb-4">
 						<h4 class="mb-2 border-b border-gray-700 pb-1 text-sm font-medium uppercase tracking-wider">Szybkość animacji</h4>
 
-						<div class="mb-2">
-							<!-- svelte-ignore a11y_label_has_associated_control -->
-							<label class="block font-medium">Tryb szybkości animacji</label>
-						</div>
-
-						<div class="mb-2 flex items-center">
-							<input type="radio" id="speed-mode-constant" bind:group={config.speedMode} value="constant" class="mr-2 h-4 w-4 rounded border-gray-300 bg-gray-700" />
-							<label for="speed-mode-constant">Stała prędkość</label>
-						</div>
-
-						<div class="mb-2 flex items-center">
-							<input type="radio" id="speed-mode-random-once" bind:group={config.speedMode} value="randomOnce" class="mr-2 h-4 w-4 rounded border-gray-300 bg-gray-700" />
-							<label for="speed-mode-random-once">Losowa prędkość (na początku)</label>
-						</div>
-
-						<div class="mb-3 flex items-center">
-							<input type="radio" id="speed-mode-random-each" bind:group={config.speedMode} value="randomEach" class="mr-2 h-4 w-4 rounded border-gray-300 bg-gray-700" />
-							<label for="speed-mode-random-each">Losowa prędkość (dla każdego elementu)</label>
-						</div>
-
-						{#if config.speedMode === 'constant'}
-							<div class="mb-2 flex items-center justify-between">
-								<label for="animation-speed" class="block">Podstawowa szybkość</label>
-								<span class="text-sm text-gray-300">{config.animationSpeed}ms</span>
+						{#if config.revealInBatches}
+							<div class="mb-2 p-2 rounded bg-gray-700/50 text-sm">
+								Ustawienia szybkości są nieaktywne w trybie odsłaniania w częściach.
+								Kliknij lub naciśnij spację, aby odsłonić kolejną część.
 							</div>
-							<input id="animation-speed" type="range" min="100" max="3000" step="100" bind:value={config.animationSpeed} class="h-2 w-full appearance-none rounded-md bg-gray-700" />
+						{:else}
+							<div class="mb-2">
+								<!-- svelte-ignore a11y_label_has_associated_control -->
+								<label class="block font-medium">Tryb szybkości animacji</label>
+							</div>
+
+							<div class="mb-2 flex items-center">
+								<input type="radio" id="speed-mode-constant" bind:group={config.speedMode} value="constant" class="mr-2 h-4 w-4 rounded border-gray-300 bg-gray-700" />
+								<label for="speed-mode-constant">Stała prędkość</label>
+							</div>
+
+							<div class="mb-2 flex items-center">
+								<input type="radio" id="speed-mode-random-once" bind:group={config.speedMode} value="randomOnce" class="mr-2 h-4 w-4 rounded border-gray-300 bg-gray-700" />
+								<label for="speed-mode-random-once">Losowa prędkość (na początku)</label>
+							</div>
+
+							<div class="mb-3 flex items-center">
+								<input type="radio" id="speed-mode-random-each" bind:group={config.speedMode} value="randomEach" class="mr-2 h-4 w-4 rounded border-gray-300 bg-gray-700" />
+								<label for="speed-mode-random-each">Losowa prędkość (dla każdego elementu)</label>
+							</div>
 						{/if}
 
-						{#if config.speedMode !== 'constant'}
-							<div class="mb-1 flex items-center justify-between">
-								<!-- svelte-ignore a11y_label_has_associated_control -->
-								<label class="block">Zakres losowej prędkości</label>
-								<span class="text-sm text-gray-300">{config.minRandomSpeed}-{config.maxRandomSpeed}ms</span>
-							</div>
-							<div class="mb-1 flex items-center gap-2">
-								<span class="w-8 text-xs">{config.minRandomSpeed}</span>
-								<input type="range" min="100" max={config.maxRandomSpeed - 100} step="100" bind:value={config.minRandomSpeed} class="h-2 flex-1 appearance-none rounded-md bg-gray-700" />
-							</div>
-							<div class="flex items-center gap-2">
-								<span class="w-8 text-xs">{config.maxRandomSpeed}</span>
-								<input type="range" min={config.minRandomSpeed + 100} max="3000" step="100" bind:value={config.maxRandomSpeed} class="h-2 flex-1 appearance-none rounded-md bg-gray-700" />
-							</div>
+						{#if !config.revealInBatches}
+							{#if config.speedMode === 'constant'}
+								<div class="mb-2 flex items-center justify-between">
+									<label for="animation-speed" class="block">Podstawowa szybkość</label>
+									<span class="text-sm text-gray-300">{config.animationSpeed}ms</span>
+								</div>
+								<input id="animation-speed" type="range" min="100" max="3000" step="100" bind:value={config.animationSpeed} class="h-2 w-full appearance-none rounded-md bg-gray-700" />
+							{/if}
+
+							{#if config.speedMode !== 'constant'}
+								<div class="mb-1 flex items-center justify-between">
+									<!-- svelte-ignore a11y_label_has_associated_control -->
+									<label class="block">Zakres losowej prędkości</label>
+									<span class="text-sm text-gray-300">{config.minRandomSpeed}-{config.maxRandomSpeed}ms</span>
+								</div>
+								<div class="mb-1 flex items-center gap-2">
+									<span class="w-8 text-xs">{config.minRandomSpeed}</span>
+									<input type="range" min="100" max={config.maxRandomSpeed - 100} step="100" bind:value={config.minRandomSpeed} class="h-2 flex-1 appearance-none rounded-md bg-gray-700" />
+								</div>
+								<div class="flex items-center gap-2">
+									<span class="w-8 text-xs">{config.maxRandomSpeed}</span>
+									<input type="range" min={config.minRandomSpeed + 100} max="3000" step="100" bind:value={config.maxRandomSpeed} class="h-2 flex-1 appearance-none rounded-md bg-gray-700" />
+								</div>
+							{/if}
 						{/if}
 					</div>
 				</div>
@@ -810,7 +1037,9 @@
 							minRandomSpeed: 100,
 							maxRandomSpeed: 2000,
 							gridMode: 'grid',
-							stripeCount: 10
+							stripeCount: 10,
+							revealInBatches: false,
+							numberOfBatches: 3
 						};
 						updateConfig();
 					}}

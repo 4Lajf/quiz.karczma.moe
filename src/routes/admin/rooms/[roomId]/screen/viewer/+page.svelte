@@ -6,6 +6,7 @@
 	import ZakrywanaScreenowka from './ZakrywanaScreenowka.svelte';
 	import RozbitaScreenowka from './RozbitaScreenowka.svelte';
 	import SiatkaScreenowka from './SiatkaScreenowka.svelte';
+	import PixelatedScreenowka from './PixelatedScreenowka.svelte';
 
 	export let data;
 	$: ({ supabase, room, rounds, currentRound, screenImage } = data);
@@ -45,6 +46,8 @@
 		<RozbitaScreenowka {screenImage} {room} {currentRound} {supabase} />
 	{:else if screenMode === 'siatka'}
 		<SiatkaScreenowka {screenImage} {room} {currentRound} {supabase} />
+	{:else if screenMode === 'pixelowana'}
+		<PixelatedScreenowka {screenImage} {room} {currentRound} {supabase} />
 	{:else}
 		<!-- Fallback to normal mode if unknown mode -->
 		<NormalnaScreenowka {screenImage} />

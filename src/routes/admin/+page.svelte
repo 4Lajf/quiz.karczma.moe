@@ -353,6 +353,11 @@
 					<RadioGroupItem value="siatka" id="gird-screen" />
 					<Label for="grid-screen" class="cursor-pointer">Na bazie siatki (4x4, 8x8 itp.)</Label>
 				</div>
+
+				<div class="flex items-center space-x-2">
+					<RadioGroupItem value="pixelowana" id="pixelated-screen" />
+					<Label for="pixelated-screen" class="cursor-pointer">Pixelowana (od mocno do mniej pixelowana)</Label>
+				</div>
 			</RadioGroup>
 		</div>
 
