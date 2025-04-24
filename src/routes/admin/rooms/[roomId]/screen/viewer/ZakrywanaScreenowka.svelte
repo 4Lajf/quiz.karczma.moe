@@ -1,6 +1,7 @@
 <script>
 	import { onMount, onDestroy } from 'svelte';
 	import { browser } from '$app/environment';
+	import { Users } from 'lucide-svelte';
 
 	export let screenImage;
 	export let room;
@@ -28,6 +29,10 @@
 	// Takeover and hand raise state
 	let isTakeoverActive = false;
 	let channel;
+
+	// Answer count tracking
+	let answerCount = 0;
+	let answersChannel;
 
 	// Image and piece management
 	let image = null;
@@ -66,6 +71,26 @@
 			console.log('Saved current points value:', pointsValue);
 		} catch (error) {
 			console.error('Failed to save points value:', error);
+		}
+	}
+
+	// Function to fetch the count of answers for the current round
+	async function fetchAnswerCount() {
+		if (!currentRound || !room) return;
+
+		try {
+			const { count, error } = await supabase
+				.from('answers')
+				.select('*', { count: 'exact', head: true })
+				.eq('room_id', room.id)
+				.eq('round_id', currentRound.id);
+
+			if (error) throw error;
+
+			answerCount = count || 0;
+			console.log('Current answer count:', answerCount);
+		} catch (error) {
+			console.error('Failed to fetch answer count:', error);
 		}
 	}
 
@@ -404,6 +429,27 @@
 			if (screenImage && screenImage.url) {
 				image.src = screenImage.url;
 			}
+
+			// Set up subscription to track answers
+			answersChannel = supabase
+				.channel(`screen-answers-${room.id}`)
+				.on(
+					'postgres_changes',
+					{
+						event: '*',
+						schema: 'public',
+						table: 'answers',
+						filter: `room_id=eq.${room.id}`
+					},
+					async (payload) => {
+						// Update answer count
+						await fetchAnswerCount();
+					}
+				)
+				.subscribe();
+
+			// Initial fetch of answer count
+			await fetchAnswerCount();
 		}
 	});
 
@@ -414,6 +460,7 @@
 		}
 
 		if (channel) channel.unsubscribe();
+		if (answersChannel) answersChannel.unsubscribe();
 	});
 </script>
 
@@ -427,11 +474,15 @@
 		{/if}
 	</div>
 
-	<!-- Points counter -->
+	<!-- Points counter with answer count -->
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div bind:this={pointsCounter} class="absolute bottom-4 right-4 z-20 flex items-center justify-center rounded-md bg-gray-800/80 p-2 font-bold text-white transition-all duration-300" class:text-2xl={!isPointsEnlarged} class:text-6xl={isPointsEnlarged} on:click={togglePointsEnlarged}>
-		{currentPoints}
+	<div bind:this={pointsCounter} class="absolute bottom-4 right-4 z-20 flex items-center justify-center gap-3 rounded-md bg-gray-800/80 p-2 font-bold text-white transition-all duration-300" class:text-2xl={!isPointsEnlarged} class:text-6xl={isPointsEnlarged} on:click={togglePointsEnlarged}>
+		<span>{currentPoints}</span>
+		<div class="flex items-center gap-1 text-sm" class:text-lg={isPointsEnlarged}>
+			<Users size={isPointsEnlarged ? 20 : 16} />
+			<span>{answerCount}</span>
+		</div>
 	</div>
 
 	<!-- Configuration button -->

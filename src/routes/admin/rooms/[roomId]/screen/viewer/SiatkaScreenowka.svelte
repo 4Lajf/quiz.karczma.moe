@@ -1,7 +1,7 @@
 <script>
 	import { onMount, onDestroy } from 'svelte';
 	import { browser } from '$app/environment';
-	import { Shell as Spirals } from 'lucide-svelte';
+	import { Shell as Spirals, Users } from 'lucide-svelte';
 
 	export let screenImage;
 	export let room;
@@ -44,6 +44,10 @@
 	let channel;
 	let lastChangedPlayer = null;
 	let roundStarted = false;
+
+	// Answer count tracking
+	let answerCount = 0;
+	let answersChannel;
 
 	// Image and piece management
 	let image = null;
@@ -100,6 +104,26 @@
 			console.error('Failed to load points value:', error);
 			// Default to 100 if there's an error
 			pointsValue = 100;
+		}
+	}
+
+	// Function to fetch the count of answers for the current round
+	async function fetchAnswerCount() {
+		if (!currentRound || !room) return;
+
+		try {
+			const { count, error } = await supabase
+				.from('answers')
+				.select('*', { count: 'exact', head: true })
+				.eq('room_id', room.id)
+				.eq('round_id', currentRound.id);
+
+			if (error) throw error;
+
+			answerCount = count || 0;
+			console.log('Current answer count:', answerCount);
+		} catch (error) {
+			console.error('Failed to fetch answer count:', error);
 		}
 	}
 
@@ -831,6 +855,27 @@
 					}
 				)
 				.subscribe();
+
+			// Set up subscription to track answers
+			answersChannel = supabase
+				.channel(`screen-answers-${room.id}`)
+				.on(
+					'postgres_changes',
+					{
+						event: '*',
+						schema: 'public',
+						table: 'answers',
+						filter: `room_id=eq.${room.id}`
+					},
+					async (payload) => {
+						// Update answer count
+						await fetchAnswerCount();
+					}
+				)
+				.subscribe();
+
+			// Initial fetch of answer count
+			await fetchAnswerCount();
 		}
 
 		return () => {
@@ -865,6 +910,7 @@
 			partInterval = null;
 		}
 		if (channel) channel.unsubscribe();
+		if (answersChannel) answersChannel.unsubscribe();
 	});
 </script>
 
@@ -880,9 +926,13 @@
 		{/if}
 	</div>
 
-	<!-- Points counter -->
-	<div bind:this={pointsCounter} class="absolute bottom-4 right-4 z-20 flex items-center justify-center rounded-md bg-gray-800/80 p-2 font-bold text-white transition-all duration-300" class:text-2xl={!isPointsEnlarged} class:text-6xl={isPointsEnlarged}>
-		{pointsValue}
+	<!-- Points counter with answer count -->
+	<div bind:this={pointsCounter} class="absolute bottom-4 right-4 z-20 flex items-center justify-center gap-3 rounded-md bg-gray-800/80 p-2 font-bold text-white transition-all duration-300" class:text-2xl={!isPointsEnlarged} class:text-6xl={isPointsEnlarged}>
+		<span>{pointsValue}</span>
+		<div class="flex items-center gap-1 text-sm" class:text-lg={isPointsEnlarged}>
+			<Users size={isPointsEnlarged ? 20 : 16} />
+			<span>{answerCount}</span>
+		</div>
 	</div>
 
 	<!-- Configuration button -->

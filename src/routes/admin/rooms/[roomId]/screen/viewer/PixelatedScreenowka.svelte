@@ -1,7 +1,7 @@
 <script>
 	import { onMount, onDestroy } from 'svelte';
 	import { browser } from '$app/environment';
-	import { Shell as Spirals } from 'lucide-svelte';
+	import { Shell as Spirals, Users } from 'lucide-svelte';
 
 	export let screenImage;
 	export let room;
@@ -62,6 +62,10 @@
 	let channel;
 	let lastChangedPlayer = null;
 	let roundStarted = false;
+
+	// Answer count tracking
+	let answerCount = 0;
+	let answersChannel;
 
 	// Canvas elements
 	let canvas;
@@ -155,6 +159,26 @@
 			console.error('Failed to load points value:', error);
 			// Default to 100 if there's an error
 			pointsValue = 100;
+		}
+	}
+
+	// Function to fetch the count of answers for the current round
+	async function fetchAnswerCount() {
+		if (!currentRound || !room) return;
+
+		try {
+			const { count, error } = await supabase
+				.from('answers')
+				.select('*', { count: 'exact', head: true })
+				.eq('room_id', room.id)
+				.eq('round_id', currentRound.id);
+
+			if (error) throw error;
+
+			answerCount = count || 0;
+			console.log('Current answer count:', answerCount);
+		} catch (error) {
+			console.error('Failed to fetch answer count:', error);
 		}
 	}
 
@@ -582,6 +606,27 @@
 				)
 				.subscribe();
 
+			// Set up subscription to track answers
+			answersChannel = supabase
+				.channel(`screen-answers-${room.id}`)
+				.on(
+					'postgres_changes',
+					{
+						event: '*',
+						schema: 'public',
+						table: 'answers',
+						filter: `room_id=eq.${room.id}`
+					},
+					async (payload) => {
+						// Update answer count
+						await fetchAnswerCount();
+					}
+				)
+				.subscribe();
+
+			// Initial fetch of answer count
+			await fetchAnswerCount();
+
 			return () => {
 				window.removeEventListener('keydown', handleKeyDown);
 				gameContainer?.removeEventListener('click', handleGameClick);
@@ -610,15 +655,16 @@
 	onDestroy(() => {
 		clearTimeouts();
 		if (channel) channel.unsubscribe();
+		if (answersChannel) answersChannel.unsubscribe();
 	});
 </script>
 
-<div class="relative h-full w-full bg-white" bind:this={gameContainer}>
+<div class="relative w-full h-full bg-white" bind:this={gameContainer}>
 	<!-- Canvas element for pixelated image -->
-	<canvas bind:this={canvas} class="absolute inset-0 h-full w-full"></canvas>
+	<canvas bind:this={canvas} class="absolute inset-0 w-full h-full"></canvas>
 
 	<!-- Initial message -->
-	<div bind:this={initial} class="absolute bottom-4 right-4 z-10 text-xl font-bold text-black">
+	<div bind:this={initial} class="absolute z-10 text-xl font-bold text-black bottom-4 right-4">
 		{#if !screenImage}
 			Brak obrazu dla aktualnej rundy
 		{:else if !isImageLoaded}
@@ -628,14 +674,18 @@
 		{/if}
 	</div>
 
-	<!-- Points counter -->
-	<div bind:this={pointsCounter} class="absolute bottom-4 right-4 z-20 flex items-center justify-center rounded-md bg-gray-800/80 p-2 font-bold text-white transition-all duration-300" class:text-2xl={!isPointsEnlarged} class:text-6xl={isPointsEnlarged}>
-		{pointsValue}
+	<!-- Points counter with answer count -->
+	<div bind:this={pointsCounter} class="absolute z-20 flex items-center justify-center gap-3 p-2 font-bold text-white transition-all duration-300 rounded-md bottom-4 right-4 bg-gray-800/80" class:text-2xl={!isPointsEnlarged} class:text-6xl={isPointsEnlarged}>
+		<span>{pointsValue}</span>
+		<div class="flex items-center gap-1 {isPointsEnlarged ? "text-6xl" : "text-lg"}">
+			<Users size={isPointsEnlarged ? 48 : 24} />
+			<span>{answerCount}</span>
+		</div>
 	</div>
 
 	<!-- Configuration button -->
 	<!-- svelte-ignore a11y_consider_explicit_label -->
-	<button bind:this={configButton} class="config-button absolute right-4 top-4 z-20 rounded-full bg-gray-800 p-2 text-white opacity-0 transition-opacity duration-300" on:click={() => (showConfigPanel = !showConfigPanel)}>
+	<button bind:this={configButton} class="absolute z-20 p-2 text-white transition-opacity duration-300 bg-gray-800 rounded-full opacity-0 config-button right-4 top-4" on:click={() => (showConfigPanel = !showConfigPanel)}>
 		<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 			<circle cx="12" cy="12" r="3"></circle>
 			<path
@@ -646,60 +696,60 @@
 
 	<!-- Configuration Panel -->
 	{#if showConfigPanel}
-		<div class="config-panel absolute right-4 top-14 z-20 w-auto max-w-xl rounded-md bg-gray-800 p-4 text-white shadow-md">
+		<div class="absolute z-20 w-auto max-w-xl p-4 text-white bg-gray-800 rounded-md shadow-md config-panel right-4 top-14">
 			<h3 class="mb-4 text-lg font-bold">Ustawienia pixelowania</h3>
 
 			<div class="mb-4">
 				<div class="flex items-center justify-between">
 					<h4 class="font-medium">Sekwencja pixelowania</h4>
-					<button on:click={() => (showSequenceModal = true)} class="rounded bg-blue-600 px-2 py-1 text-sm text-white hover:bg-blue-700">Edytuj sekwencję</button>
+					<button on:click={() => (showSequenceModal = true)} class="px-2 py-1 text-sm text-white bg-blue-600 rounded hover:bg-blue-700">Edytuj sekwencję</button>
 				</div>
-				<div class="mt-2 max-h-20 overflow-auto rounded bg-gray-700 p-2 text-sm">
+				<div class="p-2 mt-2 overflow-auto text-sm bg-gray-700 rounded max-h-20">
 					<code>{config.customSequence}</code>
 				</div>
 			</div>
 
-			<div class="mb-2 flex items-center justify-between">
+			<div class="flex items-center justify-between mb-2">
 				<label for="min-points" class="block">Minimalna liczba punktów</label>
 				<span class="text-sm text-gray-300">{config.minPoints}</span>
 			</div>
-			<input type="range" id="min-points" min="0" max="50" bind:value={config.minPoints} class="h-2 w-full appearance-none rounded-md bg-gray-700" />
+			<input type="range" id="min-points" min="0" max="50" bind:value={config.minPoints} class="w-full h-2 bg-gray-700 rounded-md appearance-none" />
 
-			<div class="mt-4 flex gap-2">
-				<button on:click={updateConfig} class="flex-1 rounded-md bg-blue-600 py-2 text-white hover:bg-blue-700"> Zastosuj </button>
-				<button on:click={revealFullImage} class="rounded-md bg-amber-600 py-2 text-white hover:bg-amber-700">Pokaż pełny obraz</button>
+			<div class="flex gap-2 mt-4">
+				<button on:click={updateConfig} class="flex-1 py-2 text-white bg-blue-600 rounded-md hover:bg-blue-700"> Zastosuj </button>
+				<button on:click={revealFullImage} class="py-2 text-white rounded-md bg-amber-600 hover:bg-amber-700">Pokaż pełny obraz</button>
 			</div>
 		</div>
 	{/if}
 
 	<!-- Sequence Input Modal -->
 	{#if showSequenceModal}
-		<div class="sequence-modal fixed inset-0 z-30 flex items-center justify-center bg-black/70">
-			<div class="w-full max-w-3xl rounded-md bg-gray-800 p-6 text-white shadow-xl">
+		<div class="fixed inset-0 z-30 flex items-center justify-center sequence-modal bg-black/70">
+			<div class="w-full max-w-3xl p-6 text-white bg-gray-800 rounded-md shadow-xl">
 				<h3 class="mb-3 text-xl font-bold">Edycja sekwencji pixelacji</h3>
 
 				<p class="mb-3 text-sm text-gray-300">
-					Wpisz sekwencję w formacie: <code class="rounded bg-gray-700 px-1">PIXELS:TIME_MS, PIXELS:TIME_MS, ...</code><br />
-					Jeśli czas nie jest podany, przejście do następnego kroku będzie ręczne. Na przykład: <code class="rounded bg-gray-700 px-1">64, 32, 16</code>
+					Wpisz sekwencję w formacie: <code class="px-1 bg-gray-700 rounded">PIXELS:TIME_MS, PIXELS:TIME_MS, ...</code><br />
+					Jeśli czas nie jest podany, przejście do następnego kroku będzie ręczne. Na przykład: <code class="px-1 bg-gray-700 rounded">64, 32, 16</code>
 				</p>
 
-				<textarea bind:this={sequenceInput} class="mb-4 h-28 w-full rounded border border-gray-700 bg-gray-900 p-2 text-white" value={config.customSequence}></textarea>
+				<textarea bind:this={sequenceInput} class="w-full p-2 mb-4 text-white bg-gray-900 border border-gray-700 rounded h-28" value={config.customSequence}></textarea>
 
 				<div class="mb-4">
 					<h4 class="mb-2 font-medium">Presety</h4>
 					<div class="grid gap-2 sm:grid-cols-2">
 						{#each presetExamples as preset}
-							<button on:click={() => applyPreset(preset.sequence)} class="rounded border border-gray-700 bg-gray-700 p-2 text-left text-sm hover:bg-gray-600">
+							<button on:click={() => applyPreset(preset.sequence)} class="p-2 text-sm text-left bg-gray-700 border border-gray-700 rounded hover:bg-gray-600">
 								<strong>{preset.name}</strong>
-								<div class="mt-1 line-clamp-1 text-xs text-gray-300">{preset.sequence}</div>
+								<div class="mt-1 text-xs text-gray-300 line-clamp-1">{preset.sequence}</div>
 							</button>
 						{/each}
 					</div>
 				</div>
 
 				<div class="flex justify-end gap-2">
-					<button on:click={() => (showSequenceModal = false)} class="rounded-md bg-gray-700 px-4 py-2 text-white hover:bg-gray-600">Anuluj</button>
-					<button on:click={saveCustomSequence} class="rounded-md bg-blue-600 px-4 py-2 text-white hover:bg-blue-700">Zapisz</button>
+					<button on:click={() => (showSequenceModal = false)} class="px-4 py-2 text-white bg-gray-700 rounded-md hover:bg-gray-600">Anuluj</button>
+					<button on:click={saveCustomSequence} class="px-4 py-2 text-white bg-blue-600 rounded-md hover:bg-blue-700">Zapisz</button>
 				</div>
 			</div>
 		</div>
@@ -707,7 +757,7 @@
 
 	<!-- No image placeholder -->
 	{#if !screenImage}
-		<div class="flex h-full w-full items-center justify-center">
+		<div class="flex items-center justify-center w-full h-full">
 			<p class="text-xl text-gray-400">Brak obrazu dla aktualnej rundy</p>
 		</div>
 	{/if}
