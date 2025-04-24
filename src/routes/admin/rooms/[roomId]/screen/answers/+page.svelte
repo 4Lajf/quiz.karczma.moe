@@ -9,6 +9,7 @@
 	import { Plus, Trash2, Upload, Image, Check, X } from 'lucide-svelte';
 	import Autocomplete from '$lib/components/player/Autocomplete.svelte';
 	import { Input } from '$lib/components/ui/input';
+	import { resizeImage } from '$lib/utils/imageResizer';
 
 	export let data;
 	$: ({ supabase, room, rounds, currentRound, roundImages, playerAnswers } = data);
@@ -203,11 +204,51 @@
 		uploading = { ...uploading }; // Trigger reactivity
 
 		try {
+			let file = files[roundNumber];
+
+			// Check file size - Vercel has a 4.5MB limit for serverless functions
+			const MAX_SIZE = 4.5 * 1024 * 1024; // 4.5MB
+			if (file.size > MAX_SIZE) {
+				console.log(`File size (${(file.size / 1024 / 1024).toFixed(2)}MB) exceeds the limit. Resizing...`);
+
+				try {
+					// Resize the image
+					file = await resizeImage(file, {
+						maxWidth: 1200,
+						maxHeight: 1200,
+						quality: 0.8,
+						format: 'jpeg'
+					});
+
+					console.log(`Image resized successfully. New size: ${(file.size / 1024).toFixed(2)}KB`);
+
+					// Check if the resized image is still too large
+					if (file.size > MAX_SIZE) {
+						// Try again with lower quality
+						file = await resizeImage(file, {
+							maxWidth: 800,
+							maxHeight: 800,
+							quality: 0.6,
+							format: 'jpeg'
+						});
+
+						console.log(`Image resized again. New size: ${(file.size / 1024).toFixed(2)}KB`);
+
+						if (file.size > MAX_SIZE) {
+							throw new Error(`File is still too large after resizing. Please use an image editor to reduce the size.`);
+						}
+					}
+				} catch (resizeError) {
+					console.error('Error resizing image:', resizeError);
+					throw new Error(`Failed to resize image: ${resizeError.message}`);
+				}
+			}
+
 			// Create form data for the upload
 			const formData = new FormData();
-			formData.append('file', files[roundNumber]);
+			formData.append('file', file);
 
-			console.log(`Uploading file ${files[roundNumber].name} to Pixeldrain...`);
+			console.log(`Uploading file ${file.name} to Pixeldrain (size: ${(file.size / 1024).toFixed(2)}KB)...`);
 
 			// Upload to Pixeldrain via our API endpoint
 			const response = await fetch('/api/upload-to-pixeldrain', {
@@ -226,7 +267,7 @@
 			console.log(`File uploaded successfully. URL: ${url}`);
 
 			// Get file extension and create a filename
-			const fileExt = files[roundNumber].name.split('.').pop();
+			const fileExt = file.name.split('.').pop();
 			const fileName = `round_${roundNumber}.${fileExt}`;
 
 			// Find the correct answer for this round

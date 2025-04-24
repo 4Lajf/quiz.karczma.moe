@@ -1,9 +1,5 @@
 // src/routes/api/upload-to-pixeldrain/+server.js
 import { json } from '@sveltejs/kit';
-import fs from 'fs';
-import path from 'path';
-import os from 'os';
-import { v4 as uuidv4 } from 'uuid';
 import { PIXELDRAIN_API_KEY } from '$env/static/private';
 
 /**
@@ -21,31 +17,30 @@ export async function POST({ request }) {
       return json({ error: 'No file provided' }, { status: 400 });
     }
 
-    // Create a temporary file
-    const tempDir = os.tmpdir();
-    const tempFilePath = path.join(tempDir, `${uuidv4()}-${file.name}`);
-
-    // Write the file to disk
-    const fileBuffer = Buffer.from(await file.arrayBuffer());
-    fs.writeFileSync(tempFilePath, fileBuffer);
+    // Check file size - Pixeldrain has a 10GB limit, but we'll enforce Vercel's limit
+    const MAX_SIZE = 4.5 * 1024 * 1024; // 4.5MB (Vercel's limit is 4.5MB for the request body)
+    if (file.size > MAX_SIZE) {
+      return json({
+        error: `File size (${(file.size / 1024 / 1024).toFixed(2)}MB) exceeds the maximum allowed size (4.5MB)`
+      }, { status: 400 });
+    }
 
     // Upload to Pixeldrain directly
     try {
-      const fileName = path.basename(tempFilePath);
       const apiUrl = 'https://pixeldrain.com/api/file';
 
-      // Create form data for the API request
-      const uploadFormData = new FormData();
-      uploadFormData.append('file', new Blob([fileBuffer]), fileName);
+      // Create a new FormData for the Pixeldrain API
+      const pixeldrainFormData = new FormData();
+      pixeldrainFormData.append('file', file);
 
-      console.log(`Uploading ${fileName} to Pixeldrain`);
+      console.log(`Uploading ${file.name} to Pixeldrain (size: ${(file.size / 1024).toFixed(2)}KB)`);
 
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Authorization': `Basic ${Buffer.from(`:${PIXELDRAIN_API_KEY}`).toString('base64')}`
         },
-        body: uploadFormData
+        body: pixeldrainFormData
       });
 
       if (!response.ok) {
@@ -57,18 +52,10 @@ export async function POST({ request }) {
       // Use the direct image URL format for better compatibility with <img> tags
       const fileUrl = `https://pixeldrain.com/api/file/${data.id}`;
 
-      // Clean up the temporary file
-      fs.unlinkSync(tempFilePath);
-
+      console.log(`Successfully uploaded to Pixeldrain. File ID: ${data.id}`);
       return json({ url: fileUrl });
     } catch (uploadError) {
       console.error('Error in Pixeldrain upload:', uploadError);
-
-      // Clean up the temporary file
-      if (fs.existsSync(tempFilePath)) {
-        fs.unlinkSync(tempFilePath);
-      }
-
       throw uploadError;
     }
   } catch (error) {
