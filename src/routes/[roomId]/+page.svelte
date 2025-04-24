@@ -670,7 +670,7 @@
 
 		// Update states
 		hintRequested = isHintRequested;
-		hasSubmitted = !!existingAnswer;
+		// hasSubmitted = !!existingAnswer;
 
 		// Update current points value
 		if (pointsData) {
@@ -1047,7 +1047,7 @@
 		// If an answer exists, it means the user has already submitted or is in quick guess mode
 		if (existingAnswer) {
 			toast.error('Odpowiedź dla tej rundy została już wysłana');
-			hasSubmitted = true;
+			// hasSubmitted = true;
 			return;
 		}
 
@@ -1124,7 +1124,7 @@
 				return;
 			}
 
-			hasSubmitted = true;
+			// hasSubmitted = true;
 			toast.success('Odpowiedź przesłana');
 		} catch (error) {
 			toast.error('Błąd: ' + error.message);
@@ -1494,7 +1494,7 @@
 			// Answer is too old to update
 			toast.error('Upłynął czas na aktualizację odpowiedzi');
 			isQuickGuessActive = false;
-			hasSubmitted = true;
+			// hasSubmitted = true;
 
 			if (countdownInterval) {
 				clearInterval(countdownInterval);
@@ -1550,7 +1550,7 @@
 				toast.error('Nie udało się wysłać odpowiedzi');
 			} else {
 				toast.success('Odpowiedź została wysłana');
-				hasSubmitted = true;
+				// hasSubmitted = true;
 			}
 		} catch (error) {
 			console.error('Error updating answer:', error);
@@ -1585,11 +1585,11 @@
 
 <div class="min-h-screen bg-gray-950">
 	{#if hasJoined && teamCode}
-		<div class="fixed left-4 top-4 z-20 flex items-center gap-2 rounded-md bg-gray-800/90 px-3 py-2 shadow-lg">
+		<div class="fixed z-20 flex items-center gap-2 px-3 py-2 rounded-md shadow-lg left-4 top-4 bg-gray-800/90">
 			<span class="text-sm text-gray-300">Kod drużyny: <span class="font-mono font-bold text-cyan-400">{teamCode}</span></span>
 			<!-- svelte-ignore a11y_consider_explicit_label -->
 			<button
-				class="ml-2 rounded-full p-1 text-gray-400 hover:bg-gray-700 hover:text-white"
+				class="p-1 ml-2 text-gray-400 rounded-full hover:bg-gray-700 hover:text-white"
 				on:click={() => {
 					navigator.clipboard.writeText(teamCode);
 					toast.success('Kod skopiowany do schowka');
@@ -1599,8 +1599,8 @@
 			</button>
 		</div>
 	{/if}
-	<div class="container mx-auto flex min-h-screen max-w-2xl items-center justify-center p-6">
-		<Card.Root class="w-full border-gray-800 bg-gray-900 shadow-xl">
+	<div class="container flex items-center justify-center max-w-2xl min-h-screen p-6 mx-auto">
+		<Card.Root class="w-full bg-gray-900 border-gray-800 shadow-xl">
 			<Card.Header>
 				<Card.Title class="text-white">
 					{room.name}
@@ -1626,38 +1626,38 @@
 										teamCodeRequired = false;
 										teamCodeCorrect = true;
 									}}
-									class="flex-1 border border-gray-700 bg-gray-800 text-white hover:bg-gray-700"
+									class="flex-1 text-white bg-gray-800 border border-gray-700 hover:bg-gray-700"
 								>
 									Wróć
 								</Button>
-								<Button type="submit" disabled={loading} class="flex-1 border border-gray-700 bg-blue-800 text-white hover:bg-blue-700">
+								<Button type="submit" disabled={loading} class="flex-1 text-white bg-blue-800 border border-gray-700 hover:bg-blue-700">
 									{loading ? 'Weryfikacja...' : 'Weryfikuj'}
 								</Button>
 							</div>
 						</form>
 					{:else}
 						<form on:submit|preventDefault={joinGame} class="space-y-4">
-							<Input type="text" placeholder="Twój nick" bind:value={playerName} required disabled={loading} class="border-gray-700 bg-gray-800 text-gray-100 placeholder:text-gray-500 focus-visible:ring-1 focus-visible:ring-gray-600 focus-visible:ring-offset-0" />
-							<Button type="submit" disabled={loading} class="w-full border border-gray-700 bg-gray-800 text-white hover:bg-gray-700">
+							<Input type="text" placeholder="Twój nick" bind:value={playerName} required disabled={loading} class="text-gray-100 bg-gray-800 border-gray-700 placeholder:text-gray-500 focus-visible:ring-1 focus-visible:ring-gray-600 focus-visible:ring-offset-0" />
+							<Button type="submit" disabled={loading} class="w-full text-white bg-gray-800 border border-gray-700 hover:bg-gray-700">
 								{loading ? 'Dołączanie...' : 'Dołącz do pokoju'}
 							</Button>
 						</form>
 					{/if}
 				{:else if !hasSubmitted}
-					<div class="mb-6 overflow-hidden rounded-xl border border-gray-700 bg-gray-800/60 shadow-lg">
+					<div class="mb-6 overflow-hidden border border-gray-700 shadow-lg rounded-xl bg-gray-800/60">
 						{#if !hintRequested && room.enabled_fields?.hint_mode}
 							<div class="flex items-center justify-between p-4">
 								<div class="flex items-center gap-3">
-									<div class="flex h-10 w-10 items-center justify-center rounded-full bg-gray-700/50 text-xl text-blue-400">?</div>
+									<div class="flex items-center justify-center w-10 h-10 text-xl text-blue-400 rounded-full bg-gray-700/50">?</div>
 								</div>
-								<Button on:click={requestHint} class="bg-blue-600/50 text-white hover:bg-blue-600/70" size="sm">
+								<Button on:click={requestHint} class="text-white bg-blue-600/50 hover:bg-blue-600/70" size="sm">
 									Pokaż podpowiedź (-{room.points_config?.hint_penalty_percent || 40}% punktów)
 								</Button>
 							</div>
 						{:else if hintRequested}
 							<div class="p-4">
-								<div class="mb-2 flex items-center gap-3">
-									<div class="flex h-8 w-8 items-center justify-center rounded-full bg-blue-600/30 text-lg text-blue-400">
+								<div class="flex items-center gap-3 mb-2">
+									<div class="flex items-center justify-center w-8 h-8 text-lg text-blue-400 rounded-full bg-blue-600/30">
 										<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 											<circle cx="12" cy="12" r="10"></circle>
 											<line x1="12" y1="16" x2="12" y2="12"></line>
@@ -1666,12 +1666,12 @@
 									</div>
 									<h3 class="font-medium text-blue-400">Podpowiedź</h3>
 								</div>
-								<div class="mt-2 rounded-lg bg-gray-900/60 p-3">
+								<div class="p-3 mt-2 rounded-lg bg-gray-900/60">
 									{#if maskedAnswer}
-										<p class="text-center font-mono text-lg tracking-tight text-white">
+										<p class="font-mono text-lg tracking-tight text-center text-white">
 											<!-- Process the hint to make it more word-like -->
 											{#each maskedAnswer.split(' ') as word, i}
-												<span class="mb-1 mr-2 inline-block">
+												<span class="inline-block mb-1 mr-2">
 													{#each word.split('') as char}
 														<span class={char === '_' ? 'mx-px' : char === '•' ? 'mx-px text-blue-500' : 'mx-px font-bold text-blue-400'}>
 															{char}
@@ -1681,11 +1681,11 @@
 											{/each}
 										</p>
 									{:else}
-										<p class="text-center font-mono text-lg text-white">Ładowanie...</p>
+										<p class="font-mono text-lg text-center text-white">Ładowanie...</p>
 									{/if}
 								</div>
-								<p class="mt-2 text-center text-xs text-gray-400">
-									<span class="mx-auto inline-flex items-center rounded border border-gray-700 bg-gray-800/80 px-2 py-1 font-mono text-sm text-blue-400">
+								<p class="mt-2 text-xs text-center text-gray-400">
+									<span class="inline-flex items-center px-2 py-1 mx-auto font-mono text-sm text-blue-400 border border-gray-700 rounded bg-gray-800/80">
 										<span class="mr-1 font-bold">•</span> = Dowolny znak specjalny
 									</span>
 								</p>
@@ -1695,7 +1695,7 @@
 
 					<form on:submit|preventDefault={handleSubmit} class="space-y-4">
 						{#if isQuickGuessActive}
-							<div class="mb-4 rounded-lg bg-amber-900/30 p-4 text-center">
+							<div class="p-4 mb-4 text-center rounded-lg bg-amber-900/30">
 								<p class="mb-2 text-xl font-bold text-amber-400">Masz {countdownValue}s na odpowiedź</p>
 								<p class="mb-4 text-sm text-amber-300">Twoja odpowiedź zostanie automatycznie wysłana za {countdownValue} sekund.</p>
 								<p class="text-sm text-amber-300">Potencjalne punkty: <span class="font-bold">{currentPointsValue}</span></p>
@@ -1714,17 +1714,17 @@
 						{/if}
 
 						{#if room.enabled_fields?.other}
-							<Input type="text" placeholder="Inne" bind:value={otherAnswer} disabled={loading} class="border-gray-700 bg-gray-800 text-gray-100 placeholder:text-gray-500 focus-visible:ring-1 focus-visible:ring-gray-600 focus-visible:ring-offset-0" />
+							<Input type="text" placeholder="Inne" bind:value={otherAnswer} disabled={loading} class="text-gray-100 bg-gray-800 border-gray-700 placeholder:text-gray-500 focus-visible:ring-1 focus-visible:ring-gray-600 focus-visible:ring-offset-0" />
 						{/if}
 
 						{#if !isQuickGuessActive}
 							<div class="flex gap-2">
-								<Button type="submit" disabled={loading || hasSubmitted} class="flex-1 border-green-700 bg-green-800 text-white hover:bg-green-700">
+								<Button type="submit" disabled={loading || hasSubmitted} class="flex-1 text-white bg-green-800 border-green-700 hover:bg-green-700">
 									{loading ? 'Wysyłanie...' : 'Wyślij odpowiedź'}
 								</Button>
 
 								{#if room.type === 'screen' && room.quick_guess_enabled}
-									<Button type="button" on:click={startQuickGuess} disabled={loading || hasSubmitted} class="flex-1 border border-amber-700 bg-amber-800 text-white hover:bg-amber-700">
+									<Button type="button" on:click={startQuickGuess} disabled={loading || hasSubmitted} class="flex-1 text-white border border-amber-700 bg-amber-800 hover:bg-amber-700">
 										Zgaduję! ({currentPointsValue}pkt)
 									</Button>
 								{/if}
@@ -1746,16 +1746,16 @@
 						{/if}
 
 						{#if room.enabled_fields?.other}
-							<Input type="text" placeholder="Inne" bind:value={otherAnswer} disabled={loading} class="border-gray-700 bg-gray-800 text-gray-100 placeholder:text-gray-500 focus-visible:ring-1 focus-visible:ring-gray-600 focus-visible:ring-offset-0" />
+							<Input type="text" placeholder="Inne" bind:value={otherAnswer} disabled={loading} class="text-gray-100 bg-gray-800 border-gray-700 placeholder:text-gray-500 focus-visible:ring-1 focus-visible:ring-gray-600 focus-visible:ring-offset-0" />
 						{/if}
 
 						<div class="flex gap-2">
-							<Button type="submit" disabled={loading} class="flex-1 border-green-700 bg-green-800 text-white hover:bg-green-700">
+							<Button type="submit" disabled={loading} class="flex-1 text-white bg-green-800 border-green-700 hover:bg-green-700">
 								{loading ? 'Wysyłanie...' : 'Wyślij odpowiedź'}
 							</Button>
 
 							{#if room.type === 'screen' && room.quick_guess_enabled}
-								<Button type="button" on:click={startQuickGuess} disabled={loading} class="flex-1 border border-amber-700 bg-amber-800 text-white hover:bg-amber-700">
+								<Button type="button" on:click={startQuickGuess} disabled={loading} class="flex-1 text-white border border-amber-700 bg-amber-800 hover:bg-amber-700">
 									Zgaduję! ({currentPointsValue}pkt)
 								</Button>
 							{/if}
@@ -1770,16 +1770,16 @@
 		</Card.Root>
 
 		{#if hasJoined && !inTakeoverMode}
-			<div class="fixed right-4 top-4 z-20">
-				<Button on:click={enterTakeoverMode} class="border border-gray-700 bg-gray-600 text-white hover:bg-gray-700">Tryb przejęć</Button>
+			<div class="fixed z-20 right-4 top-4">
+				<Button on:click={enterTakeoverMode} class="text-white bg-gray-600 border border-gray-700 hover:bg-gray-700">Tryb przejęć</Button>
 			</div>
 		{/if}
 
 		<!-- Takeover Mode Overlay -->
 		{#if inTakeoverMode}
 			<div class="fixed inset-0 z-50 flex flex-col items-center justify-center bg-gray-900">
-				<div class="absolute right-4 top-4 flex flex-col items-end gap-2">
-					<div class="flex items-center gap-2 rounded-lg bg-gray-800 p-3">
+				<div class="absolute flex flex-col items-end gap-2 right-4 top-4">
+					<div class="flex items-center gap-2 p-3 bg-gray-800 rounded-lg">
 						<span class="text-gray-300">Twój ping:</span>
 						<span class={getLatencyColorClass(displayLatency)}>
 							{displayLatency}ms
@@ -1795,21 +1795,21 @@
 						</span>
 					</div>
 					<div class="flex gap-2">
-						<Button on:click={exitTakeoverMode} class="border border-gray-700 bg-gray-800 text-white hover:bg-gray-700">Wyjdź</Button>
-						<Button on:click={showLeaderboard} class="border border-gray-700 bg-gray-800 text-white hover:bg-gray-700">Wyniki</Button>
+						<Button on:click={exitTakeoverMode} class="text-white bg-gray-800 border border-gray-700 hover:bg-gray-700">Wyjdź</Button>
+						<Button on:click={showLeaderboard} class="text-white bg-gray-800 border border-gray-700 hover:bg-gray-700">Wyniki</Button>
 					</div>
 				</div>
 
 				{#if checkingHandRaiseStatus}
 					<!-- Show loading indicator while checking status -->
 					<div class="flex flex-col items-center justify-center">
-						<div class="mb-4 h-12 w-12 animate-spin rounded-full border-4 border-blue-600 border-t-transparent"></div>
+						<div class="w-12 h-12 mb-4 border-4 border-blue-600 rounded-full animate-spin border-t-transparent"></div>
 						<p class="text-xl text-white">Ładowanie...</p>
 					</div>
 				{:else if !handRaised}
-					<button on:mousedown={raiseHand} on:touchstart|preventDefault={raiseHand} class="flex h-full w-full items-center justify-center bg-blue-600 text-4xl font-bold text-white active:bg-blue-800"> DOTKNIJ BY PODNIEŚĆ ŁAPĘ </button>
+					<button on:mousedown={raiseHand} on:touchstart|preventDefault={raiseHand} class="flex items-center justify-center w-full h-full text-4xl font-bold text-white bg-blue-600 active:bg-blue-800"> DOTKNIJ BY PODNIEŚĆ ŁAPĘ </button>
 				{:else if handRaiseResults}
-					<div class="flex flex-col items-center justify-center rounded-lg bg-gray-800 p-8">
+					<div class="flex flex-col items-center justify-center p-8 bg-gray-800 rounded-lg">
 						<!-- Show player's position only if they participated -->
 						{#if playerPositions.some((p) => p.name === playerName)}
 							<h2 class="mb-4 text-3xl font-bold text-white">
@@ -1836,8 +1836,8 @@
 						{/if}
 
 						<h3 class="mb-2 text-xl font-semibold text-white">Kto był pierwszy?</h3>
-						<div class="max-h-96 w-full overflow-y-auto">
-							<table class="leaderboard-table w-full text-left transition-colors duration-300">
+						<div class="w-full overflow-y-auto max-h-96">
+							<table class="w-full text-left transition-colors duration-300 leaderboard-table">
 								<thead>
 									<tr>
 										<th class="px-4 py-2 text-gray-300">Pozycja</th>
@@ -1864,9 +1864,9 @@
 								</tbody>
 							</table>
 						</div>
-						<p class="mb-2 text-center text-base text-yellow-400">Pamiętaj by wyjść z tego ekranu<br /> przed rozpoczęciem kolejnej rundy!</p>
+						<p class="mb-2 text-base text-center text-yellow-400">Pamiętaj by wyjść z tego ekranu<br /> przed rozpoczęciem kolejnej rundy!</p>
 
-						<Button on:click={closeLeaderboardView} class="mt-6 border border-gray-700 bg-gray-800 text-white hover:bg-gray-700">Wróć</Button>
+						<Button on:click={closeLeaderboardView} class="mt-6 text-white bg-gray-800 border border-gray-700 hover:bg-gray-700">Wróć</Button>
 					</div>
 				{:else}
 					<div class="text-xl text-white">Przetwarzanie...</div>
