@@ -195,7 +195,7 @@
 	}
 
 	// Upload image for a round
-	// In the +page.svelte file, update the uploadImage function
+	// Updated to use Pixeldrain instead of Supabase storage
 	async function uploadImage(roundNumber) {
 		if (!files[roundNumber]) return;
 
@@ -203,31 +203,72 @@
 		uploading = { ...uploading }; // Trigger reactivity
 
 		try {
-			// Get file extension
-			const fileExt = files[roundNumber].name.split('.').pop();
-			const fileName = `round_${roundNumber}.${fileExt}`;
-			const filePath = `quiz/${room.id}/${fileName}`;
+			// Create form data for the upload
+			const formData = new FormData();
+			formData.append('file', files[roundNumber]);
 
-			// Upload to Supabase Storage
-			const { error: uploadError } = await supabase.storage.from('screens').upload(filePath, files[roundNumber], {
-				cacheControl: '3600',
-				upsert: true
+			console.log(`Uploading file ${files[roundNumber].name} to Pixeldrain...`);
+
+			// Upload to Pixeldrain via our API endpoint
+			const response = await fetch('/api/upload-to-pixeldrain', {
+				method: 'POST',
+				body: formData
 			});
 
-			if (uploadError) throw uploadError;
+			// Parse the response JSON
+			const responseData = await response.json();
 
-			// Get signed URL instead of public URL
-			const {
-				data: { signedUrl },
-				error: signedUrlError
-			} = await supabase.storage.from('screens').createSignedUrl(filePath, 60 * 60); // 1 hour expiry
+			if (!response.ok) {
+				throw new Error(responseData.error || 'Upload failed');
+			}
 
-			if (signedUrlError) throw signedUrlError;
+			const url = responseData.url;
+			console.log(`File uploaded successfully. URL: ${url}`);
+
+			// Get file extension and create a filename
+			const fileExt = files[roundNumber].name.split('.').pop();
+			const fileName = `round_${roundNumber}.${fileExt}`;
+
+			// Find the correct answer for this round
+			const roundId = rounds.find(r => r.round_number === roundNumber)?.id;
+			if (!roundId) {
+				throw new Error(`Round with number ${roundNumber} not found`);
+			}
+
+			const { data: existingAnswers, error: fetchError } = await supabase
+				.from('correct_answers')
+				.select('*')
+				.eq('round_id', roundId);
+
+			if (fetchError) throw fetchError;
+
+			if (existingAnswers && existingAnswers.length > 0) {
+				// Update existing answer with the image URL
+				console.log(`Updating existing answer (ID: ${existingAnswers[0].id}) with image URL`);
+				const { error: updateError } = await supabase
+					.from('correct_answers')
+					.update({ image: url })
+					.eq('id', existingAnswers[0].id);
+
+				if (updateError) throw updateError;
+			} else {
+				// Create new answer with the image URL
+				console.log(`Creating new answer for round ${roundId} with image URL`);
+				const { error: insertError } = await supabase
+					.from('correct_answers')
+					.insert({
+						round_id: roundId,
+						content: '',
+						image: url
+					});
+
+				if (insertError) throw insertError;
+			}
 
 			// Update roundImages state
 			roundImages[roundNumber] = {
 				filename: fileName,
-				url: signedUrl
+				url: url
 			};
 
 			// Clear file input
@@ -237,6 +278,7 @@
 			toast.success('Obraz został przesłany');
 			await invalidateAll();
 		} catch (error) {
+			console.error('Error uploading image:', error);
 			toast.error('Błąd przesyłania: ' + error.message);
 		} finally {
 			uploading[roundNumber] = false;
@@ -245,16 +287,30 @@
 	}
 
 	// Delete image for a round
+	// Updated to clear the image URL from the database instead of deleting from Supabase storage
 	async function deleteImage(roundNumber) {
 		if (!roundImages[roundNumber]) return;
 
 		try {
-			const filePath = `quiz/${room.id}/${roundImages[roundNumber].filename}`;
+			// Find the correct answer for this round
+			const { data: existingAnswers, error: fetchError } = await supabase
+				.from('correct_answers')
+				.select('*')
+				.eq('round_id', rounds.find(r => r.round_number === roundNumber).id);
 
-			const { error } = await supabase.storage.from('screens').remove([filePath]);
+			if (fetchError) throw fetchError;
 
-			if (error) throw error;
+			if (existingAnswers && existingAnswers.length > 0) {
+				// Update existing answer to clear the image URL
+				const { error: updateError } = await supabase
+					.from('correct_answers')
+					.update({ image: null })
+					.eq('id', existingAnswers[0].id);
 
+				if (updateError) throw updateError;
+			}
+
+			// Update UI state
 			delete roundImages[roundNumber];
 			roundImages = { ...roundImages }; // Trigger reactivity
 
@@ -369,8 +425,8 @@
 </script>
 
 <div class="min-h-screen bg-gray-950">
-	<div class="container mx-auto p-6">
-		<Card.Root class="mb-6 border-gray-800 bg-gray-900">
+	<div class="container p-6 mx-auto">
+		<Card.Root class="mb-6 bg-gray-900 border-gray-800">
 			<Card.Header>
 				<div class="flex items-center justify-between">
 					<div class="!-mt-4 mb-2 flex items-center gap-4">
@@ -378,7 +434,7 @@
 					</div>
 
 					<div class="!-mt-4 mb-2 flex items-center gap-2">
-						<Button href="/admin" variant="outline" class="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700">Powrót</Button>
+						<Button href="/admin" variant="outline" class="text-gray-300 bg-gray-800 border-gray-700 hover:bg-gray-700">Powrót</Button>
 					</div>
 				</div>
 			</Card.Header>
@@ -387,7 +443,7 @@
 		<!-- Display all rounds -->
 		<div class="space-y-8">
 			{#each sortedRounds as round (round.id)}
-				<Card.Root class="border border-gray-800 bg-gray-900">
+				<Card.Root class="bg-gray-900 border border-gray-800">
 					<Card.Header>
 						<Card.Title class="text-white">Runda {round.round_number}</Card.Title>
 					</Card.Header>
@@ -398,16 +454,16 @@
 								<h3 class="text-lg font-medium text-gray-300">Screen</h3>
 
 								{#if roundImages[round.round_number]}
-									<div class="relative overflow-hidden rounded-lg border border-gray-700">
+									<div class="relative overflow-hidden border border-gray-700 rounded-lg">
 										<img src={roundImages[round.round_number].url} alt={`Round ${round.round_number}`} class="w-full" />
 										<Button on:click={() => deleteImage(round.round_number)} class="absolute right-2 top-2 bg-red-600/70 hover:bg-red-700" size="sm">
-											<Trash2 class="h-4 w-4" />
+											<Trash2 class="w-4 h-4" />
 										</Button>
 									</div>
 								{:else}
-									<div class="flex h-52 items-center justify-center rounded-lg border border-dashed border-gray-700 bg-gray-800/50">
+									<div class="flex items-center justify-center border border-gray-700 border-dashed rounded-lg h-52 bg-gray-800/50">
 										<div class="text-center">
-											<Image class="mx-auto h-12 w-12 text-gray-500" />
+											<Image class="w-12 h-12 mx-auto text-gray-500" />
 											<p class="mt-2 text-sm text-gray-400">Nie załadowano żadnego pliku</p>
 										</div>
 									</div>
@@ -415,15 +471,15 @@
 
 								<div class="flex flex-col gap-2">
 									<input type="file" id="file-{round.round_number}" accept="image/*" on:change={(e) => handleFileSelect(round.round_number, e)} class="hidden" />
-									<label for="file-{round.round_number}" class="inline-flex cursor-pointer items-center justify-center rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-gray-200 ring-offset-background transition-colors hover:bg-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50">
-										<Upload class="mr-2 h-4 w-4" />
+									<label for="file-{round.round_number}" class="inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-gray-200 transition-colors bg-gray-800 rounded-md cursor-pointer ring-offset-background hover:bg-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50">
+										<Upload class="w-4 h-4 mr-2" />
 										Wybierz plik
 									</label>
 
 									{#if files[round.round_number]}
-										<Button on:click={() => uploadImage(round.round_number)} disabled={uploading[round.round_number]} class="border border-gray-700 bg-gray-800 text-white hover:bg-gray-700">
+										<Button on:click={() => uploadImage(round.round_number)} disabled={uploading[round.round_number]} class="text-white bg-gray-800 border border-gray-700 hover:bg-gray-700">
 											{#if uploading[round.round_number]}
-												<div class="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-gray-400 border-t-transparent"></div>
+												<div class="w-4 h-4 mr-2 border-2 border-gray-400 rounded-full animate-spin border-t-transparent"></div>
 												Przesyłanie...
 											{:else}
 												Prześlij {files[round.round_number].name}
@@ -440,9 +496,9 @@
 									<div class="space-y-4">
 										<Autocomplete bind:value={answers[round.id]} placeholder="Nazwa anime" index="animeTitles" searchKey="animeTitle" type="anime" />
 
-										<Button on:click={() => saveAnswer(round.id)} disabled={savingAnswers[round.id]} class="w-full border border-gray-700 bg-gray-800 text-white hover:bg-gray-700">
+										<Button on:click={() => saveAnswer(round.id)} disabled={savingAnswers[round.id]} class="w-full text-white bg-gray-800 border border-gray-700 hover:bg-gray-700">
 											{#if savingAnswers[round.id]}
-												<div class="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-gray-400 border-t-transparent"></div>
+												<div class="w-4 h-4 mr-2 border-2 border-gray-400 rounded-full animate-spin border-t-transparent"></div>
 												Zapisywanie...
 											{:else}
 												Zapisz odpowiedź
@@ -459,7 +515,7 @@
 
 		<!-- Player Answers Section -->
 		{#if playerAnswers && playerAnswers.length > 0}
-			<Card.Root class="mt-8 border-gray-800 bg-gray-900">
+			<Card.Root class="mt-8 bg-gray-900 border-gray-800">
 				<Card.Header>
 					<Card.Title class="text-white">Odpowiedzi graczy</Card.Title>
 				</Card.Header>
@@ -490,7 +546,7 @@
 									</Table.Cell>
 									<Table.Cell>
 										{#if answer.potential_points}
-											<span class="rounded-md bg-amber-900/30 px-2 py-1 text-amber-400">{answer.potential_points} pkt</span>
+											<span class="px-2 py-1 rounded-md bg-amber-900/30 text-amber-400">{answer.potential_points} pkt</span>
 										{:else}
 											<span class="text-gray-400">-</span>
 										{/if}
@@ -498,15 +554,15 @@
 									<Table.Cell>
 										{#if answer.potential_points}
 											<div class="flex gap-2">
-												<Button size="sm" on:click={() => awardPotentialPoints(answer.id, answer.player_name, answer.potential_points)} class="bg-green-600/50 text-white hover:bg-green-500/50">
-													<Check class="mr-1 h-3 w-3" />
+												<Button size="sm" on:click={() => awardPotentialPoints(answer.id, answer.player_name, answer.potential_points)} class="text-white bg-green-600/50 hover:bg-green-500/50">
+													<Check class="w-3 h-3 mr-1" />
 													Przyznaj
 												</Button>
-												<Button size="sm" on:click={() => deductPotentialPoints(answer.id, answer.player_name, answer.potential_points)} class="bg-red-600/50 text-white hover:bg-red-500/50">
-													<X class="mr-1 h-3 w-3" />
+												<Button size="sm" on:click={() => deductPotentialPoints(answer.id, answer.player_name, answer.potential_points)} class="text-white bg-red-600/50 hover:bg-red-500/50">
+													<X class="w-3 h-3 mr-1" />
 													Odejmij
 												</Button>
-												<Button size="sm" on:click={() => clearPotentialPoints(answer.id)} class="bg-gray-600/50 text-white hover:bg-gray-500/50">
+												<Button size="sm" on:click={() => clearPotentialPoints(answer.id)} class="text-white bg-gray-600/50 hover:bg-gray-500/50">
 													Pomiń
 												</Button>
 											</div>
@@ -523,14 +579,14 @@
 		{/if}
 
 		<!-- Add and Delete Last Round buttons -->
-		<div class="mt-8 flex justify-between">
-			<Button on:click={createNewRound} class="border border-gray-700 bg-gray-800 text-white hover:bg-gray-700">
-				<Plus class="mr-2 h-4 w-4" />
+		<div class="flex justify-between mt-8">
+			<Button on:click={createNewRound} class="text-white bg-gray-800 border border-gray-700 hover:bg-gray-700">
+				<Plus class="w-4 h-4 mr-2" />
 				Dodaj nową rundę
 			</Button>
 
 			<Button on:click={deleteLastRound} class={`border ${confirmingDelete ? 'border-red-700 bg-red-900/30' : 'border-gray-700 bg-gray-800'} text-white hover:bg-gray-700`}>
-				<Trash2 class="mr-2 h-4 w-4" />
+				<Trash2 class="w-4 h-4 mr-2" />
 				{confirmingDelete ? 'Potwierdź usunięcie ostatniej rundy' : 'Usuń ostatnią rundę'}
 			</Button>
 		</div>

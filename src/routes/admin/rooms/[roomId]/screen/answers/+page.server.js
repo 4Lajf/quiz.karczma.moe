@@ -29,35 +29,29 @@ export const load = async ({ params, depends, locals: { supabase } }) => {
 
         const currentRound = rounds.find(r => r.id === room.current_round) || rounds[0];
 
-        // Get existing screen images for each round
-        const { data: screenImages, error: imagesError } = await supabase
-            .storage
-            .from('screens')
-            .list(`quiz/${params.roomId}`);
+        // Get existing screen images from correct_answers table
+        const { data: correctAnswers, error: correctAnswersError } = await supabase
+            .from('correct_answers')
+            .select('*')
+            .in('round_id', rounds.map(r => r.id));
+
+        if (correctAnswersError) {
+            console.error('Error fetching correct answers:', correctAnswersError);
+        }
 
         const roundImages = {};
 
-        if (screenImages && !imagesError) {
-            for (const image of screenImages) {
-                // Parse round number from filename (assuming format like round_1.jpg)
-                const match = image.name.match(/round_(\d+)\.\w+$/);
-                if (match && match[1]) {
-                    const roundNumber = parseInt(match[1]);
-
-                    // Get signed URL for the image instead of public URL
-                    const { data: { signedUrl }, error: signedUrlError } = await supabase
-                        .storage
-                        .from('screens')
-                        .createSignedUrl(`quiz/${params.roomId}/${image.name}`, 60 * 60); // 1 hour expiry
-
-                    if (!signedUrlError && signedUrl) {
-                        roundImages[roundNumber] = {
-                            filename: image.name,
-                            url: signedUrl
-                        };
-                    } else {
-                        console.error('Error getting signed URL:', signedUrlError);
-                    }
+        // Process correct answers to extract image URLs
+        if (correctAnswers && correctAnswers.length > 0) {
+            for (const answer of correctAnswers) {
+                // Find the round for this answer
+                const round = rounds.find(r => r.id === answer.round_id);
+                if (round && answer.image) {
+                    // Use the round number as the key
+                    roundImages[round.round_number] = {
+                        filename: `round_${round.round_number}.jpg`, // Just for compatibility
+                        url: answer.image
+                    };
                 }
             }
         }

@@ -42,6 +42,7 @@
 		"awesomplete": "^1.1.7",
 		"instantsearch.js": "^4.75.6",
 		"lodash": "^4.17.21",
-		"typesense": "^1.8.2"
+		"typesense": "^1.8.2",
+		"uuid": "^11.1.0"
 	}
 }

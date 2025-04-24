@@ -38,36 +38,22 @@ export const load = async ({ params, depends, locals: { supabase } }) => {
             };
         }
 
-        // Look for image for the current round
-        const { data: screenImages, error: imagesError } = await supabase
-            .storage
-            .from('screens')
-            .list(`quiz/${params.roomId}`);
+        // Look for image for the current round in the correct_answers table
+        const { data: correctAnswer, error: correctAnswerError } = await supabase
+            .from('correct_answers')
+            .select('*')
+            .eq('round_id', currentRound.id)
+            .maybeSingle();
 
         let screenImage = null;
 
-        if (screenImages && !imagesError) {
-            // Look for round_X.* where X is the round number
-            const roundImage = screenImages.find(img =>
-                img.name.startsWith(`round_${currentRound.round_number}.`)
-            );
-
-            if (roundImage) {
-                // Use createSignedUrl instead of getPublicUrl
-                const { data: { signedUrl }, error: signedUrlError } = await supabase
-                    .storage
-                    .from('screens')
-                    .createSignedUrl(`quiz/${params.roomId}/${roundImage.name}`, 60 * 60); // 1 hour expiry
-
-                if (!signedUrlError && signedUrl) {
-                    screenImage = {
-                        filename: roundImage.name,
-                        url: signedUrl
-                    };
-                } else {
-                    console.error('Error getting signed URL:', signedUrlError);
-                }
-            }
+        if (correctAnswer && !correctAnswerError && correctAnswer.image) {
+            screenImage = {
+                filename: `round_${currentRound.round_number}.jpg`, // Just for compatibility
+                url: correctAnswer.image
+            };
+        } else if (correctAnswerError) {
+            console.error('Error fetching correct answer:', correctAnswerError);
         }
 
         return {
