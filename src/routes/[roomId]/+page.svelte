@@ -23,6 +23,12 @@
 	let maskedAnswer = '';
 	let checkingHandRaiseStatus = false;
 
+	// Quick guess state
+	let isQuickGuessActive = false;
+	let countdownValue = 10;
+	let countdownInterval = null;
+	let currentPointsValue = 0;
+
 	let teamCode = '';
 	let teamCodeRequired = false;
 	let teamCodeInputValue = '';
@@ -636,7 +642,7 @@
 		songArtist = '';
 		otherAnswer = '';
 		// Force Svelte to recognize the state change
-		hasSubmitted = hasSubmitted;
+		// hasSubmitted = hasSubmitted;
 		answer = answer;
 	}
 
@@ -649,22 +655,31 @@
 		hintRequested = false; // Reset hint requested state
 		maskedAnswer = ''; // Clear the masked answer
 		// Force Svelte to recognize the state change
-		hasSubmitted = hasSubmitted;
+		// hasSubmitted = hasSubmitted;
 		answer = answer;
 	}
 
 	async function checkAnswerStatus() {
 		if (!hasJoined || !playerName || !room?.current_round) return;
 
-		const [{ data: existingAnswer }, isHintRequested] = await Promise.all([supabase.from('answers').select('*, extra_fields').eq('room_id', room.id).eq('player_name', playerName).eq('round_id', room.current_round).maybeSingle(), checkHintStatus()]);
+		const [{ data: existingAnswer }, isHintRequested, { data: pointsData }] = await Promise.all([
+			supabase.from('answers').select('*, extra_fields, created_at').eq('room_id', room.id).eq('player_name', playerName).eq('round_id', room.current_round).maybeSingle(),
+			checkHintStatus(),
+			supabase.from('screen_game_points').select('points_value').eq('room_id', room.id).eq('round_id', room.current_round).maybeSingle()
+		]);
 
 		// Update states
-		hasSubmitted = !!existingAnswer;
+		// hasSubmitted = !!existingAnswer;
 		hintRequested = isHintRequested;
+
+		// Update current points value
+		if (pointsData) {
+			currentPointsValue = pointsData.points_value;
+		}
 
 		if (existingAnswer) {
 			// If there's an existing answer, set answer and extra fields
-			answer = existingAnswer.content;
+			answer = existingAnswer.content || '';
 			if (existingAnswer.extra_fields) {
 				songTitle = existingAnswer.extra_fields.song_title || '';
 				songArtist = existingAnswer.extra_fields.song_artist || '';
@@ -714,7 +729,40 @@
 					if (payload.new.current_round !== payload.old?.current_round) {
 						toast.info('Rozpoczęła się nowa runda!');
 						resetAnswerStateWithHint();
+						// Fetch current points value for the new round if it's a screen room
+						if (room.type === 'screen') {
+							try {
+								const { data: pointsData } = await supabase.from('screen_game_points').select('points_value').eq('room_id', room.id).eq('round_id', payload.new.current_round).maybeSingle();
+								console.log(payload.new.current_round);
+								if (pointsData) {
+									currentPointsValue = pointsData.points_value;
+								} else {
+									// Reset to default if no points data found
+									currentPointsValue = 0;
+								}
+							} catch (error) {
+								console.error('Error fetching points value for new round:', error);
+							}
+						}
+
 						await invalidateAll();
+					}
+				}
+			)
+			.on(
+				'postgres_changes',
+				{
+					event: '*',
+					schema: 'public',
+					table: 'screen_game_points',
+					filter: `room_id=eq.${room.id}`
+				},
+				async (payload) => {
+					console.log('Points change detected:', payload);
+					// Only update if it's for the current round
+					if (payload.new.round_id === room.current_round) {
+						currentPointsValue = payload.new.points_value;
+						console.log('Updated current points value:', currentPointsValue);
 					}
 				}
 			)
@@ -877,6 +925,19 @@
 				hasSubmitted = false;
 				toast.success('Dołączono jako ' + playerName);
 
+				// Fetch current points value for the current round
+				if (room.type === 'screen') {
+					try {
+						const { data: pointsData } = await supabase.from('screen_game_points').select('points_value').eq('room_id', room.id).eq('round_id', room.current_round).maybeSingle();
+
+						if (pointsData) {
+							currentPointsValue = pointsData.points_value;
+						}
+					} catch (error) {
+						console.error('Error fetching points value:', error);
+					}
+				}
+
 				subscribeToChanges();
 			}
 		} catch (error) {
@@ -924,6 +985,19 @@
 					toast.success(`Dołączono ponownie jako ${playerName}`);
 				}
 
+				// Fetch current points value for the current round
+				if (room.type === 'screen') {
+					try {
+						const { data: pointsData } = await supabase.from('screen_game_points').select('points_value').eq('room_id', room.id).eq('round_id', room.current_round).maybeSingle();
+
+						if (pointsData) {
+							currentPointsValue = pointsData.points_value;
+						}
+					} catch (error) {
+						console.error('Error fetching points value:', error);
+					}
+				}
+
 				subscribeToChanges();
 			} else {
 				// Incorrect code
@@ -938,17 +1012,21 @@
 	}
 
 	async function submitAnswer() {
+		// Check if user already submitted an answer
+		if (hasSubmitted) {
+			toast.error('Odpowiedź dla tej rundy została już wysłana');
+			return;
+		}
+
+		// Validate input fields
 		// Only validate anime title if it's enabled or not explicitly disabled
-		if ((room.enabled_fields?.anime_title !== false) && (!answer.trim() || hasSubmitted)) {
-			toast.error(hasSubmitted ? 'Już przesłano' : 'Wprowadź odpowiedź');
+		if (room.enabled_fields?.anime_title !== false && !answer.trim()) {
+			toast.error('Wprowadź odpowiedź');
 			return;
 		}
 
 		// If anime title is disabled but we have no other fields filled, prevent submission
-		if (room.enabled_fields?.anime_title === false &&
-			(!room.enabled_fields?.song_title || !songTitle) &&
-			(!room.enabled_fields?.song_artist || !songArtist) &&
-			(!room.enabled_fields?.other || !otherAnswer)) {
+		if (room.enabled_fields?.anime_title === false && (!room.enabled_fields?.song_title || !songTitle) && (!room.enabled_fields?.song_artist || !songArtist) && (!room.enabled_fields?.other || !otherAnswer)) {
 			toast.error('Wprowadź przynajmniej jedną odpowiedź');
 			return;
 		}
@@ -958,8 +1036,42 @@
 			return;
 		}
 
+		// Check if an answer already exists for this round
+		const { data: existingAnswer } = await supabase
+			.from('answers')
+			.select('*, created_at')
+			.eq('room_id', room.id)
+			.eq('round_id', room.current_round)
+			.eq('player_name', playerName)
+			.maybeSingle();
+
+		// If an answer exists, it means the user has already submitted or is in quick guess mode
+		if (existingAnswer) {
+			toast.error('Odpowiedź dla tej rundy została już wysłana');
+			hasSubmitted = true;
+			return;
+		}
+
 		loading = true;
 		try {
+			// Fetch a fresh state of the points_value from screen_game_points
+			try {
+				const { data: screenPointsData, error: screenPointsError } = await supabase
+					.from('screen_game_points')
+					.select('points_value')
+					.eq('room_id', room.id)
+					.eq('round_id', room.current_round)
+					.maybeSingle();
+
+				if (!screenPointsError && screenPointsData && screenPointsData.points_value !== null) {
+					// Update the current points value with the fresh data
+					currentPointsValue = screenPointsData.points_value;
+				}
+			} catch (error) {
+				console.error('Error fetching fresh points value:', error);
+				// Continue with the current value if there's an error
+			}
+
 			const extraFields = {};
 
 			// Apply regex rules to input fields
@@ -976,16 +1088,12 @@
 			}
 
 			// Get current player score and tiebreaker
-			const { data: playerData, error: playerError } = await supabase
-				.from('players')
-				.select('score, tiebreaker')
-				.eq('room_id', room.id)
-				.eq('name', playerName)
-				.single();
+			const { data: playerData, error: playerError } = await supabase.from('players').select('score, tiebreaker').eq('room_id', room.id).eq('name', playerName).single();
 
 			if (playerError) throw playerError;
 
-			const { error } = await supabase.from('answers').insert({
+			// Prepare answer data
+			const answerData = {
 				room_id: room.id,
 				round_id: room.current_round,
 				player_name: playerName,
@@ -1000,10 +1108,22 @@
 				},
 				// Save current score and tiebreaker
 				score_snapshot: playerData.score || 0,
-				tiebreaker_snapshot: playerData.tiebreaker || 0
-			});
+				tiebreaker_snapshot: playerData.tiebreaker || 0,
+				// Save current points value for normal answers too
+				potential_points: currentPointsValue
+			};
 
-			if (error) throw error;
+			const { error } = await supabase.from('answers').insert(answerData);
+
+			if (error) {
+				if (error.code === '23505') {
+					// Unique constraint violation
+					toast.error('Odpowiedź dla tej rundy została już wysłana');
+				} else {
+					throw error;
+				}
+				return;
+			}
 
 			hasSubmitted = true;
 			toast.success('Odpowiedź przesłana');
@@ -1226,9 +1346,242 @@
 		}
 	}
 
+	// Quick guess functions
+	async function startQuickGuess() {
+		if (!room.quick_guess_enabled || hasSubmitted || isQuickGuessActive) {
+			// If user already submitted an answer, show error message
+			if (hasSubmitted) {
+				toast.error('Odpowiedź dla tej rundy została już wysłana');
+			}
+			return;
+		}
+
+		// Fetch a fresh state of the points_value from screen_game_points
+		try {
+			const { data: screenPointsData, error: screenPointsError } = await supabase
+				.from('screen_game_points')
+				.select('points_value')
+				.eq('room_id', room.id)
+				.eq('round_id', room.current_round)
+				.maybeSingle();
+
+			if (!screenPointsError && screenPointsData && screenPointsData.points_value !== null) {
+				// Update the current points value with the fresh data
+				currentPointsValue = screenPointsData.points_value;
+			}
+		} catch (error) {
+			console.error('Error fetching fresh points value:', error);
+			// Continue with the current value if there's an error
+		}
+
+		// First check if an answer already exists for this round
+		const { data: existingAnswer } = await supabase
+			.from('answers')
+			.select('*, created_at')
+			.eq('room_id', room.id)
+			.eq('round_id', room.current_round)
+			.eq('player_name', playerName)
+			.maybeSingle();
+
+		if (existingAnswer) {
+			// Check if the answer was created within the last 15 seconds
+			const createdAt = new Date(existingAnswer.created_at);
+			const now = new Date();
+			const diffSeconds = (now - createdAt) / 1000;
+
+			if (diffSeconds > 15) {
+				// Answer is too old to update
+				toast.error('Odpowiedź dla tej rundy została już wysłana');
+				return;
+			}
+		} else {
+			// No answer exists yet, create a new placeholder answer entry IMMEDIATELY
+			try {
+				const { error } = await supabase.from('answers').insert({
+					room_id: room.id,
+					round_id: room.current_round,
+					player_name: playerName,
+					content: '',
+					extra_fields: null,
+					potential_points: currentPointsValue
+				});
+
+				if (error) {
+					console.error('Error creating placeholder answer:', error);
+					if (error.code === '23505') { // Unique constraint violation
+						toast.error('Odpowiedź dla tej rundy została już wysłana');
+					} else {
+						toast.error('Nie udało się rozpocząć odliczania');
+					}
+					return;
+				}
+			} catch (error) {
+				console.error('Error creating placeholder answer:', error);
+				toast.error('Nie udało się rozpocząć odliczania');
+				return;
+			}
+		}
+
+		// Now that we've handled the database operations, set the UI state
+		isQuickGuessActive = true;
+		countdownValue = 10;
+
+		// Start countdown
+		countdownInterval = setInterval(() => {
+			countdownValue--;
+
+			if (countdownValue <= 0) {
+				clearInterval(countdownInterval);
+				submitQuickGuess();
+			}
+		}, 1000);
+	}
+
+	// Function removed as per requirements
+
+	// Function removed as it's no longer needed
+
+	// Function to handle form submission
+	function handleSubmit(event) {
+		// If quick guess is active, prevent form submission
+		if (isQuickGuessActive) {
+			event.preventDefault();
+			return;
+		}
+
+		// Otherwise, proceed with normal submission
+		submitAnswer();
+	}
+
+	async function submitQuickGuess() {
+		// When the countdown reaches zero, we need to update the placeholder answer
+		// that was created when the user clicked "Zgaduję!"
+
+		// Check if an answer exists
+		const { data: existingAnswer, error: fetchError } = await supabase
+			.from('answers')
+			.select('*, created_at')
+			.eq('room_id', room.id)
+			.eq('round_id', room.current_round)
+			.eq('player_name', playerName)
+			.maybeSingle();
+
+		if (fetchError) {
+			console.error('Error fetching answer:', fetchError);
+			toast.error('Nie udało się wysłać odpowiedzi');
+			return;
+		}
+
+		if (!existingAnswer) {
+			// This shouldn't happen as we create the placeholder immediately when clicking "Zgaduję!"
+			console.error('No placeholder answer found');
+			toast.error('Nie znaleziono odpowiedzi do aktualizacji');
+
+			// Reset quick guess state
+			isQuickGuessActive = false;
+
+			if (countdownInterval) {
+				clearInterval(countdownInterval);
+				countdownInterval = null;
+			}
+			return;
+		}
+
+		// Check if the answer was created within the last 15 seconds
+		const createdAt = new Date(existingAnswer.created_at);
+		const now = new Date();
+		const diffSeconds = (now - createdAt) / 1000;
+
+		if (diffSeconds > 15) {
+			// Answer is too old to update
+			toast.error('Upłynął czas na aktualizację odpowiedzi');
+			isQuickGuessActive = false;
+			hasSubmitted = true;
+
+			if (countdownInterval) {
+				clearInterval(countdownInterval);
+				countdownInterval = null;
+			}
+
+			return;
+		}
+
+		// Update the answer with full data, similar to submitAnswer
+		loading = true;
+		try {
+			const extraFields = {};
+
+			// Apply regex rules to input fields
+			const processedAnswer = answer ? answer.trim() : '';
+			console.log(processedAnswer)
+
+			if (room.enabled_fields?.song_title && songTitle) {
+				extraFields.song_title = songTitle;
+			}
+			if (room.enabled_fields?.song_artist && songArtist) {
+				extraFields.song_artist = songArtist;
+			}
+			if (room.enabled_fields?.other && otherAnswer) {
+				extraFields.other = otherAnswer;
+			}
+
+			// Get current player score and tiebreaker
+			const { data: playerData, error: playerError } = await supabase.from('players').select('score, tiebreaker').eq('room_id', room.id).eq('name', playerName).single();
+
+			if (playerError) throw playerError;
+
+			// Update the answer with full data
+			const { error } = await supabase
+				.from('answers')
+				.update({
+					content: processedAnswer,
+					extra_fields: Object.keys(extraFields).length > 0 ? extraFields : null,
+					answer_status: {
+						main_answer: false,
+						song_title: false,
+						song_artist: false,
+						other: false
+					},
+				})
+				.eq('room_id', room.id)
+				.eq('round_id', room.current_round)
+				.eq('player_name', playerName);
+
+			if (error) {
+				console.error('Error updating answer:', error);
+				toast.error('Nie udało się wysłać odpowiedzi');
+			} else {
+				toast.success('Odpowiedź została wysłana');
+				hasSubmitted = true;
+			}
+		} catch (error) {
+			console.error('Error updating answer:', error);
+			toast.error('Nie udało się wysłać odpowiedzi: ' + error.message);
+		} finally {
+			loading = false;
+		}
+
+		// Reset quick guess state
+		isQuickGuessActive = false;
+
+		if (countdownInterval) {
+			clearInterval(countdownInterval);
+			countdownInterval = null;
+		}
+
+		// Clear any existing fields
+		answer = '';
+		songTitle = '';
+		songArtist = '';
+		otherAnswer = '';
+	}
+
 	onDestroy(() => {
 		cleanupLatencyMonitoring();
 		if (channel) channel.unsubscribe();
+		if (countdownInterval) {
+			clearInterval(countdownInterval);
+		}
 	});
 
 	function getLatencyColorClass(latency) {
@@ -1348,7 +1701,14 @@
 						{/if}
 					</div>
 
-					<form on:submit|preventDefault={submitAnswer} class="space-y-4">
+					<form on:submit|preventDefault={handleSubmit} class="space-y-4">
+						{#if isQuickGuessActive}
+							<div class="mb-4 rounded-lg bg-amber-900/30 p-4 text-center">
+								<p class="mb-2 text-xl font-bold text-amber-400">Masz {countdownValue}s na odpowiedź</p>
+								<p class="mb-4 text-sm text-amber-300">Twoja odpowiedź zostanie automatycznie wysłana za {countdownValue} sekund.</p>
+								<p class="text-sm text-amber-300">Potencjalne punkty: <span class="font-bold">{currentPointsValue}</span></p>
+							</div>
+						{/if}
 						{#if room.enabled_fields?.anime_title !== false}
 							<Autocomplete bind:value={answer} placeholder="Nazwa anime" index="animeTitles" searchKey="animeTitle" type="anime" />
 						{/if}
@@ -1365,12 +1725,54 @@
 							<Input type="text" placeholder="Inne" bind:value={otherAnswer} disabled={loading} class="border-gray-700 bg-gray-800 text-gray-100 placeholder:text-gray-500 focus-visible:ring-1 focus-visible:ring-gray-600 focus-visible:ring-offset-0" />
 						{/if}
 
-						<Button type="submit" disabled={loading || hasSubmitted} class="w-full border border-gray-700 bg-gray-800 text-white hover:bg-gray-700">
-							{loading ? 'Wysyłanie...' : 'Wyślij odpowiedź'}
-						</Button>
+						{#if !isQuickGuessActive}
+							<div class="flex gap-2">
+								<Button type="submit" disabled={loading || hasSubmitted} class="flex-1 border-green-700 bg-green-800 text-white hover:bg-green-700">
+									{loading ? 'Wysyłanie...' : 'Wyślij odpowiedź'}
+								</Button>
+
+								{#if room.type === 'screen' && room.quick_guess_enabled}
+									<Button type="button" on:click={startQuickGuess} disabled={loading || hasSubmitted} class="flex-1 border border-amber-700 bg-amber-800 text-white hover:bg-amber-700">
+										Zgaduję! ({currentPointsValue}pkt)
+									</Button>
+								{/if}
+							</div>
+						{/if}
+					</form>
+				{:else if !hasSubmitted}
+					<form on:submit|preventDefault={handleSubmit} class="space-y-4">
+						{#if room.enabled_fields?.anime_title !== false}
+							<Autocomplete bind:value={answer} placeholder="Nazwa anime" index="animeTitles" searchKey="animeTitle" type="anime" />
+						{/if}
+
+						{#if room.enabled_fields?.song_title}
+							<Autocomplete bind:value={songTitle} placeholder="Tytuł piosenki" index="songNames" searchKey="songName" type="songs" />
+						{/if}
+
+						{#if room.enabled_fields?.song_artist}
+							<Autocomplete bind:value={songArtist} placeholder="Artysta" index="artists" searchKey="artist" type="artists" />
+						{/if}
+
+						{#if room.enabled_fields?.other}
+							<Input type="text" placeholder="Inne" bind:value={otherAnswer} disabled={loading} class="border-gray-700 bg-gray-800 text-gray-100 placeholder:text-gray-500 focus-visible:ring-1 focus-visible:ring-gray-600 focus-visible:ring-offset-0" />
+						{/if}
+
+						<div class="flex gap-2">
+							<Button type="submit" disabled={loading} class="flex-1 border-green-700 bg-green-800 text-white hover:bg-green-700">
+								{loading ? 'Wysyłanie...' : 'Wyślij odpowiedź'}
+							</Button>
+
+							{#if room.type === 'screen' && room.quick_guess_enabled}
+								<Button type="button" on:click={startQuickGuess} disabled={loading} class="flex-1 border border-amber-700 bg-amber-800 text-white hover:bg-amber-700">
+									Zgaduję! ({currentPointsValue}pkt)
+								</Button>
+							{/if}
+						</div>
 					</form>
 				{:else}
-					<p class="text-center text-gray-200">Odpowiedź dla tej rundy została wysłana</p>
+					<div class="space-y-4">
+						<p class="text-center text-gray-200">Odpowiedź dla tej rundy została już wysłana</p>
+					</div>
 				{/if}
 			</Card.Content>
 		</Card.Root>

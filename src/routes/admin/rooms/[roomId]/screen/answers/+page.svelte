@@ -6,12 +6,12 @@
 	import * as Tabs from '$lib/components/ui/tabs';
 	import { Button } from '$lib/components/ui/button';
 	import { toast } from 'svelte-sonner';
-	import { Plus, Trash2, Upload, Image } from 'lucide-svelte';
+	import { Plus, Trash2, Upload, Image, Check, X } from 'lucide-svelte';
 	import Autocomplete from '$lib/components/player/Autocomplete.svelte';
 	import { Input } from '$lib/components/ui/input';
 
 	export let data;
-	$: ({ supabase, room, rounds, currentRound, roundImages } = data);
+	$: ({ supabase, room, rounds, currentRound, roundImages, playerAnswers } = data);
 
 	let channel;
 	let confirmingDelete = false;
@@ -44,6 +44,104 @@
 			answers = { ...answers }; // Trigger reactivity
 		} catch (error) {
 			console.error('Error loading answers:', error);
+		}
+	}
+
+	// Function to award points based on potential_points
+	async function awardPotentialPoints(answerId, playerName, potentialPoints) {
+		try {
+			// Get current player score
+			const { data: playerData, error: playerError } = await supabase
+				.from('players')
+				.select('score')
+				.eq('room_id', room.id)
+				.eq('name', playerName)
+				.single();
+
+			if (playerError) throw playerError;
+
+			// Calculate new score
+			const newScore = playerData.score + potentialPoints;
+
+			// Update player score
+			const { error: updateError } = await supabase
+				.from('players')
+				.update({ score: newScore })
+				.eq('room_id', room.id)
+				.eq('name', playerName);
+
+			if (updateError) throw updateError;
+
+			// Clear potential_points from the answer
+			const { error: answerError } = await supabase
+				.from('answers')
+				.update({ potential_points: null })
+				.eq('id', answerId);
+
+			if (answerError) throw answerError;
+
+			toast.success(`Dodano ${potentialPoints} punktów dla ${playerName}`);
+			await invalidateAll();
+		} catch (error) {
+			toast.error(`Nie udało się przyznać punktów: ${error.message}`);
+		}
+	}
+
+	// Function to deduct points based on potential_points
+	async function deductPotentialPoints(answerId, playerName, potentialPoints) {
+		try {
+			// Get current player score
+			const { data: playerData, error: playerError } = await supabase
+				.from('players')
+				.select('score')
+				.eq('room_id', room.id)
+				.eq('name', playerName)
+				.single();
+
+			if (playerError) throw playerError;
+
+			// Calculate new score
+			const newScore = playerData.score - potentialPoints;
+
+			// Update player score
+			const { error: updateError } = await supabase
+				.from('players')
+				.update({ score: newScore })
+				.eq('room_id', room.id)
+				.eq('name', playerName);
+
+			if (updateError) throw updateError;
+
+			// Clear potential_points from the answer
+			const { error: answerError } = await supabase
+				.from('answers')
+				.update({ potential_points: null })
+				.eq('id', answerId);
+
+			if (answerError) throw answerError;
+
+			toast.success(`Odjęto ${potentialPoints} punktów dla ${playerName}`);
+			await invalidateAll();
+		} catch (error) {
+			toast.error(`Nie udało się odjąć punktów: ${error.message}`);
+		}
+	}
+
+	// Function to clear potential points without awarding or deducting
+	async function clearPotentialPoints(answerId) {
+		try {
+			// Clear potential_points from the answer
+			const { error: answerError } = await supabase
+				.from('answers')
+				.update({ potential_points: null })
+				.eq('id', answerId);
+
+			if (answerError) throw answerError;
+
+			toast.success('Potencjalne punkty wyczyszczone');
+			await invalidateAll();
+		} catch (error) {
+			toast.error(`Nie udało się wyczyścić punktów: ${error.message}`);
 		}
 	}
 
@@ -358,6 +456,71 @@
 				</Card.Root>
 			{/each}
 		</div>
+
+		<!-- Player Answers Section -->
+		{#if playerAnswers && playerAnswers.length > 0}
+			<Card.Root class="mt-8 border-gray-800 bg-gray-900">
+				<Card.Header>
+					<Card.Title class="text-white">Odpowiedzi graczy</Card.Title>
+				</Card.Header>
+				<Card.Content>
+					<Table.Root>
+						<Table.Header>
+							<Table.Row class="border-gray-800">
+								<Table.Head class="text-gray-300">Gracz</Table.Head>
+								<Table.Head class="text-gray-300">Odpowiedź</Table.Head>
+								<Table.Head class="text-gray-300">Czas</Table.Head>
+								<Table.Head class="text-gray-300">Potencjalne punkty</Table.Head>
+								<Table.Head class="text-gray-300">Akcje</Table.Head>
+							</Table.Row>
+						</Table.Header>
+						<Table.Body>
+							{#each playerAnswers as answer}
+								<Table.Row class="border-gray-800 hover:bg-gray-800/30">
+									<Table.Cell class="font-medium text-gray-200">{answer.player_name}</Table.Cell>
+									<Table.Cell class="text-gray-200">
+										{#if answer.content}
+											{answer.content}
+										{:else}
+											<span class="italic text-gray-400">Zgadywanie</span>
+										{/if}
+									</Table.Cell>
+									<Table.Cell class="text-gray-200">
+										{new Date(answer.created_at).toLocaleTimeString()}
+									</Table.Cell>
+									<Table.Cell>
+										{#if answer.potential_points}
+											<span class="rounded-md bg-amber-900/30 px-2 py-1 text-amber-400">{answer.potential_points} pkt</span>
+										{:else}
+											<span class="text-gray-400">-</span>
+										{/if}
+									</Table.Cell>
+									<Table.Cell>
+										{#if answer.potential_points}
+											<div class="flex gap-2">
+												<Button size="sm" on:click={() => awardPotentialPoints(answer.id, answer.player_name, answer.potential_points)} class="bg-green-600/50 text-white hover:bg-green-500/50">
+													<Check class="mr-1 h-3 w-3" />
+													Przyznaj
+												</Button>
+												<Button size="sm" on:click={() => deductPotentialPoints(answer.id, answer.player_name, answer.potential_points)} class="bg-red-600/50 text-white hover:bg-red-500/50">
+													<X class="mr-1 h-3 w-3" />
+													Odejmij
+												</Button>
+												<Button size="sm" on:click={() => clearPotentialPoints(answer.id)} class="bg-gray-600/50 text-white hover:bg-gray-500/50">
+													Pomiń
+												</Button>
+											</div>
+										{:else}
+											<span class="text-gray-400">-</span>
+										{/if}
+									</Table.Cell>
+								</Table.Row>
+							{/each}
+						</Table.Body>
+					</Table.Root>
+				</Card.Content>
+			</Card.Root>
+		{/if}
 
 		<!-- Add and Delete Last Round buttons -->
 		<div class="mt-8 flex justify-between">

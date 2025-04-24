@@ -62,11 +62,24 @@ export const load = async ({ params, depends, locals: { supabase } }) => {
             }
         }
 
+        // Fetch player answers for the current round
+        const { data: playerAnswers, error: answersError } = await supabase
+            .from('answers')
+            .select('id, player_name, content, created_at, extra_fields, answer_status, potential_points')
+            .eq('room_id', room.id)
+            .eq('round_id', currentRound.id)
+            .order('created_at', { ascending: true });
+
+        if (answersError) {
+            console.error('Error fetching player answers:', answersError);
+        }
+
         return {
             room,
             rounds,
             currentRound,
-            roundImages
+            roundImages,
+            playerAnswers: playerAnswers || []
         };
     } catch (error) {
         console.error('Load error:', error);

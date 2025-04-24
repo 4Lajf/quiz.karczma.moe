@@ -15,6 +15,7 @@
 
 	let pointsConfigModalOpen = false;
 	let takeoverModeActive = false;
+	let quickGuessEnabled = false;
 	let handRaiseResults = [];
 	let lastUpdated = '';
 	let lastChangedPlayer = null;
@@ -138,17 +139,56 @@
 		// Get the base points to award
 		let pointsToAdd = 0;
 
-		// Check if we have saved points from ZakrywanaScreenowka for this round
-		if (room.type === 'screen') {
-			const { data: screenPointsData, error: screenPointsError } = await supabase.from('screen_game_points').select('points_value').eq('room_id', room.id).eq('round_id', selectedRoundId).maybeSingle();
+		// First check if this player has a quick guess answer with potential_points
+		if (quickGuessEnabled) {
+			const { data: answerData, error: answerError } = await supabase
+				.from('answers')
+				.select('potential_points')
+				.eq('room_id', room.id)
+				.eq('round_id', selectedRoundId)
+				.eq('player_name', player.name)
+				.maybeSingle();
 
-			if (!screenPointsError && screenPointsData) {
-				pointsToAdd = screenPointsData.points_value;
+			if (!answerError && answerData && answerData.potential_points !== null) {
+				// Use the potential_points from the answer
+				pointsToAdd = answerData.potential_points;
 			} else {
-				pointsToAdd = room.points_config.main_answer; // Fall back to default
+				// Fall back to screen points or default points
+				if (room.type === 'screen') {
+					const { data: screenPointsData, error: screenPointsError } = await supabase
+						.from('screen_game_points')
+						.select('points_value')
+						.eq('room_id', room.id)
+						.eq('round_id', selectedRoundId)
+						.maybeSingle();
+
+					if (!screenPointsError && screenPointsData) {
+						pointsToAdd = screenPointsData.points_value;
+					} else {
+						pointsToAdd = room.points_config.main_answer; // Fall back to default
+					}
+				} else {
+					pointsToAdd = room.points_config.main_answer;
+				}
 			}
 		} else {
-			pointsToAdd = room.points_config.main_answer;
+			// Quick guess not enabled, use screen points or default points
+			if (room.type === 'screen') {
+				const { data: screenPointsData, error: screenPointsError } = await supabase
+					.from('screen_game_points')
+					.select('points_value')
+					.eq('room_id', room.id)
+					.eq('round_id', selectedRoundId)
+					.maybeSingle();
+
+				if (!screenPointsError && screenPointsData) {
+					pointsToAdd = screenPointsData.points_value;
+				} else {
+					pointsToAdd = room.points_config.main_answer; // Fall back to default
+				}
+			} else {
+				pointsToAdd = room.points_config.main_answer;
+			}
 		}
 
 		try {
@@ -170,6 +210,16 @@
 
 			// Update answer snapshots with the new score
 			await updateAnswerSnapshots(playerId, newScore, undefined);
+
+			// Clear potential_points from the answer if it was used
+			if (quickGuessEnabled) {
+				await supabase
+					.from('answers')
+					.update({ potential_points: null })
+					.eq('room_id', room.id)
+					.eq('round_id', selectedRoundId)
+					.eq('player_name', player.name);
+			}
 
 			toast.success(`Dodano ${pointsToAdd} punktów dla ${player.name}`);
 			await invalidateAll();
@@ -193,17 +243,56 @@
 		// Get the base points to deduct
 		let pointsToDeduct = 0;
 
-		// Check if we have saved points from ZakrywanaScreenowka for this round
-		if (room.type === 'screen') {
-			const { data: screenPointsData, error: screenPointsError } = await supabase.from('screen_game_points').select('points_value').eq('room_id', room.id).eq('round_id', selectedRoundId).maybeSingle();
+		// First check if this player has a quick guess answer with potential_points
+		if (quickGuessEnabled) {
+			const { data: answerData, error: answerError } = await supabase
+				.from('answers')
+				.select('potential_points')
+				.eq('room_id', room.id)
+				.eq('round_id', selectedRoundId)
+				.eq('player_name', player.name)
+				.maybeSingle();
 
-			if (!screenPointsError && screenPointsData) {
-				pointsToDeduct = screenPointsData.points_value / 2; // Half the points for negative
+			if (!answerError && answerData && answerData.potential_points !== null) {
+				// Use half of the potential_points from the answer
+				pointsToDeduct = answerData.potential_points / 2;
 			} else {
-				pointsToDeduct = room.points_config.main_answer / 2; // Fall back to default
+				// Fall back to screen points or default points
+				if (room.type === 'screen') {
+					const { data: screenPointsData, error: screenPointsError } = await supabase
+						.from('screen_game_points')
+						.select('points_value')
+						.eq('room_id', room.id)
+						.eq('round_id', selectedRoundId)
+						.maybeSingle();
+
+					if (!screenPointsError && screenPointsData) {
+						pointsToDeduct = screenPointsData.points_value / 2; // Half the points for negative
+					} else {
+						pointsToDeduct = room.points_config.main_answer / 2; // Fall back to default
+					}
+				} else {
+					pointsToDeduct = room.points_config.main_answer / 2;
+				}
 			}
 		} else {
-			pointsToDeduct = room.points_config.main_answer / 2;
+			// Quick guess not enabled, use screen points or default points
+			if (room.type === 'screen') {
+				const { data: screenPointsData, error: screenPointsError } = await supabase
+					.from('screen_game_points')
+					.select('points_value')
+					.eq('room_id', room.id)
+					.eq('round_id', selectedRoundId)
+					.maybeSingle();
+
+				if (!screenPointsError && screenPointsData) {
+					pointsToDeduct = screenPointsData.points_value / 2; // Half the points for negative
+				} else {
+					pointsToDeduct = room.points_config.main_answer / 2; // Fall back to default
+				}
+			} else {
+				pointsToDeduct = room.points_config.main_answer / 2;
+			}
 		}
 
 		try {
@@ -225,6 +314,16 @@
 
 			// Update answer snapshots with the new score
 			await updateAnswerSnapshots(playerId, newScore, undefined);
+
+			// Clear potential_points from the answer if it was used
+			if (quickGuessEnabled) {
+				await supabase
+					.from('answers')
+					.update({ potential_points: null })
+					.eq('room_id', room.id)
+					.eq('round_id', selectedRoundId)
+					.eq('player_name', player.name);
+			}
 
 			toast.success(`Odjęto ${pointsToDeduct} punktów dla ${player.name}`);
 			await invalidateAll();
@@ -277,10 +376,30 @@
 
 	export let data;
 	$: ({ supabase, room, players, currentAnswers, rounds, roundAnswers, currentRound, hintUsageMap } = data);
+	$: quickGuessEnabled = room.quick_guess_enabled || false;
 
 	let activeTab = 'answers';
 	let selectedRoundId = currentRound?.id;
 	let channel;
+
+	async function toggleQuickGuess() {
+		try {
+			const newValue = !quickGuessEnabled;
+
+			const { error } = await supabase
+				.from('rooms')
+				.update({ quick_guess_enabled: newValue })
+				.eq('id', room.id);
+
+			if (error) throw error;
+
+			quickGuessEnabled = newValue;
+			toast.success(`Tryb "Zgaduję!" został ${newValue ? 'włączony' : 'wyłączony'}`);
+			await invalidateAll();
+		} catch (error) {
+			toast.error(`Nie udało się zmienić ustawienia: ${error.message}`);
+		}
+	}
 
 	$: displayedAnswers = roundAnswers[selectedRoundId] || [];
 	$: isCurrentRound = selectedRoundId === room.current_round;
@@ -510,11 +629,19 @@
 				// Main answer points with hint deduction if applicable
 				// Only award points for main_answer if anime_title is not disabled
 				if (room.enabled_fields?.anime_title !== false && answer.answer_status.main_answer) {
-					// If we have screen points and this is a screen type room, use those instead of default
-					let mainPoints =
-						screenPoints !== null && room.type === 'screen'
-							? screenPoints // Use screen points if available
-							: room.points_config.main_answer; // Otherwise use default point config
+					let mainPoints;
+
+					// First check if quickGuessEnabled and answer has potential_points
+					if (quickGuessEnabled && answer.potential_points !== null) {
+						// Use the potential_points from the answer
+						mainPoints = answer.potential_points;
+					} else {
+						// If we have screen points and this is a screen type room, use those instead of default
+						mainPoints =
+							screenPoints !== null && room.type === 'screen'
+								? screenPoints // Use screen points if available
+								: room.points_config.main_answer; // Otherwise use default point config
+					}
 
 					// Apply hint penalty if hint was used
 					if (hintUsedByPlayer.has(answer.player_name)) {
@@ -562,6 +689,14 @@
 
 					// Update answer snapshots
 					await updateAnswerSnapshots(player.id, newScore, newTiebreaker);
+
+					// Clear potential_points if it was used
+					if (quickGuessEnabled && answer.potential_points !== null) {
+						await supabase
+							.from('answers')
+							.update({ potential_points: null })
+							.eq('id', answer.id);
+					}
 				}
 			}
 
@@ -627,11 +762,19 @@
 				// Only apply negative points to incorrect answers (false), not to neutral (null) or correct (true) answers
 				// And only if anime_title is not disabled
 				if (room.enabled_fields?.anime_title !== false && answer.answer_status.main_answer === false) {
-					// If we have screen points and this is a screen type room, use those instead of default
-					let basePoints =
-						screenPoints !== null && room.type === 'screen'
-							? screenPoints // Use screen points if available
-							: room.points_config.main_answer; // Otherwise use default point config
+					let basePoints;
+
+					// First check if quickGuessEnabled and answer has potential_points
+					if (quickGuessEnabled && answer.potential_points !== null) {
+						// Use the potential_points from the answer
+						basePoints = answer.potential_points;
+					} else {
+						// If we have screen points and this is a screen type room, use those instead of default
+						basePoints =
+							screenPoints !== null && room.type === 'screen'
+								? screenPoints // Use screen points if available
+								: room.points_config.main_answer; // Otherwise use default point config
+					}
 
 					// Calculate half value and make it negative
 					points -= basePoints / 2;
@@ -666,6 +809,14 @@
 
 					// Update answer snapshots
 					await updateAnswerSnapshots(player.id, newScore, undefined);
+
+					// Clear potential_points if it was used
+					if (quickGuessEnabled && answer.potential_points !== null) {
+						await supabase
+							.from('answers')
+							.update({ potential_points: null })
+							.eq('id', answer.id);
+					}
 				}
 			}
 
@@ -1102,6 +1253,9 @@
 										<Table.Head class="text-gray-300">Czas</Table.Head>
 										<Table.Head class="text-gray-300">Wynik</Table.Head>
 										<Table.Head class="text-center text-gray-300">Tiebreaker</Table.Head>
+										{#if quickGuessEnabled}
+											<Table.Head class="text-center text-gray-300">Potencjalne punkty</Table.Head>
+										{/if}
 										<Table.Head class="text-center text-gray-300">Podpowiedź</Table.Head>
 										<Table.Head class="text-gray-300">Akcje</Table.Head>
 									</Table.Row>
@@ -1201,6 +1355,16 @@
 												</span>
 											</Table.Cell>
 
+											{#if quickGuessEnabled}
+												<Table.Cell class="text-center">
+													{#if answer.potential_points !== null}
+														<span class="text-center text-gray-200">{answer.potential_points}</span>
+													{:else}
+														<span class="text-gray-400">-</span>
+													{/if}
+												</Table.Cell>
+											{/if}
+
 											<Table.Cell class="text-center">
 												{#if hintUsageMap[`${answer.player_name}-${answer.round_id}`]}
 													<span class="rounded-md bg-yellow-900/30 px-2 py-1 text-xs text-yellow-400"> Użyta </span>
@@ -1227,6 +1391,9 @@
 									<Table.Head class="text-gray-300">Wynik</Table.Head>
 									<Table.Head class="text-gray-300">Tiebreaker</Table.Head>
 									<Table.Head class="text-gray-300">Status</Table.Head>
+									{#if quickGuessEnabled}
+										<Table.Head class="text-gray-300">Potencjalne punkty</Table.Head>
+									{/if}
 									<Table.Head class="text-gray-300">Akcje punktowe</Table.Head>
 									<Table.Head class="text-gray-300">Akcje</Table.Head>
 								</Table.Row>
@@ -1295,6 +1462,17 @@
 											</span>
 										</Table.Cell>
 
+										{#if quickGuessEnabled}
+											<Table.Cell>
+												{@const playerAnswer = displayedAnswers.find(a => a.player_name === player.name)}
+												{#if playerAnswer && playerAnswer.potential_points !== null}
+													<span class="rounded-md bg-amber-900/30 px-2 py-1 text-amber-400">{playerAnswer.potential_points} pkt</span>
+												{:else}
+													<span class="text-gray-400">-</span>
+												{/if}
+											</Table.Cell>
+										{/if}
+
 										<!-- New cell for point action buttons -->
 										<Table.Cell>
 											<div class="flex gap-1">
@@ -1319,6 +1497,12 @@
 								{takeoverModeActive ? 'Wyłącz Tryb Przejęć ' : 'Włącz Tryb Przejęć'}
 							</Button>
 							<Button on:click={clearAllHandRaises} class="bg-amber-600/50 text-white hover:bg-amber-500/50">Wyczyść przejęcia</Button>
+
+							{#if room.type === 'screen'}
+								<Button on:click={toggleQuickGuess} class={quickGuessEnabled ? 'bg-red-600/50 text-white hover:bg-red-500/50' : 'bg-green-600/50 text-white hover:bg-green-500/50'}>
+									{quickGuessEnabled ? 'Wyłącz Tryb "Zgaduję!"' : 'Włącz Tryb "Zgaduję!"'}
+								</Button>
+							{/if}
 
 							{#if lastUpdated}
 								<span class="ml-4 text-sm text-gray-400">Ostatnia aktualizacja: {lastUpdated}</span>
