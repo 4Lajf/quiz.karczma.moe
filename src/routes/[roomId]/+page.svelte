@@ -28,6 +28,7 @@
 	let countdownValue = 10;
 	let countdownInterval = null;
 	let currentPointsValue = 0;
+	let lockedPointsValue = 0; // This will store the points value when quick guess is activated
 
 	let teamCode = '';
 	let teamCodeRequired = false;
@@ -1395,13 +1396,16 @@
 		} else {
 			// No answer exists yet, create a new placeholder answer entry IMMEDIATELY
 			try {
+				// Lock the points value at the time of clicking
+				lockedPointsValue = currentPointsValue;
+
 				const { error } = await supabase.from('answers').insert({
 					room_id: room.id,
 					round_id: room.current_round,
 					player_name: playerName,
 					content: '',
 					extra_fields: null,
-					potential_points: currentPointsValue
+					potential_points: lockedPointsValue
 				});
 
 				if (error) {
@@ -1423,6 +1427,8 @@
 		// Now that we've handled the database operations, set the UI state
 		isQuickGuessActive = true;
 		countdownValue = 10;
+		// Lock the current points value when quick guess is activated
+		lockedPointsValue = currentPointsValue;
 
 		// Start countdown
 		countdownInterval = setInterval(() => {
@@ -1698,7 +1704,7 @@
 							<div class="p-4 mb-4 text-center rounded-lg bg-amber-900/30">
 								<p class="mb-2 text-xl font-bold text-amber-400">Masz {countdownValue}s na odpowiedź</p>
 								<p class="mb-4 text-sm text-amber-300">Twoja odpowiedź zostanie automatycznie wysłana za {countdownValue} sekund.</p>
-								<p class="text-sm text-amber-300">Potencjalne punkty: <span class="font-bold">{currentPointsValue}</span></p>
+								<p class="text-sm text-amber-300">Potencjalne punkty: <span class="font-bold">{lockedPointsValue}</span></p>
 							</div>
 						{/if}
 						{#if room.enabled_fields?.anime_title !== false}

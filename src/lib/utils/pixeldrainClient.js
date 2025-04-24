@@ -39,6 +39,6 @@ export const pixeldrainClient = {
     console.log(`Successfully uploaded to Pixeldrain. File ID: ${data.id}`);
     
     // Return the direct download URL
-    return `https://pixeldrain.com/api/file/${data.id}/download`;
+    return `https://pixeldrain.com/api/file/${data.id}`;
   }
 };

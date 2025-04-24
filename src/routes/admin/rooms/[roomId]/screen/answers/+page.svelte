@@ -4,12 +4,12 @@
 	import { invalidate, invalidateAll } from '$app/navigation';
 	import * as Card from '$lib/components/ui/card';
 	import * as Tabs from '$lib/components/ui/tabs';
+	import * as Table from '$lib/components/ui/table';
 	import { Button } from '$lib/components/ui/button';
 	import { toast } from 'svelte-sonner';
 	import { Plus, Trash2, Upload, Image, Check, X } from 'lucide-svelte';
 	import Autocomplete from '$lib/components/player/Autocomplete.svelte';
 	import { Input } from '$lib/components/ui/input';
-	import { pixeldrainClient } from '$lib/utils/pixeldrainClient';
 
 	export let data;
 	$: ({ supabase, room, rounds, currentRound, roundImages, playerAnswers } = data);
@@ -196,7 +196,7 @@
 	}
 
 	// Upload image for a round
-	// Updated to use Pixeldrain instead of Supabase storage
+	// Updated to use server-side endpoint for Pixeldrain to avoid CORS issues
 	async function uploadImage(roundNumber) {
 		if (!files[roundNumber]) return;
 
@@ -206,11 +206,30 @@
 		try {
 			const file = files[roundNumber];
 
-			console.log(`Uploading file ${file.name} to Pixeldrain (size: ${(file.size / 1024).toFixed(2)}KB)...`);
+			console.log(`Uploading file ${file.name} (size: ${(file.size / 1024).toFixed(2)}KB)...`);
 
-			// Upload directly to Pixeldrain from the client
-			const url = await pixeldrainClient.uploadFile(file);
+			// Create form data for the upload
+			const formData = new FormData();
+			formData.append('file', file);
 
+			// Upload to server-side endpoint
+			const response = await fetch('/api/upload', {
+				method: 'POST',
+				body: formData
+			});
+
+			if (!response.ok) {
+				const errorData = await response.json();
+				throw new Error(errorData.message || 'Upload failed');
+			}
+
+			const result = await response.json();
+
+			if (!result.success) {
+				throw new Error(result.message || 'Upload failed');
+			}
+
+			const url = result.url;
 			console.log(`File uploaded successfully. URL: ${url}`);
 
 			// Get file extension and create a filename
