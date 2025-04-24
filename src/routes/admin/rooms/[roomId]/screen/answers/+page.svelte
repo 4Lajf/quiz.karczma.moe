@@ -9,6 +9,7 @@
 	import { Plus, Trash2, Upload, Image, Check, X } from 'lucide-svelte';
 	import Autocomplete from '$lib/components/player/Autocomplete.svelte';
 	import { Input } from '$lib/components/ui/input';
+	import { pixeldrainClient } from '$lib/utils/pixeldrainClient';
 
 	export let data;
 	$: ({ supabase, room, rounds, currentRound, roundImages, playerAnswers } = data);
@@ -203,30 +204,17 @@
 		uploading = { ...uploading }; // Trigger reactivity
 
 		try {
-			// Create form data for the upload
-			const formData = new FormData();
-			formData.append('file', files[roundNumber]);
+			const file = files[roundNumber];
 
-			console.log(`Uploading file ${files[roundNumber].name} to Pixeldrain...`);
+			console.log(`Uploading file ${file.name} to Pixeldrain (size: ${(file.size / 1024).toFixed(2)}KB)...`);
 
-			// Upload to Pixeldrain via our API endpoint
-			const response = await fetch('/api/upload-to-pixeldrain', {
-				method: 'POST',
-				body: formData
-			});
+			// Upload directly to Pixeldrain from the client
+			const url = await pixeldrainClient.uploadFile(file);
 
-			// Parse the response JSON
-			const responseData = await response.json();
-
-			if (!response.ok) {
-				throw new Error(responseData.error || 'Upload failed');
-			}
-
-			const url = responseData.url;
 			console.log(`File uploaded successfully. URL: ${url}`);
 
 			// Get file extension and create a filename
-			const fileExt = files[roundNumber].name.split('.').pop();
+			const fileExt = file.name.split('.').pop();
 			const fileName = `round_${roundNumber}.${fileExt}`;
 
 			// Find the correct answer for this round

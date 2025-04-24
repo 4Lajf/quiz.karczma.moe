@@ -669,8 +669,8 @@
 		]);
 
 		// Update states
-		// hasSubmitted = !!existingAnswer;
 		hintRequested = isHintRequested;
+		hasSubmitted = !!existingAnswer;
 
 		// Update current points value
 		if (pointsData) {
@@ -685,10 +685,8 @@
 				songArtist = existingAnswer.extra_fields.song_artist || '';
 				otherAnswer = existingAnswer.extra_fields.other || '';
 			}
-		} else {
-			// If no answer exists, reset all fields except for hintRequested
-			resetAnswerState();
 		}
+		// We no longer reset the fields if no answer exists - this preserves user input
 
 		// If hint was requested but we don't have the hint yet, fetch it again
 		if (hintRequested && !maskedAnswer) {
@@ -784,10 +782,11 @@
 				{
 					event: '*',
 					schema: 'public',
-					table: 'answers'
+					table: 'answers',
+					filter: `player_name=eq.${playerName}`
 				},
 				async (payload) => {
-					console.log('Answer change detected:', payload);
+					console.log('Answer change detected for current player:', payload);
 					await checkAnswerStatus();
 					if (!hasSubmitted && payload.eventType === 'DELETE') {
 						toast.info('Twoja odpowiedź została zresetowana przez administratora');
@@ -1127,7 +1126,6 @@
 
 			hasSubmitted = true;
 			toast.success('Odpowiedź przesłana');
-			resetAnswerState();
 		} catch (error) {
 			toast.error('Błąd: ' + error.message);
 		} finally {
@@ -1568,12 +1566,6 @@
 			clearInterval(countdownInterval);
 			countdownInterval = null;
 		}
-
-		// Clear any existing fields
-		answer = '';
-		songTitle = '';
-		songArtist = '';
-		otherAnswer = '';
 	}
 
 	onDestroy(() => {
