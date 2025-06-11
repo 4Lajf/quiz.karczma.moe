@@ -78,7 +78,7 @@
 							{showMetadata ? 'Metadane widoczne' : 'Faza zgadywania'}
 						</Badge>
 						{#if guessingPhase && timeLeft > 0}
-							<Badge variant="outline" class="border-yellow-500 text-yellow-400">
+							<Badge variant="outline" class="border-purple-500 text-purple-400 bg-purple-900/20">
 								Czas: {formatTime(timeLeft)}
 							</Badge>
 						{/if}
@@ -127,9 +127,9 @@
 								</div>
 
 								<div class="mt-6">
-									<Badge 
-										variant="outline" 
-										class="border-yellow-500 text-yellow-400 text-lg px-4 py-2"
+									<Badge
+										variant="outline"
+										class="border-purple-500 text-purple-400 bg-purple-900/20 text-lg px-4 py-2"
 									>
 										Trudność: {currentSong.difficulty}
 									</Badge>
@@ -151,7 +151,7 @@
 
 	<!-- Song info panel (always visible for admin) -->
 	{#if currentSong}
-		<Card class="bg-gray-800/50 border-gray-700">
+		<Card class="bg-gray-900 border-gray-800">
 			<CardHeader>
 				<CardTitle class="text-white flex items-center gap-2">
 					<Music class="w-5 h-5" />
@@ -178,7 +178,7 @@
 					</div>
 					<div>
 						<div class="text-gray-400">Trudność:</div>
-						<Badge variant="outline" class="border-yellow-500 text-yellow-400">
+						<Badge variant="outline" class="border-purple-500 text-purple-400 bg-purple-900/20">
 							{currentSong.difficulty}
 						</Badge>
 					</div>
@@ -199,10 +199,6 @@
 </div>
 
 <style>
-	.presenter-screen {
-		/* Custom animations */
-	}
-
 	@keyframes pulse {
 		0%, 100% {
 			opacity: 1;

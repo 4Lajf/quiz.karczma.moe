@@ -16,6 +16,17 @@
 	let isLoading = false;
 	let videoFiles = [];
 
+	// Difficulty mapping
+	function getDifficultyInPolish(englishDifficulty) {
+		const difficultyMap = {
+			'easy': 'Łatwa',
+			'medium': 'Średnia',
+			'hard': 'Trudna',
+			'very hard': 'Bardzo trudna'
+		};
+		return difficultyMap[englishDifficulty?.toLowerCase()] || englishDifficulty;
+	}
+
 	onMount(async () => {
 		// Only run in browser environment
 		if (typeof window === 'undefined') return;
@@ -79,9 +90,9 @@
 			currentDirectory = null;
 			useLocalFiles = false;
 			videoFiles = [];
-			
+
 			toast.success('Usunięto wybrany katalog');
-			
+
 			dispatch('directoryChanged', {
 				useLocalFiles: false,
 				directory: null,
@@ -106,17 +117,7 @@
 		}
 	}
 
-	function toggleMode() {
-		useLocalFiles = !useLocalFiles;
-		
-		dispatch('directoryChanged', {
-			useLocalFiles,
-			directory: currentDirectory,
-			files: useLocalFiles ? videoFiles : []
-		});
-		
-		toast.success(useLocalFiles ? 'Przełączono na pliki lokalne' : 'Przełączono na pliki serwera');
-	}
+
 
 	function formatFileSize(bytes) {
 		if (bytes === 0) return '0 B';
@@ -127,7 +128,7 @@
 	}
 </script>
 
-<Card class="bg-gray-800/50 border-gray-700">
+<Card class="bg-gray-900 border-gray-800">
 	<CardHeader>
 		<CardTitle class="text-white flex items-center gap-2">
 			<Folder class="w-5 h-5" />
@@ -137,7 +138,7 @@
 	<CardContent class="space-y-4">
 		<!-- API Support Status -->
 		{#if !isSupported}
-			<div class="flex items-center gap-2 p-3 bg-yellow-900/50 border border-yellow-700 rounded-lg">
+			<div class="flex items-center gap-2 p-3 bg-yellow-900/30 border border-yellow-800 rounded-lg">
 				<AlertCircle class="w-5 h-5 text-yellow-400" />
 				<div class="text-yellow-200">
 					<p class="font-medium">File System API nie jest obsługiwane</p>
@@ -147,7 +148,7 @@
 				</div>
 			</div>
 		{:else}
-			<div class="flex items-center gap-2 p-3 bg-green-900/50 border border-green-700 rounded-lg">
+			<div class="flex items-center gap-2 p-3 bg-green-900/30 border border-green-800 rounded-lg">
 				<CheckCircle class="w-5 h-5 text-green-400" />
 				<div class="text-green-200">
 					<p class="font-medium">File System API jest obsługiwane</p>
@@ -158,29 +159,11 @@
 			</div>
 		{/if}
 
-		<!-- Mode Toggle -->
-		<div class="flex items-center justify-between p-3 bg-gray-700/50 rounded-lg">
-			<div>
-				<p class="text-white font-medium">Tryb plików</p>
-				<p class="text-sm text-gray-300">
-					{useLocalFiles ? 'Pliki lokalne' : 'Pliki serwera'}
-				</p>
-			</div>
-			<Button
-				on:click={toggleMode}
-				variant="outline"
-				class="border-gray-600 text-gray-300 hover:bg-gray-600"
-				disabled={!isSupported || (!currentDirectory && !useLocalFiles)}
-			>
-				{useLocalFiles ? 'Przełącz na serwer' : 'Przełącz na lokalne'}
-			</Button>
-		</div>
-
 		<!-- Directory Selection -->
 		{#if isSupported}
 			<div class="space-y-3">
 				{#if currentDirectory}
-					<div class="flex items-center justify-between p-3 bg-blue-900/50 border border-blue-700 rounded-lg">
+					<div class="flex items-center justify-between p-3 bg-blue-900/30 border border-blue-800 rounded-lg">
 						<div class="flex items-center gap-2">
 							<FolderOpen class="w-5 h-5 text-blue-400" />
 							<div>
@@ -194,7 +177,7 @@
 							on:click={clearDirectory}
 							variant="outline"
 							size="sm"
-							class="border-red-600 text-red-400 hover:bg-red-900/50"
+							class="border-red-600 text-red-400 hover:bg-red-900/30"
 						>
 							<X class="w-4 h-4" />
 						</Button>
@@ -204,7 +187,7 @@
 				<Button
 					on:click={selectDirectory}
 					disabled={isLoading}
-					class="w-full bg-purple-600 hover:bg-purple-700"
+					class="w-full bg-purple-600 hover:bg-purple-700 text-white"
 				>
 					<Folder class="w-4 h-4 mr-2" />
 					{isLoading ? 'Wybieranie...' : currentDirectory ? 'Zmień katalog' : 'Wybierz katalog'}
@@ -218,10 +201,10 @@
 				<p class="text-sm text-gray-300 font-medium">Pliki w katalogu:</p>
 				<div class="max-h-32 overflow-y-auto space-y-1">
 					{#each videoFiles.slice(0, 10) as file}
-						<div class="flex flex-col text-xs text-gray-400 p-2 bg-gray-700/30 rounded space-y-1">
+						<div class="flex flex-col text-xs text-gray-400 p-2 bg-gray-800 border border-gray-700 rounded space-y-1">
 							<div class="flex items-center justify-between">
-								<span class="truncate flex-1 font-medium">{file.FileName || 'Unknown'}</span>
-								<Badge variant="outline" class="text-xs">
+								<span class="truncate flex-1 font-medium text-gray-200">{file.FileName || 'Unknown'}</span>
+								<Badge variant="outline" class="text-xs border-gray-600 text-gray-400">
 									{formatFileSize(file.localFileInfo?.size || 0)}
 								</Badge>
 							</div>
@@ -237,8 +220,8 @@
 							{/if}
 							{#if file.difficulty}
 								<div class="flex items-center gap-1">
-									<Badge variant="secondary" class="text-xs px-1 py-0">
-										{file.difficulty}
+									<Badge variant="outline" class="text-xs px-1 py-0 border-purple-500 text-purple-400 bg-purple-900/20">
+										{getDifficultyInPolish(file.difficulty)}
 									</Badge>
 								</div>
 							{/if}

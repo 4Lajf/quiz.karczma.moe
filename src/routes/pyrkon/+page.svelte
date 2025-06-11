@@ -192,16 +192,16 @@
 	<title>Pyrkon Quiz - Quiz Karczma</title>
 </svelte:head>
 
-<div class="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900">
+<div class="min-h-screen bg-gray-950">
 	<div class="container mx-auto px-4 py-8">
 		<div class="text-center mb-8">
 			<h1 class="text-4xl font-bold text-white mb-2">🎵 Pyrkon Quiz 🎵</h1>
-			<p class="text-blue-200">Zgadnij anime po muzyce!</p>
+			<p class="text-gray-400">Zgadnij anime po muzyce!</p>
 		</div>
 
 		{#if !gameStarted}
 			<!-- Player setup -->
-			<Card class="max-w-md mx-auto bg-gray-800/50 border-gray-700">
+			<Card class="max-w-md mx-auto bg-gray-900 border-gray-800">
 				<CardHeader>
 					<CardTitle class="text-white text-center">Rozpocznij grę</CardTitle>
 				</CardHeader>
@@ -212,10 +212,10 @@
 							id="playerName"
 							bind:value={playerName}
 							placeholder="Wprowadź swoją nazwę"
-							class="bg-gray-700 border-gray-600 text-white"
+							class="bg-gray-800 border-gray-700 text-white placeholder:text-gray-400"
 						/>
 					</div>
-					<Button on:click={startGame} class="w-full bg-purple-600 hover:bg-purple-700">
+					<Button on:click={startGame} class="w-full bg-purple-600 hover:bg-purple-700 text-white">
 						Rozpocznij grę
 					</Button>
 				</CardContent>
@@ -225,15 +225,15 @@
 			<div class="max-w-4xl mx-auto space-y-6">
 				<!-- Current song info -->
 				{#if currentSong}
-					<Card class="bg-gray-800/50 border-gray-700">
+					<Card class="bg-gray-900 border-gray-800">
 						<CardHeader>
 							<div class="flex justify-between items-center">
 								<CardTitle class="text-white">
 									{showAnswer ? 'Odpowiedź' : 'Zgadnij anime'}
 								</CardTitle>
 								<div class="flex items-center gap-2">
-									<Clock class="w-4 h-4 text-blue-400" />
-									<span class="text-blue-400 font-mono">
+									<Clock class="w-4 h-4 text-purple-400" />
+									<span class="text-purple-400 font-mono">
 										{showAnswer ? '0:00' : formatTime(timeLeft)}
 									</span>
 								</div>
@@ -247,13 +247,13 @@
 									<p class="text-lg text-gray-300">{currentSong.ENName}</p>
 									<p class="text-blue-400">🎵 {currentSong.SongName}</p>
 									<p class="text-purple-400">🎤 {currentSong.Artist}</p>
-									<Badge variant="outline" class="border-yellow-500 text-yellow-400">
+									<Badge variant="outline" class="border-purple-500 text-purple-400 bg-purple-900/20">
 										Trudność: {currentSong.difficulty}
 									</Badge>
 								</div>
 								
 								<div class="text-center">
-									<Button on:click={nextSong} class="bg-green-600 hover:bg-green-700">
+									<Button on:click={nextSong} class="bg-green-600 hover:bg-green-700 text-white">
 										<SkipForward class="w-4 h-4 mr-2" />
 										Następna piosenka
 									</Button>
@@ -262,20 +262,20 @@
 								<!-- Guessing phase -->
 								<div class="text-center space-y-4">
 									<div class="text-6xl">🎵</div>
-									<p class="text-gray-300">Słuchaj i zgadnij anime!</p>
-									
+									<p class="text-gray-400">Słuchaj i zgadnij anime!</p>
+
 									{#if !hasSubmitted}
 										<div class="space-y-3">
 											<Input
 												bind:value={answer}
 												placeholder="Nazwa anime..."
-												class="bg-gray-700 border-gray-600 text-white text-center text-lg"
+												class="bg-gray-800 border-gray-700 text-white text-center text-lg placeholder:text-gray-400"
 												on:keydown={(e) => e.key === 'Enter' && submitAnswer()}
 											/>
-											<Button 
-												on:click={submitAnswer} 
+											<Button
+												on:click={submitAnswer}
 												disabled={loading || !answer.trim()}
-												class="bg-blue-600 hover:bg-blue-700"
+												class="bg-blue-600 hover:bg-blue-700 text-white"
 											>
 												{loading ? 'Wysyłanie...' : 'Wyślij odpowiedź'}
 											</Button>
@@ -290,12 +290,12 @@
 
 							<!-- Audio controls -->
 							{#if currentSong && !showAnswer}
-								<div class="flex items-center justify-center gap-4 p-4 bg-gray-700/50 rounded-lg">
+								<div class="flex items-center justify-center gap-4 p-4 bg-gray-800 border border-gray-700 rounded-lg">
 									<Button
 										on:click={togglePlayPause}
 										variant="outline"
 										size="sm"
-										class="border-gray-600"
+										class="border-gray-600 bg-gray-700 text-gray-200 hover:bg-gray-600"
 									>
 										{#if isPlaying}
 											<Pause class="w-4 h-4" />
@@ -309,6 +309,7 @@
 											on:click={toggleMute}
 											variant="ghost"
 											size="sm"
+											class="text-gray-300 hover:text-white hover:bg-gray-700"
 										>
 											{#if isMuted}
 												<VolumeX class="w-4 h-4" />
@@ -323,7 +324,7 @@
 											step="0.1"
 											bind:value={volume}
 											on:input={updateVolume}
-											class="w-20"
+											class="w-20 accent-purple-500"
 										/>
 									</div>
 								</div>
