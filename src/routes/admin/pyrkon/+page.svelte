@@ -99,22 +99,23 @@
 			isMuted = savedMuted === 'true';
 		}
 
-		// Load current presenter state
-		loadPresenterState();
+		// Load local state
+		loadLocalState();
 
 		// Initial search to load all songs
 		searchSongs();
 	});
 
-	async function loadPresenterState() {
+	function loadLocalState() {
 		try {
-			const response = await fetch('/api/pyrkon/presenter-state');
-			if (response.ok) {
-				const presenterState = await response.json();
-				showMetadata = presenterState.showMetadata || false;
+			const savedState = localStorage.getItem('pyrkon_local_state');
+			if (savedState) {
+				const state = JSON.parse(savedState);
+				showMetadata = state.showMetadata || false;
+				// Note: currentSong is managed separately in the Odtwarzacz tab
 			}
 		} catch (error) {
-			console.error('Failed to load presenter state:', error);
+			console.error('Failed to load local state:', error);
 		}
 	}
 
@@ -323,6 +324,9 @@
 
 		currentSong = song;
 
+		// Reset metadata display when new song is selected
+		showMetadata = false;
+
 		// Stop current playback
 		if (videoPlayer) {
 			videoPlayer.stop();
@@ -342,7 +346,43 @@
 			return;
 		}
 
-		// Update presenter state
+		// Save to local state and dispatch events for cross-tab communication
+		const state = {
+			currentSong: song,
+			showMetadata: false // Reset metadata when loading new song
+		};
+		localStorage.setItem('pyrkon_local_state', JSON.stringify(state));
+
+		// Initialize playback state
+		const playbackState = {
+			currentTime: 0,
+			isPlaying: false,
+			videoSrc: currentVideoSrc,
+			timestamp: Date.now()
+		};
+		localStorage.setItem('pyrkon_playback_state', JSON.stringify(playbackState));
+
+		// Dispatch event for local state management (for Odpowiedzi tab) - browser only
+		if (typeof window !== 'undefined') {
+			window.dispatchEvent(new CustomEvent('pyrkon-song-loaded', {
+				detail: { song }
+			}));
+
+			// Also trigger storage events for cross-tab communication
+			window.dispatchEvent(new StorageEvent('storage', {
+				key: 'pyrkon_local_state',
+				newValue: JSON.stringify(state),
+				storageArea: localStorage
+			}));
+
+			window.dispatchEvent(new StorageEvent('storage', {
+				key: 'pyrkon_playback_state',
+				newValue: JSON.stringify(playbackState),
+				storageArea: localStorage
+			}));
+		}
+
+		// Update presenter state (for presenter view synchronization)
 		await updatePresenterState({
 			currentSong: song,
 			showMetadata: false,
@@ -352,6 +392,31 @@
 			currentTime: 0,
 			isPlaying: false
 		});
+
+		// Update local state and notify other tabs about metadata toggle reset
+		const localState = {
+			currentSong: song,
+			showMetadata: false
+		};
+		localStorage.setItem('pyrkon_local_state', JSON.stringify(localState));
+
+		// Dispatch events to notify other tabs/views
+		if (typeof window !== 'undefined') {
+			window.dispatchEvent(new CustomEvent('pyrkon-metadata-toggled', {
+				detail: { showMetadata: false }
+			}));
+
+			window.dispatchEvent(new CustomEvent('pyrkon-song-changed', {
+				detail: { currentSong: song }
+			}));
+
+			// Also trigger a storage event manually for same-tab communication
+			window.dispatchEvent(new StorageEvent('storage', {
+				key: 'pyrkon_local_state',
+				newValue: JSON.stringify(localState),
+				storageArea: localStorage
+			}));
+		}
 
 		toast.success(`Załadowano: ${song.JPName || song.FileName}`);
 	}
@@ -368,6 +433,17 @@
 
 	function handleTimeUpdate(event) {
 		currentPlaybackTime = event.detail.currentTime;
+
+		// Update playback state for presenter sync (but only if playing)
+		if (isPlaying && typeof window !== 'undefined') {
+			const playbackState = {
+				currentTime: currentPlaybackTime,
+				isPlaying: true,
+				videoSrc: currentVideoSrc,
+				timestamp: Date.now()
+			};
+			localStorage.setItem('pyrkon_playback_state', JSON.stringify(playbackState));
+		}
 	}
 
 	function handlePlay() {
@@ -387,15 +463,30 @@
 	}
 
 	function startPlaybackSync() {
-		// Send periodic updates to presenter while playing
+		// Send periodic updates for video synchronization while playing
 		if (playbackSyncInterval) clearInterval(playbackSyncInterval);
 
-		playbackSyncInterval = setInterval(async () => {
+		playbackSyncInterval = setInterval(() => {
 			if (currentSong && isPlaying) {
-				await updatePresenterState({
+				// Update local state with playback info for presenter sync
+				const playbackState = {
 					currentTime: currentPlaybackTime,
-					isPlaying: true
-				});
+					isPlaying: true,
+					videoSrc: currentVideoSrc,
+					timestamp: Date.now()
+				};
+
+				// Store playback state separately from song/metadata state
+				if (typeof window !== 'undefined') {
+					localStorage.setItem('pyrkon_playback_state', JSON.stringify(playbackState));
+
+					// Dispatch storage event for cross-tab sync
+					window.dispatchEvent(new StorageEvent('storage', {
+						key: 'pyrkon_playback_state',
+						newValue: JSON.stringify(playbackState),
+						storageArea: localStorage
+					}));
+				}
 			}
 		}, 1000); // Update every second
 	}
@@ -404,6 +495,24 @@
 		if (playbackSyncInterval) {
 			clearInterval(playbackSyncInterval);
 			playbackSyncInterval = null;
+		}
+
+		// Update playback state to stopped
+		if (typeof window !== 'undefined') {
+			const playbackState = {
+				currentTime: currentPlaybackTime,
+				isPlaying: false,
+				videoSrc: currentVideoSrc,
+				timestamp: Date.now()
+			};
+			localStorage.setItem('pyrkon_playback_state', JSON.stringify(playbackState));
+
+			// Dispatch storage event for cross-tab sync
+			window.dispatchEvent(new StorageEvent('storage', {
+				key: 'pyrkon_playback_state',
+				newValue: JSON.stringify(playbackState),
+				storageArea: localStorage
+			}));
 		}
 	}
 
@@ -443,28 +552,33 @@
 		}
 	}
 
-	async function toggleMetadata() {
-		try {
-			loading = true;
-			const response = await fetch('/api/pyrkon/presenter-toggle', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ action: 'toggleMetadata' })
-			});
+	function toggleMetadata() {
+		// Toggle local metadata state only
+		showMetadata = !showMetadata;
 
-			if (response.ok) {
-				const result = await response.json();
-				showMetadata = result.state.showMetadata;
-				toast.success(showMetadata ? 'Metadane zostały odsłonięte na prezenterze' : 'Metadane zostały ukryte na prezenterze');
-			} else {
-				toast.error('Nie udało się przełączyć metadanych');
-			}
-		} catch (error) {
-			console.error('Failed to toggle metadata:', error);
-			toast.error('Nie udało się przełączyć metadanych');
-		} finally {
-			loading = false;
+		// Save to local state
+		const state = {
+			currentSong,
+			showMetadata
+		};
+		localStorage.setItem('pyrkon_local_state', JSON.stringify(state));
+
+		// Dispatch event to notify other tabs (presenter view, answers tab) - browser only
+		if (typeof window !== 'undefined') {
+			window.dispatchEvent(new CustomEvent('pyrkon-metadata-toggled', {
+				detail: { showMetadata }
+			}));
+
+			// Also trigger a storage event manually for same-tab communication
+			// This helps ensure the presenter view updates immediately
+			window.dispatchEvent(new StorageEvent('storage', {
+				key: 'pyrkon_local_state',
+				newValue: JSON.stringify(state),
+				storageArea: localStorage
+			}));
 		}
+
+		toast.success(showMetadata ? 'Metadane zostały odsłonięte lokalnie' : 'Metadane zostały ukryte lokalnie');
 	}
 
 	function handleSongSelect(event) {

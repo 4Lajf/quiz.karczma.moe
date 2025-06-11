@@ -8,7 +8,7 @@
 	export let data;
 	$: ({ session, user, profile } = data);
 
-	// Current song state
+	// Current song state - using local state management
 	let currentSong = null;
 	let showMetadata = false;
 	let videoSrc = null;
@@ -16,8 +16,7 @@
 	let isPlaying = false;
 	let videoElement;
 
-	// WebSocket or polling for real-time updates
-	let eventSource = null;
+	// Local state management - no global polling
 
 	// Difficulty mapping
 	function getDifficultyInPolish(englishDifficulty) {
@@ -49,9 +48,27 @@
 	}
 
 	onMount(() => {
-		// Set up real-time connection to get updates from admin panel
-		// For now, we'll use polling - in production you might want WebSocket
-		startPolling();
+		// Load local state from localStorage
+		loadLocalState();
+		loadPlaybackState();
+
+		// Listen for custom events from other tabs (browser only)
+		if (typeof window !== 'undefined') {
+			window.addEventListener('pyrkon-song-loaded', handleSongLoaded);
+			window.addEventListener('pyrkon-metadata-toggled', handleMetadataToggled);
+
+			// Listen for localStorage changes from other tabs
+			window.addEventListener('storage', handleStorageChange);
+
+			// Poll for state changes every 500ms for real-time updates
+			const pollInterval = setInterval(() => {
+				loadLocalState();
+				loadPlaybackState();
+			}, 500);
+
+			// Store interval reference for cleanup
+			window.pyrkonPollInterval = pollInterval;
+		}
 
 		// Listen for keyboard shortcuts
 		if (typeof document !== 'undefined') {
@@ -65,41 +82,108 @@
 	});
 
 	onDestroy(() => {
-		if (eventSource) {
-			clearInterval(eventSource);
+		if (typeof window !== 'undefined') {
+			window.removeEventListener('pyrkon-song-loaded', handleSongLoaded);
+			window.removeEventListener('pyrkon-metadata-toggled', handleMetadataToggled);
+			window.removeEventListener('storage', handleStorageChange);
+
+			// Clean up polling interval
+			if (window.pyrkonPollInterval) {
+				clearInterval(window.pyrkonPollInterval);
+				window.pyrkonPollInterval = null;
+			}
 		}
+
 		if (typeof document !== 'undefined') {
 			document.removeEventListener('keydown', handleKeydown);
 		}
 	});
 
-	function startPolling() {
-		// Poll for current song state every 1 second for better sync
-		eventSource = setInterval(async () => {
-			try {
-				const response = await fetch('/api/pyrkon/presenter-state');
-				if (response.ok) {
-					const state = await response.json();
-					currentSong = state.currentSong;
-					showMetadata = state.showMetadata;
-					videoSrc = state.videoSrc;
+	function loadLocalState() {
+		try {
+			const savedState = localStorage.getItem('pyrkon_local_state');
+			if (savedState) {
+				const state = JSON.parse(savedState);
+				const newCurrentSong = state.currentSong || null;
+				const newShowMetadata = state.showMetadata || false;
 
-					// Sync video playback time
-					if (state.currentTime !== undefined) {
-						currentTime = state.currentTime;
+				// Only update if there are actual changes to avoid unnecessary re-renders
+				if (JSON.stringify(currentSong) !== JSON.stringify(newCurrentSong)) {
+					currentSong = newCurrentSong;
+				}
+
+				if (showMetadata !== newShowMetadata) {
+					showMetadata = newShowMetadata;
+				}
+
+				// Set video source if we have a current song
+				if (currentSong && currentSong.FileName) {
+					// For local files, we need to recreate the file URL
+					// This might not work perfectly across tabs, but it's the best we can do
+					videoSrc = null; // Will be handled by the video element's src attribute
+				}
+			}
+		} catch (error) {
+			console.error('Failed to load local state:', error);
+		}
+	}
+
+	function saveLocalState() {
+		try {
+			const state = {
+				currentSong,
+				showMetadata
+			};
+			localStorage.setItem('pyrkon_local_state', JSON.stringify(state));
+		} catch (error) {
+			console.error('Failed to save local state:', error);
+		}
+	}
+
+	function handleSongLoaded(event) {
+		currentSong = event.detail.song;
+		showMetadata = false; // Reset metadata display when new song is loaded
+		saveLocalState();
+	}
+
+	function handleMetadataToggled(event) {
+		showMetadata = event.detail.showMetadata;
+		saveLocalState();
+	}
+
+	function handleStorageChange(event) {
+		// Handle localStorage changes from other tabs
+		if (event.key === 'pyrkon_local_state') {
+			loadLocalState();
+		} else if (event.key === 'pyrkon_playback_state') {
+			loadPlaybackState();
+		}
+	}
+
+	function loadPlaybackState() {
+		try {
+			const savedPlaybackState = localStorage.getItem('pyrkon_playback_state');
+			if (savedPlaybackState) {
+				const playbackState = JSON.parse(savedPlaybackState);
+
+				// Only sync if the state is recent (within 5 seconds)
+				const now = Date.now();
+				if (playbackState.timestamp && (now - playbackState.timestamp) < 5000) {
+					// Update video playback state
+					if (playbackState.currentTime !== undefined) {
+						currentTime = playbackState.currentTime;
 						syncVideoTime();
 					}
 
-					// Sync playing state
-					if (state.isPlaying !== undefined) {
-						isPlaying = state.isPlaying;
+					if (playbackState.isPlaying !== undefined) {
+						isPlaying = playbackState.isPlaying;
 						syncVideoPlayState();
 					}
 				}
-			} catch (error) {
-				console.error('Failed to fetch presenter state:', error);
 			}
-		}, 1000); // Reduced to 1 second for better sync
+		} catch (error) {
+			console.error('Failed to load playback state:', error);
+		}
 	}
 
 	function syncVideoTime() {
@@ -122,6 +206,8 @@
 		}
 	}
 
+
+
 	function handleKeydown(event) {
 		// Keyboard shortcuts for presenter
 		switch (event.key) {
@@ -143,15 +229,16 @@
 		}
 	}
 
-	async function toggleMetadata() {
-		try {
-			await fetch('/api/pyrkon/presenter-toggle', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ action: 'toggleMetadata' })
-			});
-		} catch (error) {
-			console.error('Failed to toggle metadata:', error);
+	function toggleMetadata() {
+		// Toggle local metadata state only
+		showMetadata = !showMetadata;
+		saveLocalState();
+
+		// Dispatch event to notify other tabs (browser only)
+		if (typeof window !== 'undefined') {
+			window.dispatchEvent(new CustomEvent('pyrkon-metadata-toggled', {
+				detail: { showMetadata }
+			}));
 		}
 	}
 
@@ -187,7 +274,7 @@
 					<div class="absolute inset-0 bg-gradient-to-r from-purple-500/20 to-blue-500/20 rounded-2xl blur-xl"></div>
 					<video
 						bind:this={videoElement}
-						src={videoSrc || `/api/pyrkon/play?file=${encodeURIComponent(currentSong.FileName)}`}
+						src={`/api/pyrkon/play?file=${encodeURIComponent(currentSong.FileName)}`}
 						autoplay
 						loop
 						muted

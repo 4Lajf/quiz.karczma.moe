@@ -12,22 +12,70 @@
 	let participants = [];
 	let newParticipant = { name: '', difficulty: 'easy' };
 	let currentSong = null;
-	let presenterState = null;
-	let refreshInterval = null;
 	let showMetadata = false;
 
+	// Local state management - separate from global presenter state
 	onMount(() => {
 		loadParticipants();
-		loadCurrentSong();
-		// Refresh current song every 5 seconds
-		refreshInterval = setInterval(loadCurrentSong, 5000);
+		loadLocalState();
+
+		// Listen for custom events from the Odtwarzacz tab (browser only)
+		if (typeof window !== 'undefined') {
+			window.addEventListener('pyrkon-song-loaded', handleSongLoaded);
+			window.addEventListener('pyrkon-metadata-toggled', handleMetadataToggled);
+			window.addEventListener('storage', handleStorageChange);
+		}
 	});
 
 	onDestroy(() => {
-		if (refreshInterval) {
-			clearInterval(refreshInterval);
+		if (typeof window !== 'undefined') {
+			window.removeEventListener('pyrkon-song-loaded', handleSongLoaded);
+			window.removeEventListener('pyrkon-metadata-toggled', handleMetadataToggled);
+			window.removeEventListener('storage', handleStorageChange);
 		}
 	});
+
+	function handleSongLoaded(event) {
+		currentSong = event.detail.song;
+		saveLocalState();
+	}
+
+	function handleMetadataToggled(event) {
+		showMetadata = event.detail.showMetadata;
+		saveLocalState();
+	}
+
+	function handleStorageChange(event) {
+		// Handle localStorage changes from other tabs
+		if (event.key === 'pyrkon_local_state') {
+			loadLocalState();
+		}
+	}
+
+	function loadLocalState() {
+		try {
+			const savedState = localStorage.getItem('pyrkon_local_state');
+			if (savedState) {
+				const state = JSON.parse(savedState);
+				currentSong = state.currentSong || null;
+				showMetadata = state.showMetadata || false;
+			}
+		} catch (error) {
+			console.error('Failed to load local state:', error);
+		}
+	}
+
+	function saveLocalState() {
+		try {
+			const state = {
+				currentSong,
+				showMetadata
+			};
+			localStorage.setItem('pyrkon_local_state', JSON.stringify(state));
+		} catch (error) {
+			console.error('Failed to save local state:', error);
+		}
+	}
 
 	async function loadParticipants() {
 		try {
@@ -59,19 +107,6 @@
 			localStorage.setItem('pyrkon_default_difficulty', newParticipant.difficulty);
 		} catch (error) {
 			console.error('Failed to save difficulty setting:', error);
-		}
-	}
-
-	async function loadCurrentSong() {
-		try {
-			const response = await fetch('/api/pyrkon/presenter-state');
-			if (response.ok) {
-				presenterState = await response.json();
-				currentSong = presenterState.currentSong;
-				showMetadata = presenterState.showMetadata;
-			}
-		} catch (error) {
-			console.error('Failed to load current song:', error);
 		}
 	}
 
@@ -181,28 +216,27 @@
 		return vintageMap[vintage] || vintage;
 	}
 
-	async function toggleMetadata() {
-		try {
-			loading = true;
-			const response = await fetch('/api/pyrkon/presenter-toggle', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ action: 'toggleMetadata' })
-			});
+	function toggleMetadata() {
+		// Toggle local metadata state only
+		showMetadata = !showMetadata;
+		saveLocalState();
 
-			if (response.ok) {
-				const result = await response.json();
-				showMetadata = result.state.showMetadata;
-				toast.success(showMetadata ? 'Metadane zostały odsłonięte na prezenterze' : 'Metadane zostały ukryte na prezenterze');
-			} else {
-				toast.error('Nie udało się przełączyć metadanych');
-			}
-		} catch (error) {
-			console.error('Failed to toggle metadata:', error);
-			toast.error('Nie udało się przełączyć metadanych');
-		} finally {
-			loading = false;
+		// Dispatch event to notify presenter view (if open in another tab) - browser only
+		if (typeof window !== 'undefined') {
+			window.dispatchEvent(new CustomEvent('pyrkon-metadata-toggled', {
+				detail: { showMetadata }
+			}));
+
+			// Also trigger a storage event for cross-tab communication
+			const state = { currentSong, showMetadata };
+			window.dispatchEvent(new StorageEvent('storage', {
+				key: 'pyrkon_local_state',
+				newValue: JSON.stringify(state),
+				storageArea: localStorage
+			}));
 		}
+
+		toast.success(showMetadata ? 'Metadane zostały odsłonięte lokalnie' : 'Metadane zostały ukryte lokalnie');
 	}
 
 
