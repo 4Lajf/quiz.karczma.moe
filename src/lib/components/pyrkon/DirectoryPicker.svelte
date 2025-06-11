@@ -146,17 +146,7 @@
 						Używaj Chrome/Edge 86+ lub Firefox 111+ dla dostępu do lokalnych plików
 					</p>
 				</div>
-			</div>
-		{:else}
-			<div class="flex items-center gap-2 p-3 bg-green-900/30 border border-green-800 rounded-lg">
-				<CheckCircle class="w-5 h-5 text-green-400" />
-				<div class="text-green-200">
-					<p class="font-medium">File System API jest obsługiwane</p>
-					<p class="text-sm text-green-300">
-						Możesz wybierać lokalne katalogi z plikami wideo
-					</p>
-				</div>
-			</div>
+			</div>	
 		{/if}
 
 		<!-- Directory Selection -->

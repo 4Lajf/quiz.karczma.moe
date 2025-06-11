@@ -5,12 +5,13 @@
 	import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
 	import { Tabs, TabsContent, TabsList, TabsTrigger } from '$lib/components/ui/tabs';
 	import { toast } from 'svelte-sonner';
-	import { Shuffle, Monitor, Music, Search, Folder, Info, AlertTriangle, Play, Square, Volume2 } from 'lucide-svelte';
+	import { Shuffle, Monitor, Music, Search, Folder, Info, AlertTriangle, Play, Square, Volume2, CheckCircle } from 'lucide-svelte';
 
 	// Import custom components
 	import AudioPlayer from '$lib/components/pyrkon/AudioPlayer.svelte';
 	import SongSearch from '$lib/components/pyrkon/SongSearch.svelte';
 	import DirectoryPicker from '$lib/components/pyrkon/DirectoryPicker.svelte';
+	import AnswerValidation from '$lib/components/pyrkon/AnswerValidation.svelte';
 
 	// Import File System API utilities (browser-only)
 	import { fileSystemClient } from '$lib/utils/fileSystemAPI.js';
@@ -468,7 +469,7 @@
 
 		<div class="mx-auto max-w-6xl">
 			<Tabs bind:value={activeTab} class="w-full">
-				<TabsList class="grid w-full grid-cols-3 border border-gray-800 bg-gray-900">
+				<TabsList class="grid w-full grid-cols-4 border border-gray-800 bg-gray-900">
 					<TabsTrigger value="files" class="data-[state=active]:bg-purple-600 data-[state=active]:text-white">
 						<Folder class="mr-2 h-4 w-4" />
 						Pliki
@@ -476,6 +477,10 @@
 					<TabsTrigger value="player" class="data-[state=active]:bg-purple-600 data-[state=active]:text-white">
 						<Music class="mr-2 h-4 w-4" />
 						Odtwarzacz
+					</TabsTrigger>
+					<TabsTrigger value="answers" class="data-[state=active]:bg-purple-600 data-[state=active]:text-white">
+						<CheckCircle class="mr-2 h-4 w-4" />
+						Odpowiedzi
 					</TabsTrigger>
 					<TabsTrigger value="search" class="data-[state=active]:bg-purple-600 data-[state=active]:text-white">
 						<Search class="mr-2 h-4 w-4" />
@@ -794,6 +799,10 @@
 							</div>
 						</CardContent>
 					</Card>
+				</TabsContent>
+
+				<TabsContent value="answers" class="space-y-6">
+					<AnswerValidation />
 				</TabsContent>
 
 				<TabsContent value="search" class="space-y-6">

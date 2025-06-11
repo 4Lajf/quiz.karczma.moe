@@ -29,7 +29,6 @@
 		<div class="container flex h-14 items-center justify-between">
 			<div class="flex items-center gap-4"></div>
 			<div class="flex items-center gap-4">
-				<Button variant="outline" href="/pyrkon" class="border-purple-700 bg-purple-700 text-purple-100 hover:bg-purple-800 hover:text-purple-200">🎵 Pyrkon Quiz</Button>
 				{#if profile?.role === 'admin'}
 					<Button variant="outline" href="/admin" class="border-gray-700 bg-gray-700 text-gray-300 hover:bg-gray-800 hover:text-gray-400">Admin Panel</Button>
 					<Button variant="outline" href="/admin/pyrkon" class="border-purple-700 bg-purple-700 text-purple-100 hover:bg-purple-800 hover:text-purple-200">🎵 Pyrkon Admin</Button>

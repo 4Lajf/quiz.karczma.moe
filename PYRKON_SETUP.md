@@ -2,15 +2,9 @@
 
 ## Overview
 
-The Pyrkon route is a music quiz feature that allows playing local video files from your computer. It functions similarly to the song quiz but with enhanced admin controls for local file management and video display.
+The Pyrkon route is a music quiz feature that allows playing local video files from your computer. This is an admin-only interface for managing and presenting music quiz content.
 
 ## Features
-
-### User Side (identical to song quiz):
-- Music guessing game with timer
-- Answer submission
-- Real-time feedback
-- Difficulty-based filtering
 
 ### Admin Side:
 - **Local file playback** - Play video files directly from your computer disk
@@ -60,24 +54,17 @@ The system reads song metadata from `static/data/oped.csv`. Required columns:
 
 ### 4. Access URLs
 
-- **User Interface**: `/pyrkon` (no login required, just username)
 - **Admin Interface**: `/admin/pyrkon` (requires admin role)
 - **Presenter Screen**: `/admin/pyrkon/presenter` (full-screen presenter view)
 
 ## Usage
 
-### For Users:
-1. Navigate to `/pyrkon`
-2. Enter your player name
-3. Click "Rozpocznij grę" to start
-4. Listen to the music and guess the anime
-5. Submit your answer within the time limit
-
 ### For Admins:
 1. Navigate to `/admin/pyrkon`
-2. Use the **Odtwarzacz** tab to control current playback
-3. Use the **Wyszukiwanie** tab to search and select songs
-4. Use the **Prezenter** tab to control what's shown to participants
+2. Use the **Pliki** tab to select local directory with video files
+3. Use the **Odtwarzacz** tab to control current playback
+4. Use the **Wyszukiwanie** tab to search and select songs
+5. Open the **Prezenter** screen to display content to participants
 
 #### Admin Controls:
 - **Losowa piosenka** - Play a random song from current difficulty filter

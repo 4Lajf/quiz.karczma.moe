@@ -3,6 +3,7 @@
 	import { page } from '$app/stores';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Monitor, Music } from 'lucide-svelte';
+	import LeaderboardDisplay from '$lib/components/pyrkon/LeaderboardDisplay.svelte';
 
 	export let data;
 	$: ({ session, user, profile } = data);
@@ -10,8 +11,6 @@
 	// Current song state
 	let currentSong = null;
 	let showMetadata = false;
-	let showVideoPlaceholder = true;
-	let guessingPhase = true;
 	let videoSrc = null;
 	let currentTime = 0;
 	let isPlaying = false;
@@ -83,8 +82,6 @@
 					const state = await response.json();
 					currentSong = state.currentSong;
 					showMetadata = state.showMetadata;
-					showVideoPlaceholder = state.showVideoPlaceholder;
-					guessingPhase = state.guessingPhase;
 					videoSrc = state.videoSrc;
 
 					// Sync video playback time
@@ -182,25 +179,7 @@
 	</div>
 
 	{#if currentSong}
-		{#if showVideoPlaceholder && !showMetadata}
-			<!-- Guessing phase placeholder -->
-			<div class="text-center text-white relative z-10 flex flex-col items-center justify-center min-h-[80vh]">
-				<div class="relative mb-8">
-					<div class="text-9xl mb-4 animate-bounce">🎵</div>
-					<div class="absolute inset-0 text-9xl mb-4 animate-pulse opacity-50 text-purple-400">🎵</div>
-				</div>
-				<div class="bg-gray-900/80 backdrop-blur-sm rounded-2xl p-8 border border-gray-700 shadow-2xl max-w-4xl">
-					<h2 class="text-6xl font-bold mb-6 bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent leading-tight">
-						Odgadnij anime!
-					</h2>
-					<div class="flex items-center justify-center space-x-2 text-gray-400">
-						<div class="w-2 h-2 bg-purple-400 rounded-full animate-pulse"></div>
-						<div class="w-2 h-2 bg-blue-400 rounded-full animate-pulse" style="animation-delay: 0.5s;"></div>
-						<div class="w-2 h-2 bg-indigo-400 rounded-full animate-pulse" style="animation-delay: 1s;"></div>
-					</div>
-				</div>
-			</div>
-		{:else if showMetadata}
+		{#if showMetadata}
 			<!-- Answer reveal with video -->
 			<div class="flex flex-col items-center justify-center h-full space-y-6 max-w-full px-8 relative z-10">
 				<!-- Video player with enhanced styling -->
@@ -272,20 +251,16 @@
 					</div>
 				</div>
 			</div>
+		{:else}
+			<!-- Show leaderboard when metadata is not displayed -->
+			<div class="relative z-10 w-full h-full">
+				<LeaderboardDisplay showAllDifficulties={true} limit={8} autoRefresh={true} />
+			</div>
 		{/if}
 	{:else}
-		<!-- Enhanced no song loaded state -->
-		<div class="text-center text-gray-400 relative z-10 flex flex-col items-center justify-center min-h-[80vh]">
-			<div class="bg-gray-900/80 backdrop-blur-sm rounded-2xl p-12 border border-gray-700 shadow-2xl max-w-4xl">
-				<Monitor class="w-32 h-32 mx-auto mb-8 opacity-50 text-gray-500" />
-				<h3 class="text-5xl font-medium mb-6 text-gray-300 leading-tight">Brak załadowanej piosenki</h3>
-				<p class="text-2xl text-gray-500">Wybierz piosenkę z panelu administracyjnego</p>
-				<div class="flex items-center justify-center space-x-2 mt-6">
-					<div class="w-2 h-2 bg-gray-500 rounded-full animate-pulse"></div>
-					<div class="w-2 h-2 bg-gray-500 rounded-full animate-pulse" style="animation-delay: 0.5s;"></div>
-					<div class="w-2 h-2 bg-gray-500 rounded-full animate-pulse" style="animation-delay: 1s;"></div>
-				</div>
-			</div>
+		<!-- Show general leaderboard when no song is loaded -->
+		<div class="relative z-10 w-full h-full">
+			<LeaderboardDisplay showAllDifficulties={true} limit={8} autoRefresh={true} />
 		</div>
 	{/if}
 
@@ -302,27 +277,8 @@
 		}
 	}
 
-	@keyframes bounce {
-		0%, 20%, 53%, 80%, 100% {
-			transform: translate3d(0, 0, 0);
-		}
-		40%, 43% {
-			transform: translate3d(0, -30px, 0);
-		}
-		70% {
-			transform: translate3d(0, -15px, 0);
-		}
-		90% {
-			transform: translate3d(0, -4px, 0);
-		}
-	}
-
 	.animate-pulse {
 		animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-	}
-
-	.animate-bounce {
-		animation: bounce 2s infinite;
 	}
 
 	/* Enhanced background gradient */

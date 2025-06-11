@@ -3,6 +3,10 @@ import { createServerClient } from '@supabase/ssr'
 import { redirect, error } from '@sveltejs/kit'
 import { sequence } from '@sveltejs/kit/hooks'
 import { PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY } from '$env/static/public'
+import { initServer } from '$lib/server/init.js'
+
+// Initialize server components on startup
+initServer();
 
 const supabase = async ({ event, resolve }) => {
   event.locals.supabase = createServerClient(PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY, {
