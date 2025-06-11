@@ -254,13 +254,13 @@
 		{:else}
 			<!-- Show leaderboard when metadata is not displayed -->
 			<div class="relative z-10 w-full h-full">
-				<LeaderboardDisplay showAllDifficulties={true} limit={8} autoRefresh={true} />
+				<LeaderboardDisplay showAllDifficulties={true} limit={999} autoRefresh={true} />
 			</div>
 		{/if}
 	{:else}
 		<!-- Show general leaderboard when no song is loaded -->
 		<div class="relative z-10 w-full h-full">
-			<LeaderboardDisplay showAllDifficulties={true} limit={8} autoRefresh={true} />
+			<LeaderboardDisplay showAllDifficulties={true} limit={999} autoRefresh={true} />
 		</div>
 	{/if}
 
