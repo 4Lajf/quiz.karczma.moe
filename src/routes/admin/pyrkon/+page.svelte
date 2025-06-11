@@ -5,7 +5,7 @@
 	import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
 	import { Tabs, TabsContent, TabsList, TabsTrigger } from '$lib/components/ui/tabs';
 	import { toast } from 'svelte-sonner';
-	import { Shuffle, Monitor, Music, Search, Folder, Info, AlertTriangle, Play, Square, Volume2, CheckCircle } from 'lucide-svelte';
+	import { Shuffle, Monitor, Music, Search, Folder, Info, AlertTriangle, Play, Square, Volume2, CheckCircle, Eye, EyeOff } from 'lucide-svelte';
 
 	// Import custom components
 	import AudioPlayer from '$lib/components/pyrkon/AudioPlayer.svelte';
@@ -44,6 +44,10 @@
 
 	// Tab state
 	let activeTab = 'files';
+
+	// Presenter state
+	let showMetadata = false;
+	let loading = false;
 
 	// Difficulty options for player tab
 	const difficultyOptions = [
@@ -95,9 +99,24 @@
 			isMuted = savedMuted === 'true';
 		}
 
+		// Load current presenter state
+		loadPresenterState();
+
 		// Initial search to load all songs
 		searchSongs();
 	});
+
+	async function loadPresenterState() {
+		try {
+			const response = await fetch('/api/pyrkon/presenter-state');
+			if (response.ok) {
+				const presenterState = await response.json();
+				showMetadata = presenterState.showMetadata || false;
+			}
+		} catch (error) {
+			console.error('Failed to load presenter state:', error);
+		}
+	}
 
 	onDestroy(() => {
 		if (searchTimeout) {
@@ -424,6 +443,30 @@
 		}
 	}
 
+	async function toggleMetadata() {
+		try {
+			loading = true;
+			const response = await fetch('/api/pyrkon/presenter-toggle', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ action: 'toggleMetadata' })
+			});
+
+			if (response.ok) {
+				const result = await response.json();
+				showMetadata = result.state.showMetadata;
+				toast.success(showMetadata ? 'Metadane zostały odsłonięte na prezenterze' : 'Metadane zostały ukryte na prezenterze');
+			} else {
+				toast.error('Nie udało się przełączyć metadanych');
+			}
+		} catch (error) {
+			console.error('Failed to toggle metadata:', error);
+			toast.error('Nie udało się przełączyć metadanych');
+		} finally {
+			loading = false;
+		}
+	}
+
 	function handleSongSelect(event) {
 		playSong(event.detail);
 		// Switch to player tab automatically
@@ -723,10 +766,28 @@
 								<div class="space-y-3">
 									<div class="flex items-center justify-between">
 										<p class="text-sm text-gray-400">Losowa piosenka według trudności:</p>
-										<Button on:click={() => window.open('/admin/pyrkon/presenter', '_blank', 'fullscreen=yes')} size="sm" class="border border-gray-600 bg-gray-700 text-gray-300 hover:bg-gray-600">
-											<Monitor class="mr-2 h-3 w-3" />
-											Prezenter
-										</Button>
+										<div class="flex gap-2">
+											{#if currentSong}
+												<Button
+													size="sm"
+													class={showMetadata ? 'bg-green-600 hover:bg-green-700 text-white/90' : 'bg-blue-600 hover:bg-blue-700 text-white/80'}
+													disabled={loading}
+													on:click={toggleMetadata}
+												>
+													{#if showMetadata}
+														<EyeOff class="mr-2 h-3 w-3" />
+														Ukryj metadane
+													{:else}
+														<Eye class="mr-2 h-3 w-3" />
+														Odsłoń metadane
+													{/if}
+												</Button>
+											{/if}
+											<Button on:click={() => window.open('/admin/pyrkon/presenter', '_blank', 'fullscreen=yes')} size="sm" class="border border-gray-600 bg-gray-700 text-gray-300 hover:bg-gray-600">
+												<Monitor class="mr-2 h-3 w-3" />
+												Prezenter
+											</Button>
+										</div>
 									</div>
 									<div class="grid grid-cols-2 gap-2">
 										<Button

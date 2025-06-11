@@ -81,13 +81,14 @@
 			return;
 		}
 
-		if (participants.some(p => p.name.toLowerCase() === newParticipant.name.toLowerCase())) {
-			toast.error('Uczestnik o tej nazwie już istnieje');
+		// Check if participant with same name AND difficulty already exists
+		if (participants.some(p => p.name.toLowerCase() === newParticipant.name.toLowerCase() && p.difficulty === newParticipant.difficulty)) {
+			toast.error('Uczestnik o tej nazwie już istnieje w tej kategorii trudności');
 			return;
 		}
 
 		participants = [...participants, {
-			id: Date.now(),
+			id: `${Date.now()}-${newParticipant.difficulty}`, // Include difficulty in ID for uniqueness
 			name: newParticipant.name.trim(),
 			difficulty: newParticipant.difficulty
 		}];
@@ -234,82 +235,6 @@
 					</div>
 				</div>
 			</div>
-		</CardContent>
-	</Card>
-
-	<!-- Participants Management -->
-	<Card class="bg-gray-800/50 border-gray-700">
-		<CardHeader>
-			<CardTitle class="text-white flex items-center gap-2">
-				<Users class="w-5 h-5" />
-				Zarządzanie uczestnikami ({participants.length})
-			</CardTitle>
-		</CardHeader>
-		<CardContent class="space-y-4">
-			<!-- Add new participant -->
-			<div class="flex gap-2 items-end">
-				<div class="flex-1">
-					<!-- svelte-ignore a11y_label_has_associated_control -->
-					<label class="block text-sm font-medium text-gray-300 mb-1">Nazwa uczestnika</label>
-					<Input
-						bind:value={newParticipant.name}
-						placeholder="Wprowadź nazwę uczestnika"
-						class="bg-gray-800 border-gray-600 text-white"
-						on:keydown={(e) => e.key === 'Enter' && addParticipant()}
-					/>
-				</div>
-				<div class="w-40">
-					<!-- svelte-ignore a11y_label_has_associated_control -->
-					<label class="block text-sm font-medium text-gray-300 mb-1">Trudność</label>
-					<select
-						bind:value={newParticipant.difficulty}
-						on:change={saveDifficultySetting}
-						class="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-md text-white"
-					>
-						<option value="easy">Łatwe</option>
-						<option value="medium">Średnie</option>
-						<option value="hard">Trudne</option>
-						<option value="very hard">Bardzo trudne</option>
-					</select>
-				</div>
-				<Button
-					class="bg-green-600 hover:bg-green-700 text-white"
-					disabled={!newParticipant.name.trim()}
-					on:click={addParticipant}
-				>
-					<UserPlus class="w-4 h-4 mr-2" />
-					Dodaj
-				</Button>
-			</div>
-
-			<!-- Participants list -->
-			{#if participants.length > 0}
-				<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-					{#each participants as participant}
-						<div class="bg-gray-900/50 rounded-lg p-3 flex items-center justify-between">
-							<div>
-								<div class="text-white font-medium">{participant.name}</div>
-								<Badge class={getDifficultyColor(participant.difficulty)} size="sm">
-									{getDifficultyText(participant.difficulty)}
-								</Badge>
-							</div>
-							<Button
-								size="sm"
-								variant="outline"
-								class="border-red-600 text-red-400 hover:bg-red-600/20"
-								on:click={() => removeParticipant(participant.id)}
-							>
-								<Trash2 class="w-4 h-4" />
-							</Button>
-						</div>
-					{/each}
-				</div>
-			{:else}
-				<div class="text-center py-4 text-gray-400">
-					<Users class="w-8 h-8 mx-auto mb-2 opacity-50" />
-					<p>Brak uczestników. Dodaj pierwszego uczestnika powyżej.</p>
-				</div>
-			{/if}
 		</CardContent>
 	</Card>
 
@@ -496,6 +421,82 @@
 					<Music class="w-12 h-12 mx-auto mb-4 opacity-50" />
 					<p>Brak aktualnie odtwarzanej piosenki</p>
 					<p class="text-sm mt-2">Wybierz piosenkę z zakładki "Odtwarzacz"</p>
+				</div>
+			{/if}
+		</CardContent>
+	</Card>
+
+	<!-- Participants Management -->
+	<Card class="bg-gray-800/50 border-gray-700">
+		<CardHeader>
+			<CardTitle class="text-white flex items-center gap-2">
+				<Users class="w-5 h-5" />
+				Zarządzanie uczestnikami ({participants.length})
+			</CardTitle>
+		</CardHeader>
+		<CardContent class="space-y-4">
+			<!-- Add new participant -->
+			<div class="flex gap-2 items-end">
+				<div class="flex-1">
+					<!-- svelte-ignore a11y_label_has_associated_control -->
+					<label class="block text-sm font-medium text-gray-300 mb-1">Nazwa uczestnika</label>
+					<Input
+						bind:value={newParticipant.name}
+						placeholder="Wprowadź nazwę uczestnika"
+						class="bg-gray-800 border-gray-600 text-white"
+						on:keydown={(e) => e.key === 'Enter' && addParticipant()}
+					/>
+				</div>
+				<div class="w-40">
+					<!-- svelte-ignore a11y_label_has_associated_control -->
+					<label class="block text-sm font-medium text-gray-300 mb-1">Trudność</label>
+					<select
+						bind:value={newParticipant.difficulty}
+						on:change={saveDifficultySetting}
+						class="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-md text-white"
+					>
+						<option value="easy">Łatwe</option>
+						<option value="medium">Średnie</option>
+						<option value="hard">Trudne</option>
+						<option value="very hard">Bardzo trudne</option>
+					</select>
+				</div>
+				<Button
+					class="bg-green-600 hover:bg-green-700 text-white"
+					disabled={!newParticipant.name.trim()}
+					on:click={addParticipant}
+				>
+					<UserPlus class="w-4 h-4 mr-2" />
+					Dodaj
+				</Button>
+			</div>
+
+			<!-- Participants list -->
+			{#if participants.length > 0}
+				<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+					{#each participants as participant}
+						<div class="bg-gray-900/50 rounded-lg p-3 flex items-center justify-between">
+							<div>
+								<div class="text-white font-medium">{participant.name}</div>
+								<Badge class={getDifficultyColor(participant.difficulty)} size="sm">
+									{getDifficultyText(participant.difficulty)}
+								</Badge>
+							</div>
+							<Button
+								size="sm"
+								variant="outline"
+								class="border-red-600 text-red-400 hover:bg-red-600/20"
+								on:click={() => removeParticipant(participant.id)}
+							>
+								<Trash2 class="w-4 h-4" />
+							</Button>
+						</div>
+					{/each}
+				</div>
+			{:else}
+				<div class="text-center py-4 text-gray-400">
+					<Users class="w-8 h-8 mx-auto mb-2 opacity-50" />
+					<p>Brak uczestników. Dodaj pierwszego uczestnika powyżej.</p>
 				</div>
 			{/if}
 		</CardContent>
