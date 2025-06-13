@@ -14,6 +14,7 @@
 	let currentTime = 0;
 	let isPlaying = false;
 	let videoElement;
+	let metadataToggleTimeout = null;
 
 	// Local state management - no global polling
 	onMount(() => {
@@ -44,8 +45,23 @@
 			if (saved) {
 				try {
 					const state = JSON.parse(saved);
+					const previousMetadata = showMetadata;
 					currentSong = state.currentSong;
-					showMetadata = state.showMetadata;
+
+					// Only apply delay if metadata state is changing
+					if (previousMetadata !== state.showMetadata) {
+						// Clear any existing timeout
+						if (metadataToggleTimeout) {
+							clearTimeout(metadataToggleTimeout);
+						}
+
+						// Set a 2-second delay before updating metadata display
+						metadataToggleTimeout = setTimeout(() => {
+							showMetadata = state.showMetadata;
+						}, 2000);
+					} else {
+						showMetadata = state.showMetadata;
+					}
 				} catch (e) {
 					console.error('Failed to parse local state:', e);
 				}
@@ -120,7 +136,15 @@
 	}
 
 	function handleMetadataToggled(event) {
-		showMetadata = event.detail.showMetadata;
+		// Clear any existing timeout
+		if (metadataToggleTimeout) {
+			clearTimeout(metadataToggleTimeout);
+		}
+
+		// Set a 2-second delay before updating metadata display
+		metadataToggleTimeout = setTimeout(() => {
+			showMetadata = event.detail.showMetadata;
+		}, 2000);
 	}
 
 	function handleStorageChange(event) {

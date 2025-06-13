@@ -7,12 +7,14 @@
 	import { toast } from 'svelte-sonner';
 	import { Check, X, Users, Music, Award, Plus, Trash2, UserPlus, Info, AlertTriangle, Eye, EyeOff, Monitor } from 'lucide-svelte';
 	import { invalidateLeaderboardCache } from '$lib/utils/leaderboardCache.js';
+	import AutocompleteInput from './AutocompleteInput.svelte';
 
 	let loading = false;
 	let participants = [];
-	let newParticipant = { name: '', difficulty: 'easy' };
+	let newParticipant = { name: '' };
 	let currentSong = null;
 	let showMetadata = false;
+	let metadataToggleTimeout = null;
 
 	// Local state management - separate from global presenter state
 	onMount(() => {
@@ -116,21 +118,18 @@
 			return;
 		}
 
-		// Check if participant with same name AND difficulty already exists
-		if (participants.some(p => p.name.toLowerCase() === newParticipant.name.toLowerCase() && p.difficulty === newParticipant.difficulty)) {
-			toast.error('Uczestnik o tej nazwie już istnieje w tej kategorii trudności');
+		// Check if participant with same name already exists
+		if (participants.some(p => p.name.toLowerCase() === newParticipant.name.toLowerCase())) {
+			toast.error('Uczestnik o tej nazwie już istnieje');
 			return;
 		}
 
 		participants = [...participants, {
-			id: `${Date.now()}-${newParticipant.difficulty}`, // Include difficulty in ID for uniqueness
-			name: newParticipant.name.trim(),
-			difficulty: newParticipant.difficulty
+			id: `${Date.now()}`, // Simple timestamp ID
+			name: newParticipant.name.trim()
 		}];
 
-		// Keep the selected difficulty when resetting the form
-		const savedDifficulty = newParticipant.difficulty;
-		newParticipant = { name: '', difficulty: savedDifficulty };
+		newParticipant = { name: '' };
 		saveParticipants();
 		toast.success('Uczestnik został dodany');
 	}
@@ -153,6 +152,9 @@
 			return;
 		}
 
+		// Use the song's difficulty instead of participant's difficulty
+		const songDifficulty = currentSong.difficulty || 'easy';
+
 		loading = true;
 		try {
 			const response = await fetch('/api/pyrkon/grant-points', {
@@ -160,7 +162,7 @@
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
 					participantName: participant.name,
-					participantDifficulty: participant.difficulty,
+					participantDifficulty: songDifficulty, // Use song's difficulty
 					songData: currentSong,
 					isCorrect
 				})
@@ -217,26 +219,36 @@
 	}
 
 	function toggleMetadata() {
-		// Toggle local metadata state only
-		showMetadata = !showMetadata;
-		saveLocalState();
-
-		// Dispatch event to notify presenter view (if open in another tab) - browser only
-		if (typeof window !== 'undefined') {
-			window.dispatchEvent(new CustomEvent('pyrkon-metadata-toggled', {
-				detail: { showMetadata }
-			}));
-
-			// Also trigger a storage event for cross-tab communication
-			const state = { currentSong, showMetadata };
-			window.dispatchEvent(new StorageEvent('storage', {
-				key: 'pyrkon_local_state',
-				newValue: JSON.stringify(state),
-				storageArea: localStorage
-			}));
+		// Clear any existing timeout
+		if (metadataToggleTimeout) {
+			clearTimeout(metadataToggleTimeout);
 		}
 
-		toast.success(showMetadata ? 'Metadane zostały odsłonięte lokalnie' : 'Metadane zostały ukryte lokalnie');
+		// Set a 2-second delay before toggling
+		metadataToggleTimeout = setTimeout(() => {
+			// Toggle local metadata state only
+			showMetadata = !showMetadata;
+			saveLocalState();
+
+			// Dispatch event to notify presenter view (if open in another tab) - browser only
+			if (typeof window !== 'undefined') {
+				window.dispatchEvent(new CustomEvent('pyrkon-metadata-toggled', {
+					detail: { showMetadata }
+				}));
+
+				// Also trigger a storage event for cross-tab communication
+				const state = { currentSong, showMetadata };
+				window.dispatchEvent(new StorageEvent('storage', {
+					key: 'pyrkon_local_state',
+					newValue: JSON.stringify(state),
+					storageArea: localStorage
+				}));
+			}
+
+			toast.success(showMetadata ? 'Metadane zostały odsłonięte lokalnie (po 2s opóźnieniu)' : 'Metadane zostały ukryte lokalnie (po 2s opóźnieniu)');
+		}, 2000);
+
+		toast.info('Zmiana metadanych nastąpi za 2 sekundy...');
 	}
 
 
@@ -414,9 +426,11 @@
 									<div class="flex items-center justify-between mb-3">
 										<div>
 											<div class="text-white font-medium">{participant.name}</div>
-											<Badge class={getDifficultyColor(participant.difficulty)} size="sm">
-												{getDifficultyText(participant.difficulty)}
-											</Badge>
+											{#if currentSong?.difficulty}
+												<Badge class={getDifficultyColor(currentSong.difficulty)} size="sm">
+													{getDifficultyText(currentSong.difficulty)} (z piosenki)
+												</Badge>
+											{/if}
 										</div>
 									</div>
 									<div class="flex gap-2">
@@ -474,26 +488,12 @@
 				<div class="flex-1">
 					<!-- svelte-ignore a11y_label_has_associated_control -->
 					<label class="block text-sm font-medium text-gray-300 mb-1">Nazwa uczestnika</label>
-					<Input
+					<AutocompleteInput
 						bind:value={newParticipant.name}
-						placeholder="Wprowadź nazwę uczestnika"
-						class="bg-gray-800 border-gray-600 text-white"
-						on:keydown={(e) => e.key === 'Enter' && addParticipant()}
+						placeholder="Wprowadź nazwę uczestnika lub wybierz z listy"
+						type="players"
+						className="border-gray-600"
 					/>
-				</div>
-				<div class="w-40">
-					<!-- svelte-ignore a11y_label_has_associated_control -->
-					<label class="block text-sm font-medium text-gray-300 mb-1">Trudność</label>
-					<select
-						bind:value={newParticipant.difficulty}
-						on:change={saveDifficultySetting}
-						class="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-md text-white"
-					>
-						<option value="easy">Łatwe</option>
-						<option value="medium">Średnie</option>
-						<option value="hard">Trudne</option>
-						<option value="very hard">Bardzo trudne</option>
-					</select>
 				</div>
 				<Button
 					class="bg-green-600 hover:bg-green-700 text-white"
@@ -504,6 +504,9 @@
 					Dodaj
 				</Button>
 			</div>
+			<div class="text-sm text-gray-400 mt-2">
+				💡 Trudność jest teraz określana przez aktualnie odtwarzaną piosenką. Uczestnicy mogą zdobywać punkty w różnych kategoriach trudności.
+			</div>
 
 			<!-- Participants list -->
 			{#if participants.length > 0}
@@ -512,9 +515,7 @@
 						<div class="bg-gray-900/50 rounded-lg p-3 flex items-center justify-between">
 							<div>
 								<div class="text-white font-medium">{participant.name}</div>
-								<Badge class={getDifficultyColor(participant.difficulty)} size="sm">
-									{getDifficultyText(participant.difficulty)}
-								</Badge>
+								<div class="text-xs text-gray-400">Może zdobywać punkty w każdej trudności</div>
 							</div>
 							<Button
 								size="sm"

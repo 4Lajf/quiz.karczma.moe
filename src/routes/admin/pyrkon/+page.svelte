@@ -51,6 +51,7 @@
 	// Presenter state
 	let showMetadata = false;
 	let loading = false;
+	let metadataToggleTimeout = null;
 
 	// Difficulty options for player tab
 	const difficultyOptions = [
@@ -591,32 +592,42 @@
 	}
 
 	function toggleMetadata() {
-		// Toggle local metadata state only
-		showMetadata = !showMetadata;
-
-		// Save to local state
-		const state = {
-			currentSong,
-			showMetadata
-		};
-		localStorage.setItem('pyrkon_local_state', JSON.stringify(state));
-
-		// Dispatch event to notify other tabs (presenter view, answers tab) - browser only
-		if (typeof window !== 'undefined') {
-			window.dispatchEvent(new CustomEvent('pyrkon-metadata-toggled', {
-				detail: { showMetadata }
-			}));
-
-			// Also trigger a storage event manually for same-tab communication
-			// This helps ensure the presenter view updates immediately
-			window.dispatchEvent(new StorageEvent('storage', {
-				key: 'pyrkon_local_state',
-				newValue: JSON.stringify(state),
-				storageArea: localStorage
-			}));
+		// Clear any existing timeout
+		if (metadataToggleTimeout) {
+			clearTimeout(metadataToggleTimeout);
 		}
 
-		toast.success(showMetadata ? 'Metadane zostały odsłonięte lokalnie' : 'Metadane zostały ukryte lokalnie');
+		// Set a 2-second delay before toggling
+		metadataToggleTimeout = setTimeout(() => {
+			// Toggle local metadata state only
+			showMetadata = !showMetadata;
+
+			// Save to local state
+			const state = {
+				currentSong,
+				showMetadata
+			};
+			localStorage.setItem('pyrkon_local_state', JSON.stringify(state));
+
+			// Dispatch event to notify other tabs (presenter view, answers tab) - browser only
+			if (typeof window !== 'undefined') {
+				window.dispatchEvent(new CustomEvent('pyrkon-metadata-toggled', {
+					detail: { showMetadata }
+				}));
+
+				// Also trigger a storage event manually for same-tab communication
+				// This helps ensure the presenter view updates immediately
+				window.dispatchEvent(new StorageEvent('storage', {
+					key: 'pyrkon_local_state',
+					newValue: JSON.stringify(state),
+					storageArea: localStorage
+				}));
+			}
+
+			toast.success(showMetadata ? 'Metadane zostały odsłonięte lokalnie (po 2s opóźnieniu)' : 'Metadane zostały ukryte lokalnie (po 2s opóźnieniu)');
+		}, 2000);
+
+		toast.info('Zmiana metadanych nastąpi za 2 sekundy...');
 	}
 
 	function handleSongSelect(event) {

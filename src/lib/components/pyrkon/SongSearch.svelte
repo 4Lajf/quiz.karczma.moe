@@ -6,6 +6,7 @@
 	import { Badge } from '$lib/components/ui/badge';
 	import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
 	import { Play, Search, Loader2, Folder } from 'lucide-svelte';
+	import AutocompleteInput from './AutocompleteInput.svelte';
 
 	export let searchTerm = '';
 	export let searchResults = [];
@@ -138,32 +139,26 @@
 			<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
 				<div>
 					<Label for="genre" class="text-gray-200">Gatunek</Label>
-					<Input
-						id="genre"
+					<AutocompleteInput
 						bind:value={selectedGenre}
 						placeholder="np. Action, Comedy..."
-						class="bg-gray-800 border-gray-700 text-white placeholder:text-gray-400"
-						on:keydown={(e) => e.key === 'Enter' && handleSearch()}
+						type="genres"
 					/>
 				</div>
 				<div>
 					<Label for="tag" class="text-gray-200">Tag</Label>
-					<Input
-						id="tag"
+					<AutocompleteInput
 						bind:value={selectedTag}
 						placeholder="np. Superhero, School..."
-						class="bg-gray-800 border-gray-700 text-white placeholder:text-gray-400"
-						on:keydown={(e) => e.key === 'Enter' && handleSearch()}
+						type="tags"
 					/>
 				</div>
 				<div>
 					<Label for="year" class="text-gray-200">Rok</Label>
-					<Input
-						id="year"
+					<AutocompleteInput
 						bind:value={selectedYear}
 						placeholder="np. 2023, 2015..."
-						class="bg-gray-800 border-gray-700 text-white placeholder:text-gray-400"
-						on:keydown={(e) => e.key === 'Enter' && handleSearch()}
+						type="years"
 					/>
 				</div>
 			</div>
