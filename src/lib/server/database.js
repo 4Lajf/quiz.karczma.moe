@@ -4,7 +4,7 @@ import { dev } from '$app/environment';
 import path from 'path';
 
 // Database file path
-const dbPath = dev ? 'pyrkon_quiz.db' : '/tmp/pyrkon_quiz.db';
+const dbPath = 'pyrkon_quiz.db';//dev ? 'pyrkon_quiz.db' : '/tmp/pyrkon_quiz.db';
 let db = null;
 
 /**
