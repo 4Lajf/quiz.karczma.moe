@@ -135,7 +135,7 @@
 	}
 
 	async function toggleAdditionalAnswers(roomId, currentValue) {
-		if (profile.role !== 'admin') return;
+		// No admin role check required - admin pages are now unprotected
 
 		const { error } = await supabase.from('rooms').update({ additional_answers_enabled: !currentValue }).eq('id', roomId);
 
@@ -147,7 +147,7 @@
 	}
 
 	async function deleteRoom(roomId) {
-		if (profile.role !== 'admin') return;
+		// No admin role check required - admin pages are now unprotected
 
 		const { error } = await supabase.from('rooms').delete().eq('id', roomId);
 

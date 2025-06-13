@@ -10,21 +10,7 @@ import {
 /** @type {import('./$types').RequestHandler} */
 export async function GET({ url, locals }) {
   try {
-    // Check admin privileges
-    const { session, user } = await locals.safeGetSession();
-    if (!session) {
-      throw error(401, 'Unauthorized');
-    }
-
-    const { data: profile } = await locals.supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single();
-
-    if (!profile || profile.role !== 'admin') {
-      throw error(403, 'Admin privileges required');
-    }
+    // No authentication required - admin endpoints are now unprotected
 
     const type = url.searchParams.get('type') || 'pending';
     
@@ -51,21 +37,9 @@ export async function GET({ url, locals }) {
 /** @type {import('./$types').RequestHandler} */
 export async function POST({ request, locals }) {
   try {
-    // Check admin privileges
-    const { session, user } = await locals.safeGetSession();
-    if (!session) {
-      throw error(401, 'Unauthorized');
-    }
-
-    const { data: profile } = await locals.supabase
-      .from('profiles')
-      .select('role, username')
-      .eq('id', user.id)
-      .single();
-
-    if (!profile || profile.role !== 'admin') {
-      throw error(403, 'Admin privileges required');
-    }
+    // No authentication required - admin endpoints are now unprotected
+    // Use a default admin username for validation tracking
+    const profile = { username: 'admin' };
 
     const { action, answerId, isCorrect, pointsAwarded } = await request.json();
     

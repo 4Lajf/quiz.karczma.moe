@@ -5,21 +5,7 @@ import { getDatabase } from '$lib/server/database.js';
 /** @type {import('./$types').RequestHandler} */
 export async function POST({ request, locals }) {
   try {
-    // Check admin privileges
-    const { session, user } = await locals.safeGetSession();
-    if (!session) {
-      throw error(401, 'Unauthorized');
-    }
-
-    const { data: profile } = await locals.supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single();
-
-    if (!profile || profile.role !== 'admin') {
-      throw error(403, 'Admin privileges required');
-    }
+    // No authentication required - admin endpoints are now unprotected
 
     const { songFilename } = await request.json();
     

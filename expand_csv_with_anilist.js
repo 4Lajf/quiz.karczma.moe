@@ -6,7 +6,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Rate limiting configuration
-const RATE_LIMIT_DELAY = 1000; // 1 second between requests
+const RATE_LIMIT_DELAY = 2000; // 1 second between requests
 const MAX_RETRIES = 3;
 
 // AniList GraphQL endpoint
@@ -54,7 +54,7 @@ async function queryAniList(animeName, retryCount = 0) {
         }
 
         const data = await response.json();
-        
+
         if (data.errors) {
             console.error(`GraphQL errors for "${animeName}":`, data.errors);
             return null;
@@ -63,13 +63,13 @@ async function queryAniList(animeName, retryCount = 0) {
         return data.data?.Media || null;
     } catch (error) {
         console.error(`Error querying AniList for "${animeName}":`, error.message);
-        
+
         if (retryCount < MAX_RETRIES) {
             console.log(`Retrying... (${retryCount + 1}/${MAX_RETRIES})`);
             await delay(RATE_LIMIT_DELAY * 2); // Double delay on retry
             return queryAniList(animeName, retryCount + 1);
         }
-        
+
         return null;
     }
 }
@@ -79,10 +79,10 @@ function parseCSVLine(line) {
     const result = [];
     let current = '';
     let inQuotes = false;
-    
+
     for (let i = 0; i < line.length; i++) {
         const char = line[i];
-        
+
         if (char === '"') {
             inQuotes = !inQuotes;
         } else if (char === ',' && !inQuotes) {
@@ -92,7 +92,7 @@ function parseCSVLine(line) {
             current += char;
         }
     }
-    
+
     result.push(current.trim());
     return result;
 }
@@ -105,6 +105,26 @@ function escapeCSVField(field) {
     return field;
 }
 
+// Function to save CSV data
+function saveCSV(outputPath, header, rows, animeCache, jpNameIndex) {
+    const expandedRows = [header];
+
+    for (const row of rows) {
+        const animeName = row[jpNameIndex];
+        const animeInfo = animeCache.get(animeName) || { genres: '', tags: '' };
+
+        const expandedRow = [...row, animeInfo.genres, animeInfo.tags];
+        expandedRows.push(expandedRow);
+    }
+
+    const csvOutput = expandedRows
+        .map(row => row.map(field => escapeCSVField(String(field))).join(','))
+        .join('\n');
+
+    fs.writeFileSync(outputPath, csvOutput, 'utf-8');
+    return expandedRows.length;
+}
+
 // Main function
 async function expandCSVWithAniListData() {
     try {
@@ -112,7 +132,7 @@ async function expandCSVWithAniListData() {
         const csvPath = path.join(__dirname, 'static', 'data', 'oped2.csv');
         const csvContent = fs.readFileSync(csvPath, 'utf-8');
         const lines = csvContent.split('\n').filter(line => line.trim());
-        
+
         if (lines.length === 0) {
             throw new Error('CSV file is empty');
         }
@@ -120,17 +140,48 @@ async function expandCSVWithAniListData() {
         // Parse header
         const header = parseCSVLine(lines[0]);
         const jpNameIndex = header.indexOf('JPName');
-        
+
         if (jpNameIndex === -1) {
             throw new Error('JPName column not found in CSV');
         }
 
         console.log(`Found JPName column at index ${jpNameIndex}`);
-        
-        // Add new columns to header
-        const newHeader = [...header, 'Genres', 'Tags'];
-        
-        // Parse all rows
+
+        // Check if expanded CSV already exists
+        const outputPath = path.join(__dirname, 'oped2_expanded.csv');
+        const existingData = new Map();
+        let newHeader = [...header, 'Genres', 'Tags'];
+        let genresIndex = -1;
+        let tagsIndex = -1;
+
+        if (fs.existsSync(outputPath)) {
+            console.log('Found existing expanded CSV, reading existing data...');
+            const existingContent = fs.readFileSync(outputPath, 'utf-8');
+            const existingLines = existingContent.split('\n').filter(line => line.trim());
+
+            if (existingLines.length > 0) {
+                const existingHeader = parseCSVLine(existingLines[0]);
+                genresIndex = existingHeader.indexOf('Genres');
+                tagsIndex = existingHeader.indexOf('Tags');
+                newHeader = existingHeader; // Use existing header structure
+
+                // Parse existing data
+                for (let i = 1; i < existingLines.length; i++) {
+                    const row = parseCSVLine(existingLines[i]);
+                    if (row.length > jpNameIndex) {
+                        const animeName = row[jpNameIndex];
+                        const genres = genresIndex >= 0 ? (row[genresIndex] || '') : '';
+                        const tags = tagsIndex >= 0 ? (row[tagsIndex] || '') : '';
+                        existingData.set(animeName, { genres, tags });
+                    }
+                }
+                console.log(`Loaded existing data for ${existingData.size} anime`);
+            }
+        } else {
+            console.log('No existing expanded CSV found, will create new one');
+        }
+
+        // Parse all rows from original CSV
         const rows = [];
         for (let i = 1; i < lines.length; i++) {
             const row = parseCSVLine(lines[i]);
@@ -140,85 +191,104 @@ async function expandCSVWithAniListData() {
         }
 
         console.log(`Processing ${rows.length} rows...`);
-        
-        // Get unique anime names
-        const uniqueAnimeNames = [...new Set(rows.map(row => row[jpNameIndex]))];
-        console.log(`Found ${uniqueAnimeNames.length} unique anime names`);
-        
-        // Cache for anime data
-        const animeCache = new Map();
-        
-        // Query AniList for each unique anime
-        for (let i = 0; i < uniqueAnimeNames.length; i++) {
-            const animeName = uniqueAnimeNames[i];
-            console.log(`Processing ${i + 1}/${uniqueAnimeNames.length}: ${animeName}`);
-            
+
+        // Get unique anime names that need data
+        const allUniqueAnimeNames = [...new Set(rows.map(row => row[jpNameIndex]))];
+        const animeNeedingData = allUniqueAnimeNames.filter(animeName => {
+            const existing = existingData.get(animeName);
+            return !existing || (!existing.genres && !existing.tags) || (existing.genres.trim() === '' && existing.tags.trim() === '');
+        });
+
+        console.log(`Found ${allUniqueAnimeNames.length} unique anime names`);
+        console.log(`${animeNeedingData.length} anime need data fetching`);
+        console.log(`${allUniqueAnimeNames.length - animeNeedingData.length} anime already have data`);
+
+        // Cache for anime data (start with existing data)
+        const animeCache = new Map(existingData);
+
+        // Query AniList for anime that need data
+        if (animeNeedingData.length === 0) {
+            console.log('All anime already have data, skipping API calls');
+        } else {
+            console.log(`Fetching data for ${animeNeedingData.length} anime...`);
+            console.log('CSV will be saved after each successful API call to preserve progress');
+        }
+
+        let successCount = 0;
+        let errorCount = 0;
+
+        for (let i = 0; i < animeNeedingData.length; i++) {
+            const animeName = animeNeedingData[i];
+            const progress = `[${i + 1}/${animeNeedingData.length}]`;
+            console.log(`${progress} Processing: ${animeName}`);
+
             const animeData = await queryAniList(animeName);
-            
+            let dataUpdated = false;
+
             if (animeData) {
                 // Extract genres
                 const genres = animeData.genres || [];
-                
+
                 // Extract tags with rank > 75
                 const highRankTags = (animeData.tags || [])
                     .filter(tag => tag.rank > 75)
                     .map(tag => tag.name);
-                
+
                 animeCache.set(animeName, {
                     genres: genres.join('; '),
                     tags: highRankTags.join('; ')
                 });
-                
+
                 console.log(`  Found ${genres.length} genres and ${highRankTags.length} high-rank tags`);
+                dataUpdated = true;
+                successCount++;
             } else {
                 animeCache.set(animeName, {
                     genres: '',
                     tags: ''
                 });
                 console.log(`  No data found`);
+                dataUpdated = true;
+                errorCount++;
             }
-            
+
+            // Save CSV after each successful update
+            if (dataUpdated) {
+                try {
+                    const totalRows = saveCSV(outputPath, newHeader, rows, animeCache, jpNameIndex);
+                    console.log(`  ✓ CSV updated (${totalRows} total rows) | Success: ${successCount}, No data: ${errorCount}`);
+                } catch (saveError) {
+                    console.error(`  ✗ Failed to save CSV: ${saveError.message}`);
+                    // Don't increment error count for save errors, as the API call might have succeeded
+                }
+            }
+
             // Rate limiting
-            if (i < uniqueAnimeNames.length - 1) {
+            if (i < animeNeedingData.length - 1) {
                 await delay(RATE_LIMIT_DELAY);
             }
         }
-        
-        console.log('Building expanded CSV...');
-        
-        // Build expanded CSV content
-        const expandedRows = [newHeader];
-        
-        for (const row of rows) {
-            const animeName = row[jpNameIndex];
-            const animeInfo = animeCache.get(animeName) || { genres: '', tags: '' };
-            
-            const expandedRow = [...row, animeInfo.genres, animeInfo.tags];
-            expandedRows.push(expandedRow);
+
+        // Final save to ensure all data is written (in case no new data was fetched)
+        if (animeNeedingData.length === 0) {
+            console.log('Ensuring final CSV is up to date...');
+            const totalRows = saveCSV(outputPath, newHeader, rows, animeCache, jpNameIndex);
+            console.log(`Final CSV saved with ${totalRows} total rows`);
         }
-        
-        // Convert to CSV string
-        const csvOutput = expandedRows
-            .map(row => row.map(field => escapeCSVField(String(field))).join(','))
-            .join('\n');
-        
-        // Write expanded CSV
-        const outputPath = path.join(__dirname, 'oped2_expanded.csv');
-        fs.writeFileSync(outputPath, csvOutput, 'utf-8');
-        
-        console.log(`\nExpanded CSV saved to: ${outputPath}`);
-        console.log(`Added genres and tags data for ${animeCache.size} unique anime`);
-        console.log(`Total rows in expanded CSV: ${expandedRows.length}`);
-        
+
+        console.log(`\n✓ Process completed!`);
+        console.log(`Expanded CSV location: ${outputPath}`);
+        console.log(`Total unique anime: ${allUniqueAnimeNames.length}`);
+        console.log(`Anime that needed data fetching: ${animeNeedingData.length}`);
+        console.log(`Anime with existing data: ${allUniqueAnimeNames.length - animeNeedingData.length}`);
+        if (animeNeedingData.length > 0) {
+            console.log(`API Results - Success: ${successCount}, No data found: ${errorCount}`);
+        }
+        console.log(`Total anime with data in cache: ${animeCache.size}`);
+
     } catch (error) {
         console.error('Error:', error.message);
         process.exit(1);
     }
 }
-
-// Run the script
-if (import.meta.url === `file://${process.argv[1]}`) {
-    expandCSVWithAniListData();
-}
-
-export { expandCSVWithAniListData };
+expandCSVWithAniListData();

@@ -58,18 +58,7 @@ const authGuard = async ({ event, resolve }) => {
   event.locals.user = user
   event.locals.profile = profile
 
-  // Protect admin routes
-  if (event.url.pathname.startsWith('/admin')) {
-    if (!event.locals.session) {
-      throw redirect(303, '/login')
-    }
-    if (!profile) {
-      throw error(404, 'Profile not found')
-    }
-    if (profile.role !== 'admin') {
-      throw redirect(303, '/')
-    }
-  }
+  // Admin routes are now unprotected - no authentication required
 
   // Redirect authenticated users away from login/register pages
   if (event.locals.session && ['/login', '/register'].includes(event.url.pathname)) {
