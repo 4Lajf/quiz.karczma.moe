@@ -1,6 +1,6 @@
 /**
  * CSV loader utility for client-side CSV parsing
- * Used to load metadata for local files from the oped.csv file
+ * Used to load metadata for local files from the oped2.csv file
  */
 
 /**
@@ -76,7 +76,7 @@ export function parseCsvContent(csvContent) {
  */
 export async function loadCsvData() {
   try {
-    const response = await fetch('/data/oped.csv');
+    const response = await fetch('/data/oped2.csv');
     if (!response.ok) {
       throw new Error(`Failed to load CSV: ${response.status} ${response.statusText}`);
     }

@@ -12,6 +12,7 @@
 	let currentSong = null;
 	let showMetadata = false;
 	let videoSrc = null;
+	let metadataToggleTimeout = null;
 	let currentTime = 0;
 	let isPlaying = false;
 	let videoElement;
@@ -230,16 +231,24 @@
 	}
 
 	function toggleMetadata() {
-		// Toggle local metadata state only
-		showMetadata = !showMetadata;
-		saveLocalState();
-
-		// Dispatch event to notify other tabs (browser only)
-		if (typeof window !== 'undefined') {
-			window.dispatchEvent(new CustomEvent('pyrkon-metadata-toggled', {
-				detail: { showMetadata }
-			}));
+		// Clear any existing timeout
+		if (metadataToggleTimeout) {
+			clearTimeout(metadataToggleTimeout);
 		}
+
+		// Set a 2-second delay before toggling
+		metadataToggleTimeout = setTimeout(() => {
+			// Toggle local metadata state only
+			showMetadata = !showMetadata;
+			saveLocalState();
+
+			// Dispatch event to notify other tabs (browser only)
+			if (typeof window !== 'undefined') {
+				window.dispatchEvent(new CustomEvent('pyrkon-metadata-toggled', {
+					detail: { showMetadata }
+				}));
+			}
+		}, 2000);
 	}
 
 

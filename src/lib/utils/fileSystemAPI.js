@@ -8,7 +8,8 @@ import { loadCsvData, matchFilesWithMetadata } from './csvLoader.js';
 // Check if File System Access API is supported
 export const isFileSystemAPISupported = () => {
   if (typeof window === 'undefined') return false;
-  return 'showDirectoryPicker' in window && 'showOpenFilePicker' in window;
+  // Always return true to allow all browsers to attempt using the API
+  return true;
 };
 
 // Supported video file extensions for filtering
@@ -22,14 +23,13 @@ export class FileSystemClient {
     this.directoryHandle = null;
     this.fileCache = new Map();
     this.csvData = null;
-    this.isSupported = isFileSystemAPISupported();
   }
 
   /**
    * Check if the API is supported in the current browser
    */
   isSupported() {
-    return this.isSupported;
+    return isFileSystemAPISupported();
   }
 
   /**
@@ -37,12 +37,13 @@ export class FileSystemClient {
    * @returns {Promise<boolean>} - True if directory was selected successfully
    */
   async selectDirectory() {
-    if (!this.isSupported) {
-      throw new Error('File System Access API is not supported in this browser');
-    }
-
     if (typeof window === 'undefined') {
       throw new Error('File System API is only available in browser environment');
+    }
+
+    // Check if the API is actually available at runtime
+    if (!('showDirectoryPicker' in window)) {
+      throw new Error('File System Access API is not supported in this browser. Please use Chrome 86+, Edge 86+, or Firefox 111+');
     }
 
     try {

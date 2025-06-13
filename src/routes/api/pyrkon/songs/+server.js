@@ -77,6 +77,35 @@ function getSongs() {
   }
 }
 
+// Helper function to extract year from vintage string
+function extractYear(vintage) {
+  if (!vintage) return null;
+  const yearMatch = vintage.match(/\b(19|20)\d{2}\b/);
+  return yearMatch ? parseInt(yearMatch[0]) : null;
+}
+
+// Helper function to check if item matches genre filter
+function matchesGenre(song, genreFilter) {
+  if (!genreFilter || genreFilter.trim() === '') return true;
+  const genres = song.Genres || '';
+  return genres.toLowerCase().includes(genreFilter.toLowerCase().trim());
+}
+
+// Helper function to check if item matches tag filter
+function matchesTag(song, tagFilter) {
+  if (!tagFilter || tagFilter.trim() === '') return true;
+  const tags = song.Tags || '';
+  return tags.toLowerCase().includes(tagFilter.toLowerCase().trim());
+}
+
+// Helper function to check if item matches year filter
+function matchesYear(song, yearFilter) {
+  if (!yearFilter || yearFilter.trim() === '') return true;
+  const songYear = extractYear(song.Vintage);
+  const filterYear = parseInt(yearFilter.trim());
+  return songYear === filterYear;
+}
+
 export async function GET({ url }) {
   try {
     const songs = getSongs();
@@ -89,6 +118,9 @@ export async function GET({ url }) {
     const random = searchParams.get('random') === 'true';
     const difficulty = searchParams.get('difficulty');
     const search = searchParams.get('search');
+    const genre = searchParams.get('genre');
+    const tag = searchParams.get('tag');
+    const year = searchParams.get('year');
     
     let filteredSongs = [...songs];
     
@@ -102,12 +134,27 @@ export async function GET({ url }) {
     // Filter by search term if specified
     if (search && search.trim()) {
       const searchTerm = search.toLowerCase().trim();
-      filteredSongs = filteredSongs.filter(song => 
+      filteredSongs = filteredSongs.filter(song =>
         song.JPName?.toLowerCase().includes(searchTerm) ||
         song.ENName?.toLowerCase().includes(searchTerm) ||
         song.SongName?.toLowerCase().includes(searchTerm) ||
         song.Artist?.toLowerCase().includes(searchTerm)
       );
+    }
+
+    // Filter by genre if specified
+    if (genre && genre.trim()) {
+      filteredSongs = filteredSongs.filter(song => matchesGenre(song, genre));
+    }
+
+    // Filter by tag if specified
+    if (tag && tag.trim()) {
+      filteredSongs = filteredSongs.filter(song => matchesTag(song, tag));
+    }
+
+    // Filter by year if specified
+    if (year && year.trim()) {
+      filteredSongs = filteredSongs.filter(song => matchesYear(song, year));
     }
     
     if (filteredSongs.length === 0) {
@@ -130,7 +177,7 @@ export async function GET({ url }) {
 
 export async function POST({ request }) {
   try {
-    const { difficulty, search } = await request.json();
+    const { difficulty, search, genre, tag, year } = await request.json();
     
     const songs = getSongs();
     let filteredSongs = [...songs];
@@ -145,12 +192,27 @@ export async function POST({ request }) {
     // Filter by search term
     if (search && search.trim()) {
       const searchTerm = search.toLowerCase().trim();
-      filteredSongs = filteredSongs.filter(song => 
+      filteredSongs = filteredSongs.filter(song =>
         song.JPName?.toLowerCase().includes(searchTerm) ||
         song.ENName?.toLowerCase().includes(searchTerm) ||
         song.SongName?.toLowerCase().includes(searchTerm) ||
         song.Artist?.toLowerCase().includes(searchTerm)
       );
+    }
+
+    // Filter by genre if specified
+    if (genre && genre.trim()) {
+      filteredSongs = filteredSongs.filter(song => matchesGenre(song, genre));
+    }
+
+    // Filter by tag if specified
+    if (tag && tag.trim()) {
+      filteredSongs = filteredSongs.filter(song => matchesTag(song, tag));
+    }
+
+    // Filter by year if specified
+    if (year && year.trim()) {
+      filteredSongs = filteredSongs.filter(song => matchesYear(song, year));
     }
     
     return json({

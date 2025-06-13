@@ -33,43 +33,36 @@
 
 		isSupported = isFileSystemAPISupported();
 
-		if (isSupported) {
-			try {
-				// Try to restore previously selected directory
-				const restored = await fileSystemClient.restoreDirectoryHandle();
-				if (restored) {
-					currentDirectory = fileSystemClient.getDirectoryName();
-					useLocalFiles = true;
-					await loadVideoFiles();
-					dispatch('directoryChanged', {
-						useLocalFiles: true,
-						directory: currentDirectory,
-						files: videoFiles
-					});
-				}
-			} catch (error) {
-				console.warn('Failed to restore directory handle:', error);
+		try {
+			// Try to restore previously selected directory
+			const restored = await fileSystemClient.restoreDirectoryHandle();
+			if (restored) {
+				currentDirectory = fileSystemClient.getDirectoryName();
+				useLocalFiles = true;
+				await loadVideoFiles();
+				dispatch('directoryChanged', {
+					useLocalFiles: true,
+					directory: currentDirectory,
+					files: videoFiles
+				});
 			}
+		} catch (error) {
+			console.warn('Failed to restore directory handle:', error);
 		}
 	});
 
 	async function selectDirectory() {
-		if (!isSupported) {
-			toast.error('File System API nie jest obsługiwane w tej przeglądarce');
-			return;
-		}
-
 		isLoading = true;
 		try {
 			const selected = await fileSystemClient.selectDirectory();
-			
+
 			if (selected) {
 				currentDirectory = fileSystemClient.getDirectoryName();
 				useLocalFiles = true;
 				await loadVideoFiles();
-				
+
 				toast.success(`Wybrano katalog: ${currentDirectory}`);
-				
+
 				dispatch('directoryChanged', {
 					useLocalFiles: true,
 					directory: currentDirectory,
@@ -136,54 +129,50 @@
 		</CardTitle>
 	</CardHeader>
 	<CardContent class="space-y-4">
-		<!-- API Support Status -->
-		{#if !isSupported}
-			<div class="flex items-center gap-2 p-3 bg-yellow-900/30 border border-yellow-800 rounded-lg">
-				<AlertCircle class="w-5 h-5 text-yellow-400" />
-				<div class="text-yellow-200">
-					<p class="font-medium">File System API nie jest obsługiwane</p>
-					<p class="text-sm text-yellow-300">
-						Używaj Chrome/Edge 86+ lub Firefox 111+ dla dostępu do lokalnych plików
-					</p>
-				</div>
-			</div>	
-		{/if}
+		<!-- Browser compatibility info -->
+		<div class="flex items-center gap-2 p-3 bg-blue-900/30 border border-blue-800 rounded-lg">
+			<CheckCircle class="w-5 h-5 text-blue-400" />
+			<div class="text-blue-200">
+				<p class="font-medium">Dostęp do lokalnych plików</p>
+				<p class="text-sm text-blue-300">
+					Najlepiej działa w Chrome/Edge 86+ lub Firefox 111+. Inne przeglądarki mogą wyświetlić błąd.
+				</p>
+			</div>
+		</div>
 
 		<!-- Directory Selection -->
-		{#if isSupported}
-			<div class="space-y-3">
-				{#if currentDirectory}
-					<div class="flex items-center justify-between p-3 bg-blue-900/30 border border-blue-800 rounded-lg">
-						<div class="flex items-center gap-2">
-							<FolderOpen class="w-5 h-5 text-blue-400" />
-							<div>
-								<p class="text-blue-200 font-medium">{currentDirectory}</p>
-								<p class="text-sm text-blue-300">
-									{videoFiles.length} plików wideo
-								</p>
-							</div>
+		<div class="space-y-3">
+			{#if currentDirectory}
+				<div class="flex items-center justify-between p-3 bg-blue-900/30 border border-blue-800 rounded-lg">
+					<div class="flex items-center gap-2">
+						<FolderOpen class="w-5 h-5 text-blue-400" />
+						<div>
+							<p class="text-blue-200 font-medium">{currentDirectory}</p>
+							<p class="text-sm text-blue-300">
+								{videoFiles.length} plików wideo
+							</p>
 						</div>
-						<Button
-							on:click={clearDirectory}
-							variant="outline"
-							size="sm"
-							class="border-red-600 text-red-400 hover:bg-red-900/30"
-						>
-							<X class="w-4 h-4" />
-						</Button>
 					</div>
-				{/if}
+					<Button
+						on:click={clearDirectory}
+						variant="outline"
+						size="sm"
+						class="border-red-600 text-red-400 hover:bg-red-900/30"
+					>
+						<X class="w-4 h-4" />
+					</Button>
+				</div>
+			{/if}
 
-				<Button
-					on:click={selectDirectory}
-					disabled={isLoading}
-					class="w-full bg-purple-600 hover:bg-purple-700 text-white"
-				>
-					<Folder class="w-4 h-4 mr-2" />
-					{isLoading ? 'Wybieranie...' : currentDirectory ? 'Zmień katalog' : 'Wybierz katalog'}
-				</Button>
-			</div>
-		{/if}
+			<Button
+				on:click={selectDirectory}
+				disabled={isLoading}
+				class="w-full bg-purple-600 hover:bg-purple-700 text-white"
+			>
+				<Folder class="w-4 h-4 mr-2" />
+				{isLoading ? 'Wybieranie...' : currentDirectory ? 'Zmień katalog' : 'Wybierz katalog'}
+			</Button>
+		</div>
 
 		<!-- File List Preview -->
 		{#if useLocalFiles && videoFiles.length > 0}
