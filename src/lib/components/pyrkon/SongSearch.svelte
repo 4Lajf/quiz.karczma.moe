@@ -14,6 +14,9 @@
 	export let useLocalFiles = false;
 	export let hasLocalFiles = false;
 	export let selectedDifficulty = 'all';
+	export let selectedGenre = '';
+	export let selectedTag = '';
+	export let selectedYear = '';
 
 	const dispatch = createEventDispatcher();
 
@@ -56,10 +59,13 @@
 	}
 
 	function handleSearch() {
-		console.log('SongSearch handleSearch dispatching:', { searchTerm, selectedDifficulty });
+		console.log('SongSearch handleSearch dispatching:', { searchTerm, selectedDifficulty, selectedGenre, selectedTag, selectedYear });
 		dispatch('search', {
 			searchTerm,
-			difficulty: selectedDifficulty
+			difficulty: selectedDifficulty,
+			genre: selectedGenre,
+			tag: selectedTag,
+			year: selectedYear
 		});
 	}
 
@@ -70,6 +76,9 @@
 	function handleClear() {
 		searchTerm = '';
 		selectedDifficulty = 'all';
+		selectedGenre = '';
+		selectedTag = '';
+		selectedYear = '';
 		dispatch('clear');
 	}
 
@@ -81,7 +90,7 @@
 	// Auto-search when inputs change
 	let searchTimeout;
 	$: {
-		console.log('SongSearch reactive: searchTerm =', searchTerm, 'difficulty =', selectedDifficulty);
+		console.log('SongSearch reactive: searchTerm =', searchTerm, 'difficulty =', selectedDifficulty, 'genre =', selectedGenre, 'tag =', selectedTag, 'year =', selectedYear);
 		if (searchTimeout) clearTimeout(searchTimeout);
 		searchTimeout = setTimeout(handleSearch, 300);
 	}
@@ -123,6 +132,39 @@
 							{option.label}
 						</Button>
 					{/each}
+				</div>
+			</div>
+
+			<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+				<div>
+					<Label for="genre" class="text-gray-200">Gatunek</Label>
+					<Input
+						id="genre"
+						bind:value={selectedGenre}
+						placeholder="np. Action, Comedy..."
+						class="bg-gray-800 border-gray-700 text-white placeholder:text-gray-400"
+						on:keydown={(e) => e.key === 'Enter' && handleSearch()}
+					/>
+				</div>
+				<div>
+					<Label for="tag" class="text-gray-200">Tag</Label>
+					<Input
+						id="tag"
+						bind:value={selectedTag}
+						placeholder="np. Superhero, School..."
+						class="bg-gray-800 border-gray-700 text-white placeholder:text-gray-400"
+						on:keydown={(e) => e.key === 'Enter' && handleSearch()}
+					/>
+				</div>
+				<div>
+					<Label for="year" class="text-gray-200">Rok</Label>
+					<Input
+						id="year"
+						bind:value={selectedYear}
+						placeholder="np. 2023, 2015..."
+						class="bg-gray-800 border-gray-700 text-white placeholder:text-gray-400"
+						on:keydown={(e) => e.key === 'Enter' && handleSearch()}
+					/>
 				</div>
 			</div>
 
@@ -170,7 +212,7 @@
 								<div class="font-medium text-white">{song.JPName}</div>
 								<div class="text-sm text-gray-300">{song.ENName}</div>
 								<div class="text-xs text-blue-400">{song.SongName} - {song.Artist}</div>
-								<div class="flex items-center gap-2 mt-1">
+								<div class="flex items-center gap-2 mt-1 flex-wrap">
 									{#if song.Vintage}
 										<div class="text-xs text-purple-400">{translateVintage(song.Vintage)}</div>
 									{/if}
@@ -180,6 +222,24 @@
 										</Badge>
 									{/if}
 								</div>
+								{#if song.Genres || song.Tags}
+									<div class="flex items-center gap-1 mt-1 flex-wrap">
+										{#if song.Genres}
+											{#each song.Genres.split(';').slice(0, 3) as genre}
+												<Badge variant="outline" class="text-xs px-1 py-0 border-green-500 text-green-400 bg-green-900/20">
+													{genre.trim()}
+												</Badge>
+											{/each}
+										{/if}
+										{#if song.Tags}
+											{#each song.Tags.split(';').slice(0, 2) as tag}
+												<Badge variant="outline" class="text-xs px-1 py-0 border-blue-500 text-blue-400 bg-blue-900/20">
+													{tag.trim()}
+												</Badge>
+											{/each}
+										{/if}
+									</div>
+								{/if}
 							</div>
 							<div class="flex items-center gap-2">
 								{#if showPlayButton}

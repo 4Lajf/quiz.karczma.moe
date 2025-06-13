@@ -30,6 +30,9 @@
 	// Search and filter state
 	let searchTerm = '';
 	let selectedDifficulty = 'all';
+	let selectedGenre = '';
+	let selectedTag = '';
+	let selectedYear = '';
 	let searchResults = [];
 	let isSearching = false;
 
@@ -133,7 +136,7 @@
 		try {
 			if (useLocalFiles && localVideoFiles.length > 0) {
 				// Search local files only
-				searchResults = searchLocalFiles(searchTerm, selectedDifficulty);
+				searchResults = searchLocalFiles(searchTerm, selectedDifficulty, selectedGenre, selectedTag, selectedYear);
 			} else {
 				// No local files available
 				searchResults = [];
@@ -152,13 +155,13 @@
 		}
 	}
 
-	function searchLocalFiles(searchTerm, difficulty = 'all') {
+	function searchLocalFiles(searchTerm, difficulty = 'all', genre = '', tag = '', year = '') {
 		if (!localVideoFiles.length) return [];
 
 		// localVideoFiles now contains matched metadata from CSV
 		let filtered = [...localVideoFiles];
 
-		console.log('Search params:', { searchTerm, difficulty });
+		console.log('Search params:', { searchTerm, difficulty, genre, tag, year });
 		console.log('Total files before filtering:', filtered.length);
 
 		// Filter by difficulty
@@ -174,6 +177,41 @@
 			const beforeCount = filtered.length;
 			filtered = filtered.filter((song) => song.FileName?.toLowerCase().includes(term) || song.JPName?.toLowerCase().includes(term) || song.ENName?.toLowerCase().includes(term) || song.SongName?.toLowerCase().includes(term) || song.Artist?.toLowerCase().includes(term));
 			console.log(`Search term filter: ${beforeCount} -> ${filtered.length} files`);
+		}
+
+		// Filter by genre
+		if (genre && genre.trim()) {
+			const beforeCount = filtered.length;
+			const genreFilter = genre.toLowerCase().trim();
+			filtered = filtered.filter((song) => {
+				const genres = song.Genres || '';
+				return genres.toLowerCase().includes(genreFilter);
+			});
+			console.log(`Genre filter: ${beforeCount} -> ${filtered.length} files`);
+		}
+
+		// Filter by tag
+		if (tag && tag.trim()) {
+			const beforeCount = filtered.length;
+			const tagFilter = tag.toLowerCase().trim();
+			filtered = filtered.filter((song) => {
+				const tags = song.Tags || '';
+				return tags.toLowerCase().includes(tagFilter);
+			});
+			console.log(`Tag filter: ${beforeCount} -> ${filtered.length} files`);
+		}
+
+		// Filter by year
+		if (year && year.trim()) {
+			const beforeCount = filtered.length;
+			const yearFilter = parseInt(year.trim());
+			filtered = filtered.filter((song) => {
+				const vintage = song.Vintage || '';
+				const yearMatch = vintage.match(/\b(19|20)\d{2}\b/);
+				const songYear = yearMatch ? parseInt(yearMatch[0]) : null;
+				return songYear === yearFilter;
+			});
+			console.log(`Year filter: ${beforeCount} -> ${filtered.length} files`);
 		}
 
 		console.log('Final filtered results:', filtered.length);
@@ -590,6 +628,9 @@
 	function handleSearchEvent(event) {
 		searchTerm = event.detail.searchTerm;
 		selectedDifficulty = event.detail.difficulty || 'all';
+		selectedGenre = event.detail.genre || '';
+		selectedTag = event.detail.tag || '';
+		selectedYear = event.detail.year || '';
 		// Clear any pending reactive search
 		if (searchTimeout) {
 			clearTimeout(searchTimeout);
@@ -602,6 +643,9 @@
 	function handleClearSearch() {
 		searchTerm = '';
 		selectedDifficulty = 'all';
+		selectedGenre = '';
+		selectedTag = '';
+		selectedYear = '';
 		searchSongs();
 	}
 
@@ -981,7 +1025,7 @@
 				</TabsContent>
 
 				<TabsContent value="search" class="space-y-6">
-					<SongSearch bind:searchTerm bind:selectedDifficulty bind:searchResults bind:isSearching {useLocalFiles} hasLocalFiles={localVideoFiles.length > 0} on:search={handleSearchEvent} on:songSelect={handleSongSelect} on:clear={handleClearSearch} />
+					<SongSearch bind:searchTerm bind:selectedDifficulty bind:selectedGenre bind:selectedTag bind:selectedYear bind:searchResults bind:isSearching {useLocalFiles} hasLocalFiles={localVideoFiles.length > 0} on:search={handleSearchEvent} on:songSelect={handleSongSelect} on:clear={handleClearSearch} />
 				</TabsContent>
 			</Tabs>
 		</div>

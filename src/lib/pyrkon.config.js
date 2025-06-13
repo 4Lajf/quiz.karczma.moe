@@ -15,7 +15,7 @@ export const PYRKON_CONFIG = {
   SUPPORTED_EXTENSIONS: ['.mp4', '.mkv', '.avi', '.mov', '.webm', '.m4v'],
 
   // CSV file path (relative to project root)
-  CSV_PATH: 'static/data/oped.csv'
+  CSV_PATH: 'static/data/oped2.csv'
 };
 
 // You can also set the video directory via environment variable:
