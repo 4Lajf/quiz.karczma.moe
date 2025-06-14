@@ -248,7 +248,7 @@
 					detail: { showMetadata }
 				}));
 			}
-		}, 2000);
+		}, 1000);
 	}
 
 
@@ -266,20 +266,20 @@
 </svelte:head>
 
 <!-- Full-screen presenter display -->
-<div class="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-black flex items-center justify-center relative overflow-hidden">
+<div class="relative flex items-center justify-center min-h-screen overflow-hidden bg-gradient-to-br from-gray-950 via-gray-900 to-black">
 	<!-- Animated background elements -->
 	<div class="absolute inset-0 opacity-10">
-		<div class="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-500 rounded-full blur-3xl animate-pulse"></div>
-		<div class="absolute bottom-1/4 right-1/4 w-80 h-80 bg-blue-500 rounded-full blur-3xl animate-pulse" style="animation-delay: 1s;"></div>
-		<div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-indigo-500 rounded-full blur-3xl animate-pulse" style="animation-delay: 2s;"></div>
+		<div class="absolute bg-purple-500 rounded-full top-1/4 left-1/4 w-96 h-96 blur-3xl animate-pulse"></div>
+		<div class="absolute bg-blue-500 rounded-full bottom-1/4 right-1/4 w-80 h-80 blur-3xl animate-pulse" style="animation-delay: 1s;"></div>
+		<div class="absolute w-64 h-64 transform -translate-x-1/2 -translate-y-1/2 bg-indigo-500 rounded-full top-1/2 left-1/2 blur-3xl animate-pulse" style="animation-delay: 2s;"></div>
 	</div>
 
 	{#if currentSong}
 		{#if showMetadata}
 			<!-- Answer reveal with video -->
-			<div class="flex flex-col items-center justify-center h-full space-y-6 max-w-full px-8 relative z-10">
+			<div class="relative z-10 flex flex-col items-center justify-center h-full max-w-full px-8 space-y-6">
 				<!-- Video player with enhanced styling -->
-				<div class="video-container mb-4 relative">
+				<div class="relative mb-4 video-container">
 					<div class="absolute inset-0 bg-gradient-to-r from-purple-500/20 to-blue-500/20 rounded-2xl blur-xl"></div>
 					<video
 						bind:this={videoElement}
@@ -296,39 +296,39 @@
 				</div>
 
 				<!-- Enhanced metadata display - more horizontal layout -->
-				<div class="text-center text-white bg-gray-900/80 backdrop-blur-sm rounded-2xl p-6 border border-gray-700 shadow-2xl w-full max-w-6xl">
-					<div class="space-y-4 mb-6">
+				<div class="w-full max-w-6xl p-6 text-center text-white border border-gray-700 shadow-2xl bg-gray-900/80 backdrop-blur-sm rounded-2xl">
+					<div class="mb-6 space-y-4">
 						<h2 class="text-5xl font-bold text-green-400 drop-shadow-lg">{currentSong.JPName}</h2>
-						<p class="text-3xl text-gray-300 font-light">{currentSong.ENName}</p>
+						<p class="text-3xl font-light text-gray-300">{currentSong.ENName}</p>
 					</div>
 
-					<div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-left">
-						<div class="bg-blue-900/30 rounded-xl p-4 border border-blue-700/50">
+					<div class="grid grid-cols-2 gap-4 text-left md:grid-cols-4">
+						<div class="p-4 border bg-blue-900/30 rounded-xl border-blue-700/50">
 							<div class="flex items-center space-x-3">
 								<div class="text-2xl">🎵</div>
 								<div>
-									<p class="text-xs text-blue-300 uppercase tracking-wide">Piosenka</p>
+									<p class="text-xs tracking-wide text-blue-300 uppercase">Piosenka</p>
 									<p class="text-lg font-semibold text-white">{currentSong.SongName}</p>
 								</div>
 							</div>
 						</div>
 
-						<div class="bg-purple-900/30 rounded-xl p-4 border border-purple-700/50">
+						<div class="p-4 border bg-purple-900/30 rounded-xl border-purple-700/50">
 							<div class="flex items-center space-x-3">
 								<div class="text-2xl">🎤</div>
 								<div>
-									<p class="text-xs text-purple-300 uppercase tracking-wide">Wykonawca</p>
+									<p class="text-xs tracking-wide text-purple-300 uppercase">Wykonawca</p>
 									<p class="text-lg font-semibold text-white">{currentSong.Artist}</p>
 								</div>
 							</div>
 						</div>
 
 						{#if currentSong.Vintage}
-							<div class="bg-gray-800/50 rounded-xl p-4 border border-gray-600/50">
+							<div class="p-4 border bg-gray-800/50 rounded-xl border-gray-600/50">
 								<div class="flex items-center space-x-3">
 									<div class="text-2xl">📅</div>
 									<div>
-										<p class="text-xs text-gray-400 uppercase tracking-wide">Rok</p>
+										<p class="text-xs tracking-wide text-gray-400 uppercase">Rok</p>
 										<p class="text-lg font-semibold text-white">{translateVintage(currentSong.Vintage)}</p>
 									</div>
 								</div>
@@ -339,7 +339,7 @@
 							<div class="flex items-center space-x-3">
 								<div class="text-2xl">⭐</div>
 								<div>
-									<p class="text-xs text-purple-300 uppercase tracking-wide">Trudność</p>
+									<p class="text-xs tracking-wide text-purple-300 uppercase">Trudność</p>
 									<p class="text-lg font-semibold text-white">{getDifficultyInPolish(currentSong.difficulty)}</p>
 								</div>
 							</div>

@@ -58,7 +58,7 @@
 						// Set a 2-second delay before updating metadata display
 						metadataToggleTimeout = setTimeout(() => {
 							showMetadata = state.showMetadata;
-						}, 2000);
+						}, 1000);
 					} else {
 						showMetadata = state.showMetadata;
 					}
@@ -144,7 +144,7 @@
 		// Set a 2-second delay before updating metadata display
 		metadataToggleTimeout = setTimeout(() => {
 			showMetadata = event.detail.showMetadata;
-		}, 2000);
+		}, 1000);
 	}
 
 	function handleStorageChange(event) {
@@ -192,16 +192,16 @@
 <div class="fixed inset-0 bg-gradient-to-br from-gray-900 via-purple-900 to-blue-900">
 	<!-- Animated background elements -->
 	<div class="absolute inset-0 overflow-hidden">
-		<div class="absolute -top-40 -right-40 w-80 h-80 bg-purple-500 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div>
-		<div class="absolute -bottom-40 -left-40 w-80 h-80 bg-blue-500 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse animation-delay-2000"></div>
-		<div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-80 h-80 bg-green-500 rounded-full mix-blend-multiply filter blur-xl opacity-10 animate-pulse animation-delay-4000"></div>
+		<div class="absolute bg-purple-500 rounded-full -top-40 -right-40 w-80 h-80 mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div>
+		<div class="absolute bg-blue-500 rounded-full -bottom-40 -left-40 w-80 h-80 mix-blend-multiply filter blur-xl opacity-20 animate-pulse animation-delay-1000"></div>
+		<div class="absolute transform -translate-x-1/2 -translate-y-1/2 bg-green-500 rounded-full top-1/2 left-1/2 w-80 h-80 mix-blend-multiply filter blur-xl opacity-10 animate-pulse animation-delay-4000"></div>
 	</div>
 
 	{#if currentSong && showMetadata}
 		<!-- Metadata display with video -->
-		<div class="flex flex-col items-center justify-center h-full space-y-6 max-w-full px-8 relative z-10">
+		<div class="relative z-10 flex flex-col items-center justify-center h-full max-w-full px-8 space-y-6">
 			<!-- Video player with enhanced styling -->
-			<div class="video-container mb-4 relative">
+			<div class="relative mb-4 video-container">
 				<div class="absolute inset-0 bg-gradient-to-r from-purple-500/20 to-blue-500/20 rounded-2xl blur-xl"></div>
 				<video
 					bind:this={videoElement}
@@ -218,41 +218,41 @@
 			</div>
 
 			<!-- Enhanced metadata display - more horizontal layout -->
-			<div class="text-center text-white bg-gray-900/80 backdrop-blur-sm rounded-2xl p-6 border border-gray-700 shadow-2xl w-full max-w-6xl">
+			<div class="w-full max-w-6xl p-6 text-center text-white border border-gray-700 shadow-2xl bg-gray-900/80 backdrop-blur-sm rounded-2xl">
 				<!-- Anime titles header -->
-				<div class="space-y-4 mb-6">
+				<div class="mb-6 space-y-4">
 					<h2 class="text-5xl font-bold text-green-400 drop-shadow-lg">{currentSong.JPName}</h2>
-					<p class="text-3xl text-gray-300 font-light">{currentSong.ENName}</p>
+					<p class="text-3xl font-light text-gray-300">{currentSong.ENName}</p>
 				</div>
 
 				<!-- Metadata grid - more compact horizontal layout -->
-				<div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-left">
-					<div class="bg-gradient-to-r from-blue-900/30 to-cyan-900/30 rounded-xl p-4 border border-blue-700/50">
+				<div class="grid grid-cols-2 gap-4 text-left md:grid-cols-4">
+					<div class="p-4 border bg-gradient-to-r from-blue-900/30 to-cyan-900/30 rounded-xl border-blue-700/50">
 						<div class="flex items-center space-x-3">
 							<div class="text-2xl">🎵</div>
 							<div>
-								<p class="text-xs text-blue-300 uppercase tracking-wide">Tytuł piosenki</p>
+								<p class="text-xs tracking-wide text-blue-300 uppercase">Tytuł piosenki</p>
 								<p class="text-lg font-semibold text-white">{currentSong.SongTitle || currentSong.JPName}</p>
 							</div>
 						</div>
 					</div>
 
-					<div class="bg-gradient-to-r from-green-900/30 to-emerald-900/30 rounded-xl p-4 border border-green-700/50">
+					<div class="p-4 border bg-gradient-to-r from-green-900/30 to-emerald-900/30 rounded-xl border-green-700/50">
 						<div class="flex items-center space-x-3">
 							<div class="text-2xl">🎤</div>
 							<div>
-								<p class="text-xs text-green-300 uppercase tracking-wide">Artysta</p>
+								<p class="text-xs tracking-wide text-green-300 uppercase">Artysta</p>
 								<p class="text-lg font-semibold text-white">{currentSong.Artist}</p>
 							</div>
 						</div>
 					</div>
 
 					{#if currentSong.Vintage}
-						<div class="bg-gradient-to-r from-amber-900/30 to-yellow-900/30 rounded-xl p-4 border border-amber-700/50">
+						<div class="p-4 border bg-gradient-to-r from-amber-900/30 to-yellow-900/30 rounded-xl border-amber-700/50">
 							<div class="flex items-center space-x-3">
 								<div class="text-2xl">📅</div>
 								<div>
-									<p class="text-xs text-amber-300 uppercase tracking-wide">Rocznik</p>
+									<p class="text-xs tracking-wide uppercase text-amber-300">Rocznik</p>
 									<p class="text-lg font-semibold text-white">{currentSong.Vintage}</p>
 								</div>
 							</div>
@@ -263,7 +263,7 @@
 						<div class="flex items-center space-x-3">
 							<div class="text-2xl">⭐</div>
 							<div>
-								<p class="text-xs text-purple-300 uppercase tracking-wide">Trudność</p>
+								<p class="text-xs tracking-wide text-purple-300 uppercase">Trudność</p>
 								<p class="text-lg font-semibold text-white">{getDifficultyInPolish(currentSong.difficulty)}</p>
 							</div>
 						</div>
@@ -273,10 +273,10 @@
 		</div>
 	{:else}
 		<!-- No metadata to show -->
-		<div class="flex flex-col items-center justify-center h-full text-white relative z-10">
-			<div class="text-center space-y-6">
-				<div class="text-8xl mb-6 animate-pulse">🎌</div>
-				<h2 class="text-4xl font-bold mb-4">Widok metadanych</h2>
+		<div class="relative z-10 flex flex-col items-center justify-center h-full text-white">
+			<div class="space-y-6 text-center">
+				<div class="mb-6 text-8xl animate-pulse">🎌</div>
+				<h2 class="mb-4 text-4xl font-bold">Widok metadanych</h2>
 				<p class="text-xl text-gray-300">
 					{#if !currentSong}
 						Brak aktualnej piosenki
@@ -291,8 +291,8 @@
 </div>
 
 <style>
-	.animation-delay-2000 {
-		animation-delay: 2s;
+	.animation-delay-1000 {
+		animation-delay: 1s;
 	}
 	.animation-delay-4000 {
 		animation-delay: 4s;

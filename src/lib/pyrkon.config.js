@@ -9,7 +9,7 @@ export const PYRKON_CONFIG = {
   // Linux/Mac: '/home/username/Videos/Anime'
   // Linux/Mac: '/Users/username/Videos/Anime'
 
-  VIDEO_DIRECTORY: 'D:\\Openingówka', // Change this to your actual path
+  VIDEO_DIRECTORY: 'C:\\Openingówka', // Change this to your actual path
 
   // Supported video file extensions
   SUPPORTED_EXTENSIONS: ['.mp4', '.mkv', '.avi', '.mov', '.webm', '.m4v'],

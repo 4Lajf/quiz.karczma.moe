@@ -361,10 +361,34 @@
 			return;
 		}
 
-		currentSong = song;
-
-		// Reset metadata display when new song is selected
+		// Step 1: First turn off metadata display to prevent leakage
 		showMetadata = false;
+
+		// Save metadata off state immediately
+		const metadataOffState = {
+			currentSong: currentSong, // Keep current song temporarily
+			showMetadata: false
+		};
+		localStorage.setItem('pyrkon_local_state', JSON.stringify(metadataOffState));
+
+		// Dispatch metadata toggle event immediately
+		if (typeof window !== 'undefined') {
+			window.dispatchEvent(new CustomEvent('pyrkon-metadata-toggled', {
+				detail: { showMetadata: false }
+			}));
+
+			window.dispatchEvent(new StorageEvent('storage', {
+				key: 'pyrkon_local_state',
+				newValue: JSON.stringify(metadataOffState),
+				storageArea: localStorage
+			}));
+		}
+
+		// Step 2: Wait 1 second before loading new song
+		await new Promise(resolve => setTimeout(resolve, 1000));
+
+		// Step 3: Now load the new song
+		currentSong = song;
 
 		// Stop current playback
 		if (videoPlayer) {
@@ -385,12 +409,12 @@
 			return;
 		}
 
-		// Save to local state and dispatch events for cross-tab communication
-		const state = {
+		// Save final state with new song
+		const finalState = {
 			currentSong: song,
-			showMetadata: false // Reset metadata when loading new song
+			showMetadata: false // Keep metadata off
 		};
-		localStorage.setItem('pyrkon_local_state', JSON.stringify(state));
+		localStorage.setItem('pyrkon_local_state', JSON.stringify(finalState));
 
 		// Initialize playback state
 		const playbackState = {
@@ -623,11 +647,7 @@
 					storageArea: localStorage
 				}));
 			}
-
-			toast.success(showMetadata ? 'Metadane zostały odsłonięte lokalnie (po 2s opóźnieniu)' : 'Metadane zostały ukryte lokalnie (po 2s opóźnieniu)');
-		}, 2000);
-
-		toast.info('Zmiana metadanych nastąpi za 2 sekundy...');
+		}, 1000);
 	}
 
 	function handleSongSelect(event) {
@@ -673,29 +693,29 @@
 </svelte:head>
 
 <div class="min-h-screen bg-gray-950">
-	<div class="container mx-auto px-4 py-8">
+	<div class="container px-4 py-8 mx-auto">
 		<div class="mb-8 text-center">
 			<h1 class="mb-2 text-4xl font-bold text-white">🎵 Muzyczkoinator 🎵</h1>
 			<p class="text-gray-400">Zarządzaj quizem muzycznym</p>
 		</div>
 
-		<div class="mx-auto max-w-6xl">
+		<div class="max-w-6xl mx-auto">
 			<Tabs bind:value={activeTab} class="w-full">
-				<TabsList class="grid w-full grid-cols-4 border border-gray-800 bg-gray-900">
+				<TabsList class="grid w-full grid-cols-4 bg-gray-900 border border-gray-800">
 					<TabsTrigger value="files" class="data-[state=active]:bg-purple-600 data-[state=active]:text-white">
-						<Folder class="mr-2 h-4 w-4" />
+						<Folder class="w-4 h-4 mr-2" />
 						Pliki
 					</TabsTrigger>
 					<TabsTrigger value="player" class="data-[state=active]:bg-purple-600 data-[state=active]:text-white">
-						<Music class="mr-2 h-4 w-4" />
+						<Music class="w-4 h-4 mr-2" />
 						Odtwarzacz
 					</TabsTrigger>
 					<TabsTrigger value="answers" class="data-[state=active]:bg-purple-600 data-[state=active]:text-white">
-						<CheckCircle class="mr-2 h-4 w-4" />
+						<CheckCircle class="w-4 h-4 mr-2" />
 						Odpowiedzi
 					</TabsTrigger>
 					<TabsTrigger value="search" class="data-[state=active]:bg-purple-600 data-[state=active]:text-white">
-						<Search class="mr-2 h-4 w-4" />
+						<Search class="w-4 h-4 mr-2" />
 						Wyszukiwanie
 					</TabsTrigger>
 				</TabsList>
@@ -705,14 +725,14 @@
 					<Card class="border-blue-800 bg-blue-900/20">
 						<CardHeader>
 							<CardTitle class="flex items-center gap-2 text-blue-300">
-								<Info class="h-5 w-5" />
+								<Info class="w-5 h-5" />
 								Instrukcje
 							</CardTitle>
 						</CardHeader>
 						<CardContent class="space-y-3">
 							<div class="text-sm text-blue-200">
 								<p class="mb-2">Aby móc odtwarzać piosenki, musisz:</p>
-								<ol class="list-inside list-decimal space-y-1 text-blue-100">
+								<ol class="space-y-1 text-blue-100 list-decimal list-inside">
 									<li>Wybrać lokalny katalog z plikami wideo/audio</li>
 									<li>Przejść do zakładki "Odtwarzacz" lub "Wyszukiwanie"</li>
 								</ol>
@@ -725,10 +745,10 @@
 
 				<TabsContent value="player" class="space-y-6">
 					<!-- Current song player -->
-					<Card class="border-gray-800 bg-gray-900">
+					<Card class="bg-gray-900 border-gray-800">
 						<CardHeader>
 							<CardTitle class="flex items-center gap-2 text-white">
-								<Music class="h-5 w-5" />
+								<Music class="w-5 h-5" />
 								Aktualnie odtwarzane
 							</CardTitle>
 						</CardHeader>
@@ -743,21 +763,21 @@
 
 									<!-- Metadata grid -->
 									<div class="grid grid-cols-1 gap-4 text-sm md:grid-cols-2 lg:grid-cols-4">
-										<div class="rounded-lg border border-blue-800 bg-blue-900/20 p-3">
+										<div class="p-3 border border-blue-800 rounded-lg bg-blue-900/20">
 											<div class="flex items-center space-x-2">
 												<span class="text-lg">🎵</span>
 												<div>
-													<p class="text-xs uppercase tracking-wide text-blue-300">Piosenka</p>
+													<p class="text-xs tracking-wide text-blue-300 uppercase">Piosenka</p>
 													<p class="font-medium text-white">{currentSong.SongName}</p>
 												</div>
 											</div>
 										</div>
 
-										<div class="rounded-lg border border-purple-800 bg-purple-900/20 p-3">
+										<div class="p-3 border border-purple-800 rounded-lg bg-purple-900/20">
 											<div class="flex items-center space-x-2">
 												<span class="text-lg">🎤</span>
 												<div>
-													<p class="text-xs uppercase tracking-wide text-purple-300">Wykonawca</p>
+													<p class="text-xs tracking-wide text-purple-300 uppercase">Wykonawca</p>
 													<p class="font-medium text-white">{currentSong.Artist}</p>
 												</div>
 											</div>
@@ -765,41 +785,41 @@
 
 										{#if currentSong.difficulty}
 											{#if currentSong.difficulty?.toLowerCase() === 'easy'}
-												<div class="rounded-lg border border-green-800 bg-green-900/20 p-3">
+												<div class="p-3 border border-green-800 rounded-lg bg-green-900/20">
 													<div class="flex items-center space-x-2">
 														<span class="text-lg">⭐</span>
 														<div>
-															<p class="text-xs uppercase tracking-wide text-green-300">Trudność</p>
+															<p class="text-xs tracking-wide text-green-300 uppercase">Trudność</p>
 															<p class="font-medium text-white">{getDifficultyInPolish(currentSong.difficulty)}</p>
 														</div>
 													</div>
 												</div>
 											{:else if currentSong.difficulty?.toLowerCase() === 'medium'}
-												<div class="rounded-lg border border-yellow-800 bg-yellow-900/20 p-3">
+												<div class="p-3 border border-yellow-800 rounded-lg bg-yellow-900/20">
 													<div class="flex items-center space-x-2">
 														<span class="text-lg">⭐</span>
 														<div>
-															<p class="text-xs uppercase tracking-wide text-yellow-300">Trudność</p>
+															<p class="text-xs tracking-wide text-yellow-300 uppercase">Trudność</p>
 															<p class="font-medium text-white">{getDifficultyInPolish(currentSong.difficulty)}</p>
 														</div>
 													</div>
 												</div>
 											{:else if currentSong.difficulty?.toLowerCase() === 'hard'}
-												<div class="rounded-lg border border-orange-800 bg-orange-900/20 p-3">
+												<div class="p-3 border border-orange-800 rounded-lg bg-orange-900/20">
 													<div class="flex items-center space-x-2">
 														<span class="text-lg">⭐</span>
 														<div>
-															<p class="text-xs uppercase tracking-wide text-orange-300">Trudność</p>
+															<p class="text-xs tracking-wide text-orange-300 uppercase">Trudność</p>
 															<p class="font-medium text-white">{getDifficultyInPolish(currentSong.difficulty)}</p>
 														</div>
 													</div>
 												</div>
 											{:else}
-												<div class="rounded-lg border border-red-800 bg-red-900/20 p-3">
+												<div class="p-3 border border-red-800 rounded-lg bg-red-900/20">
 													<div class="flex items-center space-x-2">
 														<span class="text-lg">⭐</span>
 														<div>
-															<p class="text-xs uppercase tracking-wide text-red-300">Trudność</p>
+															<p class="text-xs tracking-wide text-red-300 uppercase">Trudność</p>
 															<p class="font-medium text-white">{getDifficultyInPolish(currentSong.difficulty)}</p>
 														</div>
 													</div>
@@ -808,11 +828,11 @@
 										{/if}
 
 										{#if currentSong.Vintage}
-											<div class="rounded-lg border border-gray-700 bg-gray-800/50 p-3">
+											<div class="p-3 border border-gray-700 rounded-lg bg-gray-800/50">
 												<div class="flex items-center space-x-2">
 													<span class="text-lg">📅</span>
 													<div>
-														<p class="text-xs uppercase tracking-wide text-gray-400">Rok</p>
+														<p class="text-xs tracking-wide text-gray-400 uppercase">Rok</p>
 														<p class="font-medium text-white">{translateVintage(currentSong.Vintage)}</p>
 													</div>
 												</div>
@@ -840,50 +860,50 @@
 								<div class="space-y-4">
 									<!-- Title section placeholder -->
 									<div class="space-y-2 text-center">
-										<div class="bg-gray-800/50 rounded-lg p-6 border border-gray-700">
-											<Music class="mx-auto mb-4 h-16 w-16 opacity-30 text-gray-500" />
-											<h3 class="text-xl font-medium text-gray-400 mb-2">Brak załadowanej piosenki</h3>
+										<div class="p-6 border border-gray-700 rounded-lg bg-gray-800/50">
+											<Music class="w-16 h-16 mx-auto mb-4 text-gray-500 opacity-30" />
+											<h3 class="mb-2 text-xl font-medium text-gray-400">Brak załadowanej piosenki</h3>
 											<p class="text-sm text-gray-500">Wybierz piosenkę z wyszukiwania lub użyj losowego wyboru</p>
 										</div>
 									</div>
 
 									<!-- Metadata grid placeholder -->
 									<div class="grid grid-cols-1 gap-4 text-sm md:grid-cols-2 lg:grid-cols-4">
-										<div class="rounded-lg border border-gray-700 bg-gray-800/30 p-3">
+										<div class="p-3 border border-gray-700 rounded-lg bg-gray-800/30">
 											<div class="flex items-center space-x-2">
 												<span class="text-lg opacity-30">🎵</span>
 												<div>
-													<p class="text-xs uppercase tracking-wide text-gray-500">Piosenka</p>
+													<p class="text-xs tracking-wide text-gray-500 uppercase">Piosenka</p>
 													<p class="font-medium text-gray-600">-</p>
 												</div>
 											</div>
 										</div>
 
-										<div class="rounded-lg border border-gray-700 bg-gray-800/30 p-3">
+										<div class="p-3 border border-gray-700 rounded-lg bg-gray-800/30">
 											<div class="flex items-center space-x-2">
 												<span class="text-lg opacity-30">🎤</span>
 												<div>
-													<p class="text-xs uppercase tracking-wide text-gray-500">Wykonawca</p>
+													<p class="text-xs tracking-wide text-gray-500 uppercase">Wykonawca</p>
 													<p class="font-medium text-gray-600">-</p>
 												</div>
 											</div>
 										</div>
 
-										<div class="rounded-lg border border-gray-700 bg-gray-800/30 p-3">
+										<div class="p-3 border border-gray-700 rounded-lg bg-gray-800/30">
 											<div class="flex items-center space-x-2">
 												<span class="text-lg opacity-30">⭐</span>
 												<div>
-													<p class="text-xs uppercase tracking-wide text-gray-500">Trudność</p>
+													<p class="text-xs tracking-wide text-gray-500 uppercase">Trudność</p>
 													<p class="font-medium text-gray-600">-</p>
 												</div>
 											</div>
 										</div>
 
-										<div class="rounded-lg border border-gray-700 bg-gray-800/30 p-3">
+										<div class="p-3 border border-gray-700 rounded-lg bg-gray-800/30">
 											<div class="flex items-center space-x-2">
 												<span class="text-lg opacity-30">📅</span>
 												<div>
-													<p class="text-xs uppercase tracking-wide text-gray-500">Rok</p>
+													<p class="text-xs tracking-wide text-gray-500 uppercase">Rok</p>
 													<p class="font-medium text-gray-600">-</p>
 												</div>
 											</div>
@@ -891,14 +911,14 @@
 									</div>
 
 									<!-- Audio Player placeholder -->
-									<div class="bg-gray-800/30 border border-gray-700 rounded-lg p-4">
+									<div class="p-4 border border-gray-700 rounded-lg bg-gray-800/30">
 										<div class="space-y-3">
 											<!-- Main controls row -->
 											<div class="flex items-center gap-3">
-												<Button variant="outline" size="sm" class="border-gray-600 bg-gray-700 text-gray-500" disabled>
+												<Button variant="outline" size="sm" class="text-gray-500 bg-gray-700 border-gray-600" disabled>
 													<Play class="w-4 h-4" />
 												</Button>
-												<Button variant="outline" size="sm" class="border-gray-600 bg-gray-700 text-gray-500" disabled>
+												<Button variant="outline" size="sm" class="text-gray-500 bg-gray-700 border-gray-600" disabled>
 													<Square class="w-4 h-4" />
 												</Button>
 												<div class="text-sm text-gray-500 font-mono min-w-[100px] bg-gray-900 px-3 py-1 rounded border border-gray-600">
@@ -909,8 +929,8 @@
 														<Volume2 class="w-4 h-4" />
 													</Button>
 													<div class="volume-slider-container">
-														<input type="range" min="0" max="1" step="0.1" value="0.7" class="volume-slider opacity-50" disabled />
-														<div class="volume-label text-xs text-gray-500 text-center mt-1">70%</div>
+														<input type="range" min="0" max="1" step="0.1" value="0.7" class="opacity-50 volume-slider" disabled />
+														<div class="mt-1 text-xs text-center text-gray-500 volume-label">70%</div>
 													</div>
 												</div>
 											</div>
@@ -921,7 +941,7 @@
 													<span>0%</span>
 												</div>
 												<div class="progress-container">
-													<input type="range" min="0" max="0" value="0" class="progress-slider w-full opacity-50" disabled />
+													<input type="range" min="0" max="0" value="0" class="w-full opacity-50 progress-slider" disabled />
 												</div>
 											</div>
 										</div>
@@ -944,16 +964,16 @@
 													on:click={toggleMetadata}
 												>
 													{#if showMetadata}
-														<EyeOff class="mr-2 h-3 w-3" />
+														<EyeOff class="w-3 h-3 mr-2" />
 														Ukryj metadane
 													{:else}
-														<Eye class="mr-2 h-3 w-3" />
+														<Eye class="w-3 h-3 mr-2" />
 														Odsłoń metadane
 													{/if}
 												</Button>
 											{/if}
-											<Button on:click={() => window.open('/admin/pyrkon/presenter', '_blank', 'fullscreen=yes')} size="sm" class="border border-gray-600 bg-gray-700 text-gray-300 hover:bg-gray-600">
-												<Monitor class="mr-2 h-3 w-3" />
+											<Button on:click={() => window.open('/admin/pyrkon/presenter', '_blank', 'fullscreen=yes')} size="sm" class="text-gray-300 bg-gray-700 border border-gray-600 hover:bg-gray-600">
+												<Monitor class="w-3 h-3 mr-2" />
 												Prezenter
 											</Button>
 										</div>
@@ -962,33 +982,33 @@
 										<Button
 											on:click={() => playRandomSongByDifficulty('easy')}
 											size="sm"
-											class="border border-green-800 bg-gray-700 text-sm text-green-400 hover:bg-gray-600"
+											class="text-sm text-green-400 bg-gray-700 border border-green-800 hover:bg-gray-600"
 										>
-											<Shuffle class="mr-2 h-3 w-3" />
+											<Shuffle class="w-3 h-3 mr-2" />
 											Łatwa
 										</Button>
 										<Button
 											on:click={() => playRandomSongByDifficulty('medium')}
 											size="sm"
-											class="border border-yellow-800 bg-gray-700 text-sm text-yellow-400 hover:bg-gray-600"
+											class="text-sm text-yellow-400 bg-gray-700 border border-yellow-800 hover:bg-gray-600"
 										>
-											<Shuffle class="mr-2 h-3 w-3" />
+											<Shuffle class="w-3 h-3 mr-2" />
 											Średnia
 										</Button>
 										<Button
 											on:click={() => playRandomSongByDifficulty('hard')}
 											size="sm"
-											class="border border-orange-800 bg-gray-700 text-sm text-orange-400 hover:bg-gray-600"
+											class="text-sm text-orange-400 bg-gray-700 border border-orange-800 hover:bg-gray-600"
 										>
-											<Shuffle class="mr-2 h-3 w-3" />
+											<Shuffle class="w-3 h-3 mr-2" />
 											Trudna
 										</Button>
 										<Button
 											on:click={() => playRandomSongByDifficulty('very hard')}
 											size="sm"
-											class="border border-red-800 bg-gray-700 text-sm text-red-400 hover:bg-gray-600"
+											class="text-sm text-red-400 bg-gray-700 border border-red-800 hover:bg-gray-600"
 										>
-											<Shuffle class="mr-2 h-3 w-3" />
+											<Shuffle class="w-3 h-3 mr-2" />
 											Bardzo trudna
 										</Button>
 									</div>
@@ -997,22 +1017,22 @@
 								<!-- Playback position controls -->
 								{#if currentSong}
 									<div class="space-y-3">
-										<p class="text-center text-sm text-gray-400">Pozycja odtwarzania:</p>
+										<p class="text-sm text-center text-gray-400">Pozycja odtwarzania:</p>
 										<div class="grid grid-cols-2 gap-2">
-											<Button on:click={playFromStart} class="border border-green-800 bg-gray-700 text-sm text-green-400 hover:bg-gray-600">
-												<Play class="mr-2 h-3 w-3" />
+											<Button on:click={playFromStart} class="text-sm text-green-400 bg-gray-700 border border-green-800 hover:bg-gray-600">
+												<Play class="w-3 h-3 mr-2" />
 												Początek (0-15s)
 											</Button>
-											<Button on:click={playFromMiddle} class="border border-yellow-800 bg-gray-700 text-sm text-yellow-400 hover:bg-gray-600">
-												<Play class="mr-2 h-3 w-3" />
+											<Button on:click={playFromMiddle} class="text-sm text-yellow-400 bg-gray-700 border border-yellow-800 hover:bg-gray-600">
+												<Play class="w-3 h-3 mr-2" />
 												Środek (±10s)
 											</Button>
-											<Button on:click={playFromNearEnd} class="border border-orange-800 bg-gray-700 text-sm text-orange-400 hover:bg-gray-600">
-												<Play class="mr-2 h-3 w-3" />
+											<Button on:click={playFromNearEnd} class="text-sm text-orange-400 bg-gray-700 border border-orange-800 hover:bg-gray-600">
+												<Play class="w-3 h-3 mr-2" />
 												Koniec (30s)
 											</Button>
-											<Button on:click={playFromRandomPoint} class="border border-red-800 bg-gray-700 text-sm text-red-400 hover:bg-gray-600">
-												<Shuffle class="mr-2 h-3 w-3" />
+											<Button on:click={playFromRandomPoint} class="text-sm text-red-400 bg-gray-700 border border-red-800 hover:bg-gray-600">
+												<Shuffle class="w-3 h-3 mr-2" />
 												Całkowicie losowo
 											</Button>
 										</div>
@@ -1021,8 +1041,8 @@
 
 								<!-- Random song button (any difficulty) -->
 								<div class="space-y-3">
-									<Button on:click={() => playRandomSong()} class="w-full border border-gray-600 bg-gray-700 text-gray-300 hover:bg-gray-600 text-sm">
-										<Shuffle class="mr-2 h-4 w-4" />
+									<Button on:click={() => playRandomSong()} class="w-full text-sm text-gray-300 bg-gray-700 border border-gray-600 hover:bg-gray-600">
+										<Shuffle class="w-4 h-4 mr-2" />
 										Losowa piosenka (wszystkie)
 									</Button>
 								</div>

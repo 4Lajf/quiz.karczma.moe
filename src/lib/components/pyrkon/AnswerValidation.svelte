@@ -244,11 +244,7 @@
 					storageArea: localStorage
 				}));
 			}
-
-			toast.success(showMetadata ? 'Metadane zostały odsłonięte lokalnie (po 2s opóźnieniu)' : 'Metadane zostały ukryte lokalnie (po 2s opóźnieniu)');
-		}, 2000);
-
-		toast.info('Zmiana metadanych nastąpi za 2 sekundy...');
+		}, 1000);
 	}
 
 
@@ -259,21 +255,21 @@
 	<Card class="border-blue-800 bg-blue-900/20">
 		<CardHeader>
 			<CardTitle class="flex items-center gap-2 text-blue-300">
-				<Info class="h-5 w-5" />
+				<Info class="w-5 h-5" />
 				Ważne instrukcje
 			</CardTitle>
 		</CardHeader>
 		<CardContent class="space-y-3">
 			<div class="text-sm text-blue-200">
 				<p class="mb-3 font-medium">Aby statystyki były poprawne:</p>
-				<ol class="list-inside list-decimal space-y-2 text-blue-100">
+				<ol class="space-y-2 text-blue-100 list-decimal list-inside">
 					<li>Dodaj uczestników z odpowiednimi poziomami trudności</li>
 					<li>Dla każdej piosenki kliknij <strong>"Poprawne"</strong> dla uczestników, którzy odpowiedzieli poprawnie</li>
 					<li><strong class="text-yellow-300">WAŻNE:</strong> Kliknij <strong>"Niepoprawne"</strong> dla uczestników, którzy odpowiedzieli źle lub wcale</li>
 					<li>Bez kliknięcia "Niepoprawne" statystyki będą nieprawidłowe!</li>
 				</ol>
 			</div>
-			<div class="bg-yellow-900/30 border border-yellow-700 rounded-lg p-3 mt-3">
+			<div class="p-3 mt-3 border border-yellow-700 rounded-lg bg-yellow-900/30">
 				<div class="flex items-start gap-2">
 					<AlertTriangle class="w-5 h-5 text-yellow-400 mt-0.5 flex-shrink-0" />
 					<div class="text-sm text-yellow-200">
@@ -285,9 +281,9 @@
 	</Card>
 
 	<!-- Current Song & Point Granting -->
-	<Card class="bg-gray-800/50 border-gray-700">
+	<Card class="border-gray-700 bg-gray-800/50">
 		<CardHeader>
-			<CardTitle class="text-white flex items-center justify-between">
+			<CardTitle class="flex items-center justify-between text-white">
 				<div class="flex items-center gap-2">
 					<Music class="w-5 h-5" />
 					Aktualnie odtwarzana piosenka
@@ -334,21 +330,21 @@
 
 					<!-- Metadata grid -->
 					<div class="grid grid-cols-1 gap-4 text-sm md:grid-cols-2 lg:grid-cols-4">
-						<div class="rounded-lg border border-blue-800 bg-blue-900/20 p-3">
+						<div class="p-3 border border-blue-800 rounded-lg bg-blue-900/20">
 							<div class="flex items-center space-x-2">
 								<span class="text-lg">🎵</span>
 								<div>
-									<p class="text-xs uppercase tracking-wide text-blue-300">Piosenka</p>
+									<p class="text-xs tracking-wide text-blue-300 uppercase">Piosenka</p>
 									<p class="font-medium text-white">{currentSong.SongName || 'Nieznany tytuł'}</p>
 								</div>
 							</div>
 						</div>
 
-						<div class="rounded-lg border border-purple-800 bg-purple-900/20 p-3">
+						<div class="p-3 border border-purple-800 rounded-lg bg-purple-900/20">
 							<div class="flex items-center space-x-2">
 								<span class="text-lg">🎤</span>
 								<div>
-									<p class="text-xs uppercase tracking-wide text-purple-300">Wykonawca</p>
+									<p class="text-xs tracking-wide text-purple-300 uppercase">Wykonawca</p>
 									<p class="font-medium text-white">{currentSong.Artist || 'Nieznany artysta'}</p>
 								</div>
 							</div>
@@ -356,41 +352,41 @@
 
 						{#if currentSong.difficulty}
 							{#if currentSong.difficulty?.toLowerCase() === 'easy'}
-								<div class="rounded-lg border border-green-800 bg-green-900/20 p-3">
+								<div class="p-3 border border-green-800 rounded-lg bg-green-900/20">
 									<div class="flex items-center space-x-2">
 										<span class="text-lg">⭐</span>
 										<div>
-											<p class="text-xs uppercase tracking-wide text-green-300">Trudność</p>
+											<p class="text-xs tracking-wide text-green-300 uppercase">Trudność</p>
 											<p class="font-medium text-white">{getDifficultyText(currentSong.difficulty)}</p>
 										</div>
 									</div>
 								</div>
 							{:else if currentSong.difficulty?.toLowerCase() === 'medium'}
-								<div class="rounded-lg border border-yellow-800 bg-yellow-900/20 p-3">
+								<div class="p-3 border border-yellow-800 rounded-lg bg-yellow-900/20">
 									<div class="flex items-center space-x-2">
 										<span class="text-lg">⭐</span>
 										<div>
-											<p class="text-xs uppercase tracking-wide text-yellow-300">Trudność</p>
+											<p class="text-xs tracking-wide text-yellow-300 uppercase">Trudność</p>
 											<p class="font-medium text-white">{getDifficultyText(currentSong.difficulty)}</p>
 										</div>
 									</div>
 								</div>
 							{:else if currentSong.difficulty?.toLowerCase() === 'hard'}
-								<div class="rounded-lg border border-orange-800 bg-orange-900/20 p-3">
+								<div class="p-3 border border-orange-800 rounded-lg bg-orange-900/20">
 									<div class="flex items-center space-x-2">
 										<span class="text-lg">⭐</span>
 										<div>
-											<p class="text-xs uppercase tracking-wide text-orange-300">Trudność</p>
+											<p class="text-xs tracking-wide text-orange-300 uppercase">Trudność</p>
 											<p class="font-medium text-white">{getDifficultyText(currentSong.difficulty)}</p>
 										</div>
 									</div>
 								</div>
 							{:else}
-								<div class="rounded-lg border border-red-800 bg-red-900/20 p-3">
+								<div class="p-3 border border-red-800 rounded-lg bg-red-900/20">
 									<div class="flex items-center space-x-2">
 										<span class="text-lg">⭐</span>
 										<div>
-											<p class="text-xs uppercase tracking-wide text-red-300">Trudność</p>
+											<p class="text-xs tracking-wide text-red-300 uppercase">Trudność</p>
 											<p class="font-medium text-white">{getDifficultyText(currentSong.difficulty)}</p>
 										</div>
 									</div>
@@ -399,11 +395,11 @@
 						{/if}
 
 						{#if currentSong.Vintage}
-							<div class="rounded-lg border border-gray-700 bg-gray-800/50 p-3">
+							<div class="p-3 border border-gray-700 rounded-lg bg-gray-800/50">
 								<div class="flex items-center space-x-2">
 									<span class="text-lg">📅</span>
 									<div>
-										<p class="text-xs uppercase tracking-wide text-gray-400">Rok</p>
+										<p class="text-xs tracking-wide text-gray-400 uppercase">Rok</p>
 										<p class="font-medium text-white">{translateVintage(currentSong.Vintage)}</p>
 									</div>
 								</div>
@@ -415,17 +411,17 @@
 				{#if participants.length > 0}
 					<div class="space-y-3">
 						<div class="flex items-center justify-between">
-							<h4 class="text-white font-medium">Przyznaj punkty uczestnikom:</h4>
-							<div class="text-xs text-yellow-400 bg-yellow-900/20 px-2 py-1 rounded border border-yellow-700">
+							<h4 class="font-medium text-white">Przyznaj punkty uczestnikom:</h4>
+							<div class="px-2 py-1 text-xs text-yellow-400 border border-yellow-700 rounded bg-yellow-900/20">
 								💡 Oceń wszystkich uczestników!
 							</div>
 						</div>
-						<div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+						<div class="grid grid-cols-1 gap-3 md:grid-cols-2">
 							{#each participants as participant}
-								<div class="bg-gray-900/50 rounded-lg p-3">
+								<div class="p-3 rounded-lg bg-gray-900/50">
 									<div class="flex items-center justify-between mb-3">
 										<div>
-											<div class="text-white font-medium">{participant.name}</div>
+											<div class="font-medium text-white">{participant.name}</div>
 											{#if currentSong?.difficulty}
 												<Badge class={getDifficultyColor(currentSong.difficulty)} size="sm">
 													{getDifficultyText(currentSong.difficulty)} (z piosenki)
@@ -436,7 +432,7 @@
 									<div class="flex gap-2">
 										<Button
 											size="sm"
-											class="bg-green-600 hover:bg-green-700 text-white flex-1"
+											class="flex-1 text-white bg-green-600 hover:bg-green-700"
 											disabled={loading}
 											on:click={() => grantPoints(participant.id, true)}
 										>
@@ -446,7 +442,7 @@
 										<Button
 											size="sm"
 											variant="outline"
-											class="border-red-600 text-red-400 hover:bg-red-600/20 flex-1"
+											class="flex-1 text-red-400 border-red-600 hover:bg-red-600/20"
 											disabled={loading}
 											on:click={() => grantPoints(participant.id, false)}
 										>
@@ -459,35 +455,35 @@
 						</div>
 					</div>
 				{:else}
-					<div class="text-center py-4 text-gray-400">
+					<div class="py-4 text-center text-gray-400">
 						<Users class="w-8 h-8 mx-auto mb-2 opacity-50" />
 						<p>Dodaj uczestników, aby móc przyznawać punkty</p>
 					</div>
 				{/if}
 			{:else}
-				<div class="text-center py-8 text-gray-400">
+				<div class="py-8 text-center text-gray-400">
 					<Music class="w-12 h-12 mx-auto mb-4 opacity-50" />
 					<p>Brak aktualnie odtwarzanej piosenki</p>
-					<p class="text-sm mt-2">Wybierz piosenkę z zakładki "Odtwarzacz"</p>
+					<p class="mt-2 text-sm">Wybierz piosenkę z zakładki "Odtwarzacz"</p>
 				</div>
 			{/if}
 		</CardContent>
 	</Card>
 
 	<!-- Participants Management -->
-	<Card class="bg-gray-800/50 border-gray-700">
+	<Card class="border-gray-700 bg-gray-800/50">
 		<CardHeader>
-			<CardTitle class="text-white flex items-center gap-2">
+			<CardTitle class="flex items-center gap-2 text-white">
 				<Users class="w-5 h-5" />
 				Zarządzanie uczestnikami ({participants.length})
 			</CardTitle>
 		</CardHeader>
 		<CardContent class="space-y-4">
 			<!-- Add new participant -->
-			<div class="flex gap-2 items-end">
+			<div class="flex items-end gap-2">
 				<div class="flex-1">
 					<!-- svelte-ignore a11y_label_has_associated_control -->
-					<label class="block text-sm font-medium text-gray-300 mb-1">Nazwa uczestnika</label>
+					<label class="block mb-1 text-sm font-medium text-gray-300">Nazwa uczestnika</label>
 					<AutocompleteInput
 						bind:value={newParticipant.name}
 						placeholder="Wprowadź nazwę uczestnika lub wybierz z listy"
@@ -496,7 +492,7 @@
 					/>
 				</div>
 				<Button
-					class="bg-green-600 hover:bg-green-700 text-white"
+					class="text-white bg-green-600 hover:bg-green-700"
 					disabled={!newParticipant.name.trim()}
 					on:click={addParticipant}
 				>
@@ -504,23 +500,23 @@
 					Dodaj
 				</Button>
 			</div>
-			<div class="text-sm text-gray-400 mt-2">
+			<div class="mt-2 text-sm text-gray-400">
 				💡 Trudność jest teraz określana przez aktualnie odtwarzaną piosenką. Uczestnicy mogą zdobywać punkty w różnych kategoriach trudności.
 			</div>
 
 			<!-- Participants list -->
 			{#if participants.length > 0}
-				<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+				<div class="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
 					{#each participants as participant}
-						<div class="bg-gray-900/50 rounded-lg p-3 flex items-center justify-between">
+						<div class="flex items-center justify-between p-3 rounded-lg bg-gray-900/50">
 							<div>
-								<div class="text-white font-medium">{participant.name}</div>
+								<div class="font-medium text-white">{participant.name}</div>
 								<div class="text-xs text-gray-400">Może zdobywać punkty w każdej trudności</div>
 							</div>
 							<Button
 								size="sm"
 								variant="outline"
-								class="border-red-600 text-red-400 hover:bg-red-600/20"
+								class="text-red-400 border-red-600 hover:bg-red-600/20"
 								on:click={() => removeParticipant(participant.id)}
 							>
 								<Trash2 class="w-4 h-4" />
@@ -529,7 +525,7 @@
 					{/each}
 				</div>
 			{:else}
-				<div class="text-center py-4 text-gray-400">
+				<div class="py-4 text-center text-gray-400">
 					<Users class="w-8 h-8 mx-auto mb-2 opacity-50" />
 					<p>Brak uczestników. Dodaj pierwszego uczestnika powyżej.</p>
 				</div>
