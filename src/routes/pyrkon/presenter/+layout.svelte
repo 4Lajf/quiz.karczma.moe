@@ -22,7 +22,7 @@
 </script>
 
 <svelte:head>
-	<title>Pyrkon Presenter</title>
+	<title>Presenter</title>
 	<style>
 		body {
 			margin: 0 !important;

@@ -255,7 +255,7 @@
 </script>
 
 <svelte:head>
-	<title>Pyrkon Presenter - Quiz Karczma</title>
+	<title>Presenter</title>
 	<style>
 		body {
 			margin: 0;

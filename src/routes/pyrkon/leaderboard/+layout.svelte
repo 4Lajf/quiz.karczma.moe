@@ -22,7 +22,7 @@
 </script>
 
 <svelte:head>
-	<title>Pyrkon Leaderboard</title>
+	<title>Leaderboard</title>
 	<style>
 		body {
 			margin: 0 !important;

@@ -22,7 +22,7 @@
 </script>
 
 <svelte:head>
-	<title>Pyrkon Metadata</title>
+	<title>Metadata</title>
 	<style>
 		body {
 			margin: 0 !important;

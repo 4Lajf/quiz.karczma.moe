@@ -178,7 +178,7 @@
 </script>
 
 <svelte:head>
-	<title>Pyrkon Metadata - Quiz Karczma</title>
+	<title>Metadata</title>
 	<style>
 		body {
 			margin: 0;

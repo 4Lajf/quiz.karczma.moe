@@ -181,17 +181,17 @@
 </script>
 
 <svelte:head>
-	<title>Statystyki - Pyrkon Quiz</title>
+	<title>Statystyki</title>
 </svelte:head>
 
 <div class="min-h-screen bg-gray-950">
-	<div class="container mx-auto px-4 py-8">
+	<div class="container px-4 py-8 mx-auto">
 		<!-- Header -->
 		<div class="mb-8 text-center">
 			<div class="flex items-center justify-center gap-4 mb-4">
 				<Button
 					variant="outline"
-					class="border-gray-600 text-gray-300 hover:bg-gray-800"
+					class="text-gray-300 border-gray-600 hover:bg-gray-800"
 					on:click={goBack}
 				>
 					<ArrowLeft class="w-4 h-4 mr-2" />
@@ -212,9 +212,9 @@
 			<p class="text-gray-400">Szczegółowe statystyki gry i rankingu</p>
 		</div>
 
-		<div class="mx-auto max-w-6xl">
+		<div class="max-w-6xl mx-auto">
 			<!-- Difficulty Filter -->
-			<Card class="border-gray-800 bg-gray-900 mb-6">
+			<Card class="mb-6 bg-gray-900 border-gray-800">
 				<CardHeader>
 					<CardTitle class="text-white">Filtruj według trudności</CardTitle>
 				</CardHeader>
@@ -235,11 +235,11 @@
 				</CardContent>
 			</Card>
 
-			<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+			<div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
 				<!-- Leaderboard -->
-				<Card class="border-gray-800 bg-gray-900">
+				<Card class="bg-gray-900 border-gray-800">
 					<CardHeader>
-						<CardTitle class="text-white flex items-center gap-2">
+						<CardTitle class="flex items-center gap-2 text-white">
 							<Trophy class="w-5 h-5" />
 							Ranking graczy
 							{#if selectedDifficulty}
@@ -251,25 +251,25 @@
 					</CardHeader>
 					<CardContent>
 						{#if loading}
-							<div class="text-center py-8">
-								<div class="animate-spin w-8 h-8 border-4 border-purple-500 border-t-transparent rounded-full mx-auto mb-4"></div>
+							<div class="py-8 text-center">
+								<div class="w-8 h-8 mx-auto mb-4 border-4 border-purple-500 rounded-full animate-spin border-t-transparent"></div>
 								<p class="text-gray-400">Ładowanie...</p>
 							</div>
 						{:else if leaderboard.length === 0}
-							<div class="text-center py-8 text-gray-400">
+							<div class="py-8 text-center text-gray-400">
 								<Users class="w-12 h-12 mx-auto mb-4 opacity-50" />
 								<p>Brak danych w rankingu</p>
 							</div>
 						{:else}
 							<div class="space-y-2">
 								{#each leaderboard as player, index}
-									<div class="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg border border-gray-700">
-										<div class="flex items-center gap-3 flex-1">
-											<span class="text-lg font-bold text-cyan-400 w-8">
+									<div class="flex items-center justify-between p-3 border border-gray-700 rounded-lg bg-gray-800/50">
+										<div class="flex items-center flex-1 gap-3">
+											<span class="w-8 text-lg font-bold text-cyan-400">
 												{getPositionIcon(index)}
 											</span>
 											<div class="flex-1">
-												<div class="text-white font-medium">{player.username}</div>
+												<div class="font-medium text-white">{player.username}</div>
 												<div class="text-sm text-gray-400">
 													{player.total_correct}/{player.total_guesses} poprawnych ({player.accuracy_percentage}%)
 												</div>
@@ -281,12 +281,12 @@
 												<input
 													type="number"
 													bind:value={editPoints}
-													class="w-20 px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-sm"
+													class="w-20 px-2 py-1 text-sm text-white bg-gray-700 border border-gray-600 rounded"
 													min="0"
 												/>
 												<Button
 													size="sm"
-													class="bg-green-600 hover:bg-green-700 text-white"
+													class="text-white bg-green-600 hover:bg-green-700"
 													on:click={() => updateUserPoints(player.username, player.difficulty, editPoints)}
 													disabled={loading}
 												>
@@ -295,7 +295,7 @@
 												<Button
 													size="sm"
 													variant="outline"
-													class="border-gray-600 text-gray-300 hover:bg-gray-800"
+													class="text-gray-300 border-gray-600 hover:bg-gray-800"
 													on:click={cancelEditing}
 												>
 													Anuluj
@@ -312,7 +312,7 @@
 														<Button
 															size="sm"
 															variant="outline"
-															class="border-blue-600 text-blue-400 hover:bg-blue-600/20"
+															class="text-blue-400 border-blue-600 hover:bg-blue-600/20"
 															on:click={() => startEditingUser(player)}
 														>
 															<Edit class="w-3 h-3" />
@@ -320,7 +320,7 @@
 														<Button
 															size="sm"
 															variant="outline"
-															class="border-red-600 text-red-400 hover:bg-red-600/20"
+															class="text-red-400 border-red-600 hover:bg-red-600/20"
 															on:click={() => clearUserData(player.username, player.difficulty)}
 															disabled={loading}
 														>
@@ -338,9 +338,9 @@
 				</Card>
 
 				<!-- Song Statistics -->
-				<Card class="border-gray-800 bg-gray-900">
+				<Card class="bg-gray-900 border-gray-800">
 					<CardHeader>
-						<CardTitle class="text-white flex items-center gap-2">
+						<CardTitle class="flex items-center gap-2 text-white">
 							<Music class="w-5 h-5" />
 							Statystyki piosenek
 							{#if selectedDifficulty}
@@ -352,22 +352,22 @@
 					</CardHeader>
 					<CardContent>
 						{#if loading}
-							<div class="text-center py-8">
-								<div class="animate-spin w-8 h-8 border-4 border-purple-500 border-t-transparent rounded-full mx-auto mb-4"></div>
+							<div class="py-8 text-center">
+								<div class="w-8 h-8 mx-auto mb-4 border-4 border-purple-500 rounded-full animate-spin border-t-transparent"></div>
 								<p class="text-gray-400">Ładowanie...</p>
 							</div>
 						{:else if statistics.length === 0}
-							<div class="text-center py-8 text-gray-400">
+							<div class="py-8 text-center text-gray-400">
 								<Music class="w-12 h-12 mx-auto mb-4 opacity-50" />
 								<p>Brak statystyk piosenek</p>
 							</div>
 						{:else}
-							<div class="space-y-3 max-h-96 overflow-y-auto">
+							<div class="space-y-3 overflow-y-auto max-h-96">
 								{#each statistics as song}
-									<div class="bg-gray-800/50 rounded-lg p-3 border border-gray-700">
+									<div class="p-3 border border-gray-700 rounded-lg bg-gray-800/50">
 										<div class="flex items-start justify-between mb-2">
 											<div class="flex-1">
-												<div class="text-white font-medium">{song.anime_title}</div>
+												<div class="font-medium text-white">{song.anime_title}</div>
 												<div class="text-sm text-gray-300">{song.song_title}</div>
 												<div class="text-xs text-gray-400">{song.artist}</div>
 											</div>
@@ -379,7 +379,7 @@
 													<Button
 														size="sm"
 														variant="outline"
-														class="border-red-600 text-red-400 hover:bg-red-600/20"
+														class="text-red-400 border-red-600 hover:bg-red-600/20"
 														on:click={() => deleteSongData(song.song_filename)}
 														disabled={loading}
 													>
@@ -394,7 +394,7 @@
 												<span class="text-red-400">✗ {song.incorrect_guesses}</span>
 												<span class="text-gray-400">Σ {song.total_guesses}</span>
 											</div>
-											<div class="text-cyan-400 font-medium">
+											<div class="font-medium text-cyan-400">
 												{song.success_rate}% sukces
 											</div>
 										</div>
