@@ -54,13 +54,13 @@ The system reads song metadata from `static/data/oped.csv`. Required columns:
 
 ### 4. Access URLs
 
-- **Admin Interface**: `/admin/pyrkon` (requires admin role)
-- **Presenter Screen**: `/admin/pyrkon/presenter` (full-screen presenter view)
+- **Admin Interface**: `/pyrkon` (requires admin role)
+- **Presenter Screen**: `/pyrkon/presenter` (full-screen presenter view)
 
 ## Usage
 
 ### For Admins:
-1. Navigate to `/admin/pyrkon`
+1. Navigate to `/pyrkon`
 2. Use the **Pliki** tab to select local directory with video files
 3. Use the **Odtwarzacz** tab to control current playback
 4. Use the **Wyszukiwanie** tab to search and select songs

@@ -1,4 +1,4 @@
-// src/routes/admin/pyrkon/stats/+page.server.js
+// src/routes/pyrkon/stats/+page.server.js
 
 /** @type {import('./$types').PageServerLoad} */
 export async function load() {

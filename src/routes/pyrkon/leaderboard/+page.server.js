@@ -1,4 +1,4 @@
-// src/routes/admin/pyrkon/leaderboard/+page.server.js
+// src/routes/pyrkon/leaderboard/+page.server.js
 
 export const load = async ({ depends }) => {
   depends('admin-pyrkon-leaderboard');

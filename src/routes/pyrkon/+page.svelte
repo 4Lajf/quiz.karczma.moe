@@ -689,7 +689,7 @@
 </script>
 
 <svelte:head>
-	<title>Pyrkon Admin - Quiz Karczma</title>
+	<title>Admin</title>
 </svelte:head>
 
 <div class="min-h-screen bg-gray-950">
@@ -972,7 +972,7 @@
 													{/if}
 												</Button>
 											{/if}
-											<Button on:click={() => window.open('/admin/pyrkon/presenter', '_blank', 'fullscreen=yes')} size="sm" class="text-gray-300 bg-gray-700 border border-gray-600 hover:bg-gray-600">
+											<Button on:click={() => window.open('/pyrkon/presenter', '_blank', 'fullscreen=yes')} size="sm" class="text-gray-300 bg-gray-700 border border-gray-600 hover:bg-gray-600">
 												<Monitor class="w-3 h-3 mr-2" />
 												Prezenter
 											</Button>

@@ -1,4 +1,4 @@
-// src/routes/admin/pyrkon/+page.server.js
+// src/routes/pyrkon/+page.server.js
 
 export const load = async ({ depends }) => {
   depends('admin-pyrkon');

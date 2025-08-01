@@ -85,7 +85,7 @@
 	}
 
 	function goBack() {
-		goto('/admin/pyrkon');
+		goto('/pyrkon');
 	}
 
 	async function deleteSongData(songFilename) {
