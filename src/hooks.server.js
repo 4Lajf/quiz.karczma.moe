@@ -58,7 +58,18 @@ const authGuard = async ({ event, resolve }) => {
   event.locals.user = user
   event.locals.profile = profile
 
-  // Admin routes are now unprotected - no authentication required
+  // Guard admin routes - require authentication and admin role
+  if (event.url.pathname.startsWith('/admin')) {
+    // Check if user is authenticated
+    if (!session || !user) {
+      throw redirect(303, '/login?redirectTo=' + encodeURIComponent(event.url.pathname))
+    }
+
+    // Check if user has admin role
+    if (!profile || profile.role !== 'admin') {
+      throw error(403, 'Access denied. Admin privileges required.')
+    }
+  }
 
   // Redirect authenticated users away from login/register pages
   if (event.locals.session && ['/login', '/register'].includes(event.url.pathname)) {

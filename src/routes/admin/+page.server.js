@@ -1,5 +1,5 @@
 //src/routes/admin/+page.server.js
-export const load = async ({ depends, locals: { supabase } }) => {
+export const load = async ({ depends, locals: { supabase, user, profile } }) => {
   depends('rooms');
 
   const { data: rooms, error } = await supabase
@@ -24,8 +24,8 @@ export const load = async ({ depends, locals: { supabase } }) => {
 
   return {
     rooms: rooms || [],
-    // Provide default values since authentication is no longer required
-    profile: { username: 'admin', role: 'admin' },
-    user: { id: 'admin' }
+    // Use real authenticated user data
+    profile,
+    user
   };
 };
