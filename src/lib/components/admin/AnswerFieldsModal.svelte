@@ -5,6 +5,7 @@
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import { Button } from '$lib/components/ui/button';
 	import { Label } from '$lib/components/ui/label';
+	import { Input } from '$lib/components/ui/input';
 	import { toast } from 'svelte-sonner';
 	import { invalidateAll } from '$app/navigation';
 
@@ -20,7 +21,15 @@
 		song_artist: false,
 		anime_title: false,
 		other: false,
+		other2: false,
+		other3: false,
 		hint_mode: false
+	};
+
+	let fieldNames = {
+		other: 'Inne',
+		other2: 'Inne2',
+		other3: 'Inne3'
 	};
 
 	// Create a function to fetch the latest field data
@@ -45,8 +54,19 @@
 				song_artist: result.data?.song_artist || false,
 				anime_title: result.data?.anime_title || false,
 				other: result.data?.other || false,
+				other2: result.data?.other2 || false,
+				other3: result.data?.other3 || false,
 				hint_mode: result.data?.hint_mode || false
 			};
+
+			// Update field names if they exist
+			if (result.data?.field_names) {
+				fieldNames = {
+					other: result.data.field_names.other || 'Inne',
+					other2: result.data.field_names.other2 || 'Inne2',
+					other3: result.data.field_names.other3 || 'Inne3'
+				};
+			}
 		} catch (error) {
 			console.error('Error fetching fields:', error);
 			toast.error(`Nie udało się pobrać ustawień: ${error.message}`);
@@ -57,7 +77,16 @@
 				song_artist: enabledFields?.song_artist || false,
 				anime_title: enabledFields?.anime_title || false,
 				other: enabledFields?.other || false,
+				other2: enabledFields?.other2 || false,
+				other3: enabledFields?.other3 || false,
 				hint_mode: enabledFields?.hint_mode || false
+			};
+
+			// Fall back to default field names
+			fieldNames = {
+				other: enabledFields?.field_names?.other || 'Inne',
+				other2: enabledFields?.field_names?.other2 || 'Inne2',
+				other3: enabledFields?.field_names?.other3 || 'Inne3'
 			};
 		} finally {
 			fetchingFields = false;
@@ -72,7 +101,10 @@
 				headers: {
 					'Content-Type': 'application/json'
 				},
-				body: JSON.stringify(fields)
+				body: JSON.stringify({
+					...fields,
+					field_names: fieldNames
+				})
 			});
 
 			const result = await response.json();
@@ -134,13 +166,68 @@
 					/>
 					<Label for="anime_title" class="text-gray-200">Tytuł anime</Label>
 				</div>
-				<div class="flex items-center space-x-2">
-					<Checkbox
-						id="other"
-						bind:checked={fields.other}
-						class="border-gray-600 data-[state=checked]:bg-blue-600"
-					/>
-					<Label for="other" class="text-gray-200">Inne</Label>
+				<div class="space-y-2">
+					<div class="flex items-center space-x-2">
+						<Checkbox
+							id="other"
+							bind:checked={fields.other}
+							class="border-gray-600 data-[state=checked]:bg-blue-600"
+						/>
+						<Label for="other" class="text-gray-200">Inne</Label>
+					</div>
+					{#if fields.other}
+						<div class="ml-6">
+							<Label for="other_name" class="text-sm text-gray-300">Nazwa pola:</Label>
+							<Input
+								id="other_name"
+								bind:value={fieldNames.other}
+								placeholder="Inne"
+								class="mt-1 border-gray-700 bg-gray-800 text-gray-100"
+							/>
+						</div>
+					{/if}
+				</div>
+				<div class="space-y-2">
+					<div class="flex items-center space-x-2">
+						<Checkbox
+							id="other2"
+							bind:checked={fields.other2}
+							class="border-gray-600 data-[state=checked]:bg-blue-600"
+						/>
+						<Label for="other2" class="text-gray-200">Inne2</Label>
+					</div>
+					{#if fields.other2}
+						<div class="ml-6">
+							<Label for="other2_name" class="text-sm text-gray-300">Nazwa pola:</Label>
+							<Input
+								id="other2_name"
+								bind:value={fieldNames.other2}
+								placeholder="Inne2"
+								class="mt-1 border-gray-700 bg-gray-800 text-gray-100"
+							/>
+						</div>
+					{/if}
+				</div>
+				<div class="space-y-2">
+					<div class="flex items-center space-x-2">
+						<Checkbox
+							id="other3"
+							bind:checked={fields.other3}
+							class="border-gray-600 data-[state=checked]:bg-blue-600"
+						/>
+						<Label for="other3" class="text-gray-200">Inne3</Label>
+					</div>
+					{#if fields.other3}
+						<div class="ml-6">
+							<Label for="other3_name" class="text-sm text-gray-300">Nazwa pola:</Label>
+							<Input
+								id="other3_name"
+								bind:value={fieldNames.other3}
+								placeholder="Inne3"
+								class="mt-1 border-gray-700 bg-gray-800 text-gray-100"
+							/>
+						</div>
+					{/if}
 				</div>
 				<div class="flex items-center space-x-2">
 					<Checkbox

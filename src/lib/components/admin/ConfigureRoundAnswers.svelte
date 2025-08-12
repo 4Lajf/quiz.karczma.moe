@@ -18,7 +18,9 @@
 		answer: '',
 		songTitle: '',
 		songArtist: '',
-		other: ''
+		other: '',
+		other2: '',
+		other3: ''
 	};
 
 	// Add match status tracking for visual feedback
@@ -321,7 +323,9 @@
 		if (room.enabled_fields?.anime_title === false &&
 			(!room.enabled_fields?.song_title || !newAnswer.songTitle.trim()) &&
 			(!room.enabled_fields?.song_artist || !newAnswer.songArtist.trim()) &&
-			(!room.enabled_fields?.other || !newAnswer.other.trim())) {
+			(!room.enabled_fields?.other || !newAnswer.other.trim()) &&
+			(!room.enabled_fields?.other2 || !newAnswer.other2.trim()) &&
+			(!room.enabled_fields?.other3 || !newAnswer.other3.trim())) {
 			toast.error('Wprowadź przynajmniej jedną odpowiedź');
 			return;
 		}
@@ -367,6 +371,12 @@
 			}
 			if (room.enabled_fields?.other && newAnswer.other) {
 				extraFields.other = newAnswer.other;
+			}
+			if (room.enabled_fields?.other2 && newAnswer.other2) {
+				extraFields.other2 = newAnswer.other2;
+			}
+			if (room.enabled_fields?.other3 && newAnswer.other3) {
+				extraFields.other3 = newAnswer.other3;
 			}
 
 			// Process the answer
@@ -443,7 +453,9 @@
 				answer: '',
 				songTitle: '',
 				songArtist: '',
-				other: ''
+				other: '',
+				other2: '',
+				other3: ''
 			};
 			matchStatus = {
 				answer: null,
@@ -475,7 +487,9 @@
 		if (room.enabled_fields?.anime_title === false &&
 			(!room.enabled_fields?.song_title || !newAnswer.songTitle.trim()) &&
 			(!room.enabled_fields?.song_artist || !newAnswer.songArtist.trim()) &&
-			(!room.enabled_fields?.other || !newAnswer.other.trim())) {
+			(!room.enabled_fields?.other || !newAnswer.other.trim()) &&
+			(!room.enabled_fields?.other2 || !newAnswer.other2.trim()) &&
+			(!room.enabled_fields?.other3 || !newAnswer.other3.trim())) {
 			toast.error('Wprowadź przynajmniej jedną odpowiedź');
 			return;
 		}
@@ -507,6 +521,12 @@
 			}
 			if (room.enabled_fields?.other && newAnswer.other) {
 				extraFields.other = newAnswer.other;
+			}
+			if (room.enabled_fields?.other2 && newAnswer.other2) {
+				extraFields.other2 = newAnswer.other2;
+			}
+			if (room.enabled_fields?.other3 && newAnswer.other3) {
+				extraFields.other3 = newAnswer.other3;
 			}
 
 			// Process the answer
@@ -557,7 +577,9 @@
 			answer: answer.content,
 			songTitle: answer.extra_fields?.song_title || '',
 			songArtist: answer.extra_fields?.song_artist || '',
-			other: answer.extra_fields?.other || ''
+			other: answer.extra_fields?.other || '',
+			other2: answer.extra_fields?.other2 || '',
+			other3: answer.extra_fields?.other3 || ''
 		};
 
 		// Reset match statuses when starting edit mode
@@ -583,7 +605,9 @@
 			answer: '',
 			songTitle: '',
 			songArtist: '',
-			other: ''
+			other: '',
+			other2: '',
+			other3: ''
 		};
 
 		// Reset match statuses
@@ -687,7 +711,15 @@
 							{/if}
 
 							{#if room.enabled_fields?.other}
-								<Input type="text" bind:value={newAnswer.other} placeholder="Inne" class="w-full border-gray-700 bg-gray-800 text-gray-100 focus-visible:ring-1 focus-visible:ring-gray-600 focus-visible:ring-offset-0" />
+								<Input type="text" bind:value={newAnswer.other} placeholder={room.enabled_fields?.field_names?.other || "Inne"} class="w-full border-gray-700 bg-gray-800 text-gray-100 focus-visible:ring-1 focus-visible:ring-gray-600 focus-visible:ring-offset-0" />
+							{/if}
+
+							{#if room.enabled_fields?.other2}
+								<Input type="text" bind:value={newAnswer.other2} placeholder={room.enabled_fields?.field_names?.other2 || "Inne2"} class="w-full border-gray-700 bg-gray-800 text-gray-100 focus-visible:ring-1 focus-visible:ring-gray-600 focus-visible:ring-offset-0" />
+							{/if}
+
+							{#if room.enabled_fields?.other3}
+								<Input type="text" bind:value={newAnswer.other3} placeholder={room.enabled_fields?.field_names?.other3 || "Inne3"} class="w-full border-gray-700 bg-gray-800 text-gray-100 focus-visible:ring-1 focus-visible:ring-gray-600 focus-visible:ring-offset-0" />
 							{/if}
 
 							<div class="flex gap-2">
@@ -731,7 +763,13 @@
 										<Table.Head class="text-gray-300">Artysta</Table.Head>
 									{/if}
 									{#if room.enabled_fields?.other}
-										<Table.Head class="text-gray-300">Inne</Table.Head>
+										<Table.Head class="text-gray-300">{room.enabled_fields?.field_names?.other || "Inne"}</Table.Head>
+									{/if}
+									{#if room.enabled_fields?.other2}
+										<Table.Head class="text-gray-300">{room.enabled_fields?.field_names?.other2 || "Inne2"}</Table.Head>
+									{/if}
+									{#if room.enabled_fields?.other3}
+										<Table.Head class="text-gray-300">{room.enabled_fields?.field_names?.other3 || "Inne3"}</Table.Head>
 									{/if}
 									<Table.Head class="w-28 text-gray-300">Akcje</Table.Head>
 								</Table.Row>
@@ -755,6 +793,16 @@
 										{#if room.enabled_fields?.other}
 											<Table.Cell class="text-gray-200">
 												{answer.extra_fields?.other || '-'}
+											</Table.Cell>
+										{/if}
+										{#if room.enabled_fields?.other2}
+											<Table.Cell class="text-gray-200">
+												{answer.extra_fields?.other2 || '-'}
+											</Table.Cell>
+										{/if}
+										{#if room.enabled_fields?.other3}
+											<Table.Cell class="text-gray-200">
+												{answer.extra_fields?.other3 || '-'}
 											</Table.Cell>
 										{/if}
 										<Table.Cell>

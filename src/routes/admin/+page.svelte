@@ -28,6 +28,12 @@
 	let showScreenModeDialog = false;
 	let selectedScreenRoomId = null;
 	let screenMode = 'normalna'; // Default screen mode
+
+	// Delete confirmation dialog state
+	let showDeleteConfirmDialog = false;
+	let roomToDelete = null;
+	let deleteConfirmationText = '';
+	let deletingRoom = false;
 	let savingScreenMode = false;
 
 	$: ({ supabase, user, profile, rooms } = data);
@@ -146,16 +152,44 @@
 		}
 	}
 
-	async function deleteRoom(roomId) {
-		// No admin role check required - admin pages are now unprotected
+	function showDeleteConfirmation(room) {
+		roomToDelete = room;
+		deleteConfirmationText = '';
+		showDeleteConfirmDialog = true;
+	}
 
-		const { error } = await supabase.from('rooms').delete().eq('id', roomId);
-
-		if (error) {
-			toast.error('Nie udało się usunąć pokoju');
-		} else {
-			toast.success('Usunięto pokój');
+	async function confirmDeleteRoom() {
+		if (deleteConfirmationText !== 'DELETE') {
+			toast.error('Wpisz "DELETE" aby potwierdzić usunięcie');
+			return;
 		}
+
+		if (!roomToDelete) return;
+
+		deletingRoom = true;
+		try {
+			const { error } = await supabase.from('rooms').delete().eq('id', roomToDelete.id);
+
+			if (error) {
+				toast.error('Nie udało się usunąć pokoju');
+			} else {
+				toast.success(`Usunięto pokój "${roomToDelete.name}"`);
+				showDeleteConfirmDialog = false;
+				roomToDelete = null;
+				deleteConfirmationText = '';
+				await invalidateAll();
+			}
+		} catch (error) {
+			toast.error('Wystąpił błąd podczas usuwania pokoju');
+		} finally {
+			deletingRoom = false;
+		}
+	}
+
+	function cancelDeleteRoom() {
+		showDeleteConfirmDialog = false;
+		roomToDelete = null;
+		deleteConfirmationText = '';
 	}
 
 	onMount(() => {
@@ -274,7 +308,7 @@
 										<Button variant="outline" size="sm" class="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700" href="/admin/rooms/{room.id}/screen/viewer" target="_blank">Otwórz</Button>
 									{/if}
 
-									<Button variant="destructive" size="sm" class="border border-red-900 bg-gray-900 text-red-400 hover:bg-gray-800" on:click={() => deleteRoom(room.id)}>Usuń</Button>
+									<Button variant="destructive" size="sm" class="border border-red-900 bg-gray-900 text-red-400 hover:bg-gray-800" on:click={() => showDeleteConfirmation(room)}>Usuń</Button>
 								</div>
 							</Table.Cell>
 						</Table.Row>
@@ -379,6 +413,49 @@
 {#if inputFieldsModal && selectedRoomId && selectedRoom}
 	<AnswerFieldsModal open={inputFieldsModal} roomId={selectedRoomId} enabledFields={selectedRoom.enabled_fields} onOpenChange={handleModalChange} />
 {/if}
+
+<!-- Delete confirmation dialog -->
+<Dialog bind:open={showDeleteConfirmDialog}>
+	<DialogContent class="border-gray-800 bg-gray-900 text-gray-100">
+		<DialogHeader>
+			<DialogTitle class="text-red-400">Usuń pokój</DialogTitle>
+			<DialogDescription class="text-gray-300">
+				{#if roomToDelete}
+					Czy na pewno chcesz usunąć pokój "<strong>{roomToDelete.name}</strong>"?
+					<br><br>
+					Ta akcja jest nieodwracalna i usunie wszystkie dane związane z tym pokojem.
+					<br><br>
+					Aby potwierdzić, wpisz <strong>DELETE</strong> w polu poniżej:
+				{/if}
+			</DialogDescription>
+		</DialogHeader>
+		<div class="py-4">
+			<Input
+				bind:value={deleteConfirmationText}
+				placeholder="Wpisz DELETE aby potwierdzić"
+				class="border-gray-700 bg-gray-800 text-gray-100"
+				disabled={deletingRoom}
+			/>
+		</div>
+		<DialogFooter>
+			<Button variant="outline" on:click={cancelDeleteRoom} disabled={deletingRoom} class="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700">
+				Anuluj
+			</Button>
+			<Button
+				variant="destructive"
+				on:click={confirmDeleteRoom}
+				disabled={deletingRoom || deleteConfirmationText !== 'DELETE'}
+				class="border border-red-900 bg-red-900 text-white hover:bg-red-800"
+			>
+				{#if deletingRoom}
+					Usuwanie...
+				{:else}
+					Usuń pokój
+				{/if}
+			</Button>
+		</DialogFooter>
+	</DialogContent>
+</Dialog>
 
 <style>
 	*:focus-visible {

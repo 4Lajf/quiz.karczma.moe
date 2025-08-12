@@ -254,8 +254,9 @@
 				.maybeSingle();
 
 			if (!answerError && answerData && answerData.potential_points !== null) {
-				// Use half of the potential_points from the answer
-				pointsToDeduct = answerData.potential_points / 2;
+				// Use custom penalty percentage of the potential_points from the answer
+				const penaltyPercent = room.points_config.incorrect_answer_penalty_percent || 50;
+				pointsToDeduct = answerData.potential_points * (penaltyPercent / 100);
 			} else {
 				// Fall back to screen points or default points
 				if (room.type === 'screen') {
@@ -267,12 +268,15 @@
 						.maybeSingle();
 
 					if (!screenPointsError && screenPointsData) {
-						pointsToDeduct = screenPointsData.points_value / 2; // Half the points for negative
+						const penaltyPercent = room.points_config.incorrect_answer_penalty_percent || 50;
+						pointsToDeduct = screenPointsData.points_value * (penaltyPercent / 100);
 					} else {
-						pointsToDeduct = room.points_config.main_answer / 2; // Fall back to default
+						const penaltyPercent = room.points_config.incorrect_answer_penalty_percent || 50;
+						pointsToDeduct = room.points_config.main_answer * (penaltyPercent / 100);
 					}
 				} else {
-					pointsToDeduct = room.points_config.main_answer / 2;
+					const penaltyPercent = room.points_config.incorrect_answer_penalty_percent || 50;
+					pointsToDeduct = room.points_config.main_answer * (penaltyPercent / 100);
 				}
 			}
 		} else {
@@ -286,12 +290,15 @@
 					.maybeSingle();
 
 				if (!screenPointsError && screenPointsData) {
-					pointsToDeduct = screenPointsData.points_value / 2; // Half the points for negative
+					const penaltyPercent = room.points_config.incorrect_answer_penalty_percent || 50;
+					pointsToDeduct = screenPointsData.points_value * (penaltyPercent / 100);
 				} else {
-					pointsToDeduct = room.points_config.main_answer / 2; // Fall back to default
+					const penaltyPercent = room.points_config.incorrect_answer_penalty_percent || 50;
+					pointsToDeduct = room.points_config.main_answer * (penaltyPercent / 100);
 				}
 			} else {
-				pointsToDeduct = room.points_config.main_answer / 2;
+				const penaltyPercent = room.points_config.incorrect_answer_penalty_percent || 50;
+				pointsToDeduct = room.points_config.main_answer * (penaltyPercent / 100);
 			}
 		}
 
@@ -668,6 +675,14 @@
 					points += room.points_config.other;
 					tiebreaker += room.points_config.tiebreaker.other;
 				}
+				if (answer.answer_status.other2) {
+					points += room.points_config.other2 || room.points_config.other;
+					tiebreaker += room.points_config.tiebreaker.other2 || room.points_config.tiebreaker.other;
+				}
+				if (answer.answer_status.other3) {
+					points += room.points_config.other3 || room.points_config.other;
+					tiebreaker += room.points_config.tiebreaker.other3 || room.points_config.tiebreaker.other;
+				}
 
 				if (points > 0 || tiebreaker > 0) {
 					// Round final points to 2 decimal places
@@ -776,19 +791,27 @@
 								: room.points_config.main_answer; // Otherwise use default point config
 					}
 
-					// Calculate half value and make it negative
-					points -= basePoints / 2;
+					// Calculate penalty percentage and make it negative
+					const penaltyPercent = room.points_config.incorrect_answer_penalty_percent || 50;
+					points -= basePoints * (penaltyPercent / 100);
 				}
 
 				// Extra fields negative points - only for incorrect fields (false), not for neutral (null) or correct (true)
+				const penaltyPercent = room.points_config.incorrect_answer_penalty_percent || 50;
 				if (answer.extra_fields?.song_title && answer.answer_status.song_title === false) {
-					points -= room.points_config.song_title / 2;
+					points -= room.points_config.song_title * (penaltyPercent / 100);
 				}
 				if (answer.extra_fields?.song_artist && answer.answer_status.song_artist === false) {
-					points -= room.points_config.song_artist / 2;
+					points -= room.points_config.song_artist * (penaltyPercent / 100);
 				}
 				if (answer.extra_fields?.other && answer.answer_status.other === false) {
-					points -= room.points_config.other / 2;
+					points -= room.points_config.other * (penaltyPercent / 100);
+				}
+				if (answer.extra_fields?.other2 && answer.answer_status.other2 === false) {
+					points -= (room.points_config.other2 || room.points_config.other) * (penaltyPercent / 100);
+				}
+				if (answer.extra_fields?.other3 && answer.answer_status.other3 === false) {
+					points -= (room.points_config.other3 || room.points_config.other) * (penaltyPercent / 100);
 				}
 
 				if (points !== 0) {
@@ -877,6 +900,29 @@
 			toast.success('Gracz usunięty z gry');
 		} catch (error) {
 			toast.error('Nie udało się usunąć gracza: ' + error.message);
+		}
+	}
+
+	async function deletePlayerAnswers(playerName) {
+		if (!selectedRoundId) {
+			toast.error('Nie wybrano rundy');
+			return;
+		}
+
+		try {
+			const { error } = await supabase
+				.from('answers')
+				.delete()
+				.eq('room_id', room.id)
+				.eq('round_id', selectedRoundId)
+				.eq('player_name', playerName);
+
+			if (error) throw error;
+
+			toast.success(`Usunięto wszystkie odpowiedzi gracza ${playerName} dla tej rundy`);
+			await invalidateAll();
+		} catch (error) {
+			toast.error(`Nie udało się usunąć odpowiedzi: ${error.message}`);
 		}
 	}
 
@@ -1156,7 +1202,7 @@
 						<Button href="/admin" variant="outline" class="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700">Powrót</Button>
 					</div>
 
-					<PointsConfigModal open={pointsConfigModalOpen} roomId={room.id} pointsConfig={room.points_config} {supabase} onOpenChange={(open) => (pointsConfigModalOpen = open)} />
+					<PointsConfigModal open={pointsConfigModalOpen} roomId={room.id} pointsConfig={room.points_config} {room} {supabase} onOpenChange={(open) => (pointsConfigModalOpen = open)} />
 				</div>
 			</Card.Header>
 
@@ -1190,8 +1236,20 @@
 									{/if}
 									{#if currentCorrectAnswers[0].extra_fields.other}
 										<div class="text-gray-300">
-											<span class="text-gray-400">Inne:</span>
+											<span class="text-gray-400">{room.enabled_fields?.field_names?.other || "Inne"}:</span>
 											{currentCorrectAnswers[0].extra_fields.other}
+										</div>
+									{/if}
+									{#if currentCorrectAnswers[0].extra_fields.other2}
+										<div class="text-gray-300">
+											<span class="text-gray-400">{room.enabled_fields?.field_names?.other2 || "Inne2"}:</span>
+											{currentCorrectAnswers[0].extra_fields.other2}
+										</div>
+									{/if}
+									{#if currentCorrectAnswers[0].extra_fields.other3}
+										<div class="text-gray-300">
+											<span class="text-gray-400">{room.enabled_fields?.field_names?.other3 || "Inne3"}:</span>
+											{currentCorrectAnswers[0].extra_fields.other3}
 										</div>
 									{/if}
 								</div>
@@ -1230,7 +1288,7 @@
 									{:else if minusPointsAddedForRounds[selectedRoundId]}
 										Odejmij punkty za błędy ponownie
 									{:else}
-										Odejmij punkty za błędne odpowiedzi (50%)
+										Odejmij punkty za błędne odpowiedzi ({room.points_config.incorrect_answer_penalty_percent || 50}%)
 									{/if}
 								</Button>
 							</div>
@@ -1248,7 +1306,13 @@
 											<Table.Head class="text-gray-300">Artysta</Table.Head>
 										{/if}
 										{#if room.enabled_fields?.other}
-											<Table.Head class="text-gray-300">Inne</Table.Head>
+											<Table.Head class="text-gray-300">{room.enabled_fields?.field_names?.other || "Inne"}</Table.Head>
+										{/if}
+										{#if room.enabled_fields?.other2}
+											<Table.Head class="text-gray-300">{room.enabled_fields?.field_names?.other2 || "Inne2"}</Table.Head>
+										{/if}
+										{#if room.enabled_fields?.other3}
+											<Table.Head class="text-gray-300">{room.enabled_fields?.field_names?.other3 || "Inne3"}</Table.Head>
 										{/if}
 										<Table.Head class="text-gray-300">Czas</Table.Head>
 										<Table.Head class="text-gray-300">Wynik</Table.Head>
@@ -1339,6 +1403,44 @@
 												</Table.Cell>
 											{/if}
 
+											{#if room.enabled_fields?.other2}
+												<Table.Cell>
+													<div class="flex items-center gap-2">
+														<span class="text-gray-200">{answer.extra_fields?.other2 || '-'}</span>
+														{#if answer.extra_fields?.other2}
+															<button on:click={() => toggleAnswerStatus(answer.id, 'other2', answer.answer_status?.other2)} disabled={!isCurrentRound} class="flex h-10 w-10 items-center justify-center rounded-full p-2 transition-colors hover:bg-gray-800">
+																{#if answer.answer_status?.other2 === true}
+																	<Check class="h-6 w-6 text-green-500" />
+																{:else if answer.answer_status?.other2 === false}
+																	<X class="h-6 w-6 text-red-500" />
+																{:else}
+																	<Circle class="h-6 w-6 text-gray-500" />
+																{/if}
+															</button>
+														{/if}
+													</div>
+												</Table.Cell>
+											{/if}
+
+											{#if room.enabled_fields?.other3}
+												<Table.Cell>
+													<div class="flex items-center gap-2">
+														<span class="text-gray-200">{answer.extra_fields?.other3 || '-'}</span>
+														{#if answer.extra_fields?.other3}
+															<button on:click={() => toggleAnswerStatus(answer.id, 'other3', answer.answer_status?.other3)} disabled={!isCurrentRound} class="flex h-10 w-10 items-center justify-center rounded-full p-2 transition-colors hover:bg-gray-800">
+																{#if answer.answer_status?.other3 === true}
+																	<Check class="h-6 w-6 text-green-500" />
+																{:else if answer.answer_status?.other3 === false}
+																	<X class="h-6 w-6 text-red-500" />
+																{:else}
+																	<Circle class="h-6 w-6 text-gray-500" />
+																{/if}
+															</button>
+														{/if}
+													</div>
+												</Table.Cell>
+											{/if}
+
 											<Table.Cell class="text-gray-200">
 												{new Date(answer.created_at).toLocaleTimeString()}
 											</Table.Cell>
@@ -1394,7 +1496,7 @@
 									{#if quickGuessEnabled}
 										<Table.Head class="text-gray-300">Potencjalne punkty</Table.Head>
 									{/if}
-									<Table.Head class="text-gray-300">Akcje punktowe</Table.Head>
+
 									<Table.Head class="text-gray-300">Akcje</Table.Head>
 								</Table.Row>
 							</Table.Header>
@@ -1473,17 +1575,13 @@
 											</Table.Cell>
 										{/if}
 
-										<!-- New cell for point action buttons -->
-										<Table.Cell>
-											<div class="flex gap-1">
-												<Button size="sm" disabled={!isCurrentRound} on:click={() => awardPointsToPlayer(player.id)} class="bg-green-600/50 text-white hover:bg-green-500/50">+P</Button>
-												<Button size="sm" disabled={!isCurrentRound} on:click={() => awardNegativePointsToPlayer(player.id)} class="bg-red-600/50 text-white hover:bg-red-500/50">-P</Button>
-												<Button size="sm" disabled={!isCurrentRound} on:click={() => addTiebreakerToPlayer(player.id)} class="bg-blue-600/50 text-white hover:bg-blue-500/50">+T</Button>
-											</div>
-										</Table.Cell>
+
 
 										<Table.Cell>
-											<Button size="sm" variant="destructive" on:click={() => deletePlayer(player.id)} class="border border-red-900 bg-gray-900 text-red-400 hover:bg-gray-800">Usuń</Button>
+											<div class="flex gap-2">
+												<Button size="sm" on:click={() => deletePlayerAnswers(player.name)} disabled={!isCurrentRound} class="border border-orange-700 bg-orange-900/30 text-orange-400 hover:bg-orange-800/50">Usuń odp.</Button>
+												<Button size="sm" variant="destructive" on:click={() => deletePlayer(player.id)} class="border border-red-900 bg-gray-900 text-red-400 hover:bg-gray-800">Usuń</Button>
+											</div>
 										</Table.Cell>
 									</Table.Row>
 								{/each}

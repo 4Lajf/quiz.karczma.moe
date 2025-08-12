@@ -626,6 +626,8 @@
 	let songTitle = '';
 	let songArtist = '';
 	let otherAnswer = '';
+	let other2Answer = '';
+	let other3Answer = '';
 	let channel;
 	let hasJoined = false;
 	let loading = false;
@@ -685,6 +687,8 @@
 				songTitle = existingAnswer.extra_fields.song_title || '';
 				songArtist = existingAnswer.extra_fields.song_artist || '';
 				otherAnswer = existingAnswer.extra_fields.other || '';
+				other2Answer = existingAnswer.extra_fields.other2 || '';
+				other3Answer = existingAnswer.extra_fields.other3 || '';
 			}
 		}
 		// We no longer reset the fields if no answer exists - this preserves user input
@@ -1026,7 +1030,7 @@
 		}
 
 		// If anime title is disabled but we have no other fields filled, prevent submission
-		if (room.enabled_fields?.anime_title === false && (!room.enabled_fields?.song_title || !songTitle) && (!room.enabled_fields?.song_artist || !songArtist) && (!room.enabled_fields?.other || !otherAnswer)) {
+		if (room.enabled_fields?.anime_title === false && (!room.enabled_fields?.song_title || !songTitle) && (!room.enabled_fields?.song_artist || !songArtist) && (!room.enabled_fields?.other || !otherAnswer) && (!room.enabled_fields?.other2 || !other2Answer) && (!room.enabled_fields?.other3 || !other3Answer)) {
 			toast.error('Wprowadź przynajmniej jedną odpowiedź');
 			return;
 		}
@@ -1085,6 +1089,12 @@
 			}
 			if (room.enabled_fields?.other && otherAnswer) {
 				extraFields.other = otherAnswer;
+			}
+			if (room.enabled_fields?.other2 && other2Answer) {
+				extraFields.other2 = other2Answer;
+			}
+			if (room.enabled_fields?.other3 && other3Answer) {
+				extraFields.other3 = other3Answer;
 			}
 
 			// Get current player score and tiebreaker
@@ -1528,6 +1538,12 @@
 			if (room.enabled_fields?.other && otherAnswer) {
 				extraFields.other = otherAnswer;
 			}
+			if (room.enabled_fields?.other2 && other2Answer) {
+				extraFields.other2 = other2Answer;
+			}
+			if (room.enabled_fields?.other3 && other3Answer) {
+				extraFields.other3 = other3Answer;
+			}
 
 			// Get current player score and tiebreaker
 			const { data: playerData, error: playerError } = await supabase.from('players').select('score, tiebreaker').eq('room_id', room.id).eq('name', playerName).single();
@@ -1544,7 +1560,9 @@
 						main_answer: false,
 						song_title: false,
 						song_artist: false,
-						other: false
+						other: false,
+						other2: false,
+						other3: false
 					},
 				})
 				.eq('room_id', room.id)
@@ -1720,7 +1738,15 @@
 						{/if}
 
 						{#if room.enabled_fields?.other}
-							<Input type="text" placeholder="Inne" bind:value={otherAnswer} disabled={loading} class="text-gray-100 bg-gray-800 border-gray-700 placeholder:text-gray-500 focus-visible:ring-1 focus-visible:ring-gray-600 focus-visible:ring-offset-0" />
+							<Input type="text" placeholder={room.enabled_fields?.field_names?.other || "Inne"} bind:value={otherAnswer} disabled={loading} class="text-gray-100 bg-gray-800 border-gray-700 placeholder:text-gray-500 focus-visible:ring-1 focus-visible:ring-gray-600 focus-visible:ring-offset-0" />
+						{/if}
+
+						{#if room.enabled_fields?.other2}
+							<Input type="text" placeholder={room.enabled_fields?.field_names?.other2 || "Inne2"} bind:value={other2Answer} disabled={loading} class="text-gray-100 bg-gray-800 border-gray-700 placeholder:text-gray-500 focus-visible:ring-1 focus-visible:ring-gray-600 focus-visible:ring-offset-0" />
+						{/if}
+
+						{#if room.enabled_fields?.other3}
+							<Input type="text" placeholder={room.enabled_fields?.field_names?.other3 || "Inne3"} bind:value={other3Answer} disabled={loading} class="text-gray-100 bg-gray-800 border-gray-700 placeholder:text-gray-500 focus-visible:ring-1 focus-visible:ring-gray-600 focus-visible:ring-offset-0" />
 						{/if}
 
 						{#if !isQuickGuessActive}
@@ -1752,7 +1778,15 @@
 						{/if}
 
 						{#if room.enabled_fields?.other}
-							<Input type="text" placeholder="Inne" bind:value={otherAnswer} disabled={loading} class="text-gray-100 bg-gray-800 border-gray-700 placeholder:text-gray-500 focus-visible:ring-1 focus-visible:ring-gray-600 focus-visible:ring-offset-0" />
+							<Input type="text" placeholder={room.enabled_fields?.field_names?.other || "Inne"} bind:value={otherAnswer} disabled={loading} class="text-gray-100 bg-gray-800 border-gray-700 placeholder:text-gray-500 focus-visible:ring-1 focus-visible:ring-gray-600 focus-visible:ring-offset-0" />
+						{/if}
+
+						{#if room.enabled_fields?.other2}
+							<Input type="text" placeholder={room.enabled_fields?.field_names?.other2 || "Inne2"} bind:value={other2Answer} disabled={loading} class="text-gray-100 bg-gray-800 border-gray-700 placeholder:text-gray-500 focus-visible:ring-1 focus-visible:ring-gray-600 focus-visible:ring-offset-0" />
+						{/if}
+
+						{#if room.enabled_fields?.other3}
+							<Input type="text" placeholder={room.enabled_fields?.field_names?.other3 || "Inne3"} bind:value={other3Answer} disabled={loading} class="text-gray-100 bg-gray-800 border-gray-700 placeholder:text-gray-500 focus-visible:ring-1 focus-visible:ring-gray-600 focus-visible:ring-offset-0" />
 						{/if}
 
 						<div class="flex gap-2">

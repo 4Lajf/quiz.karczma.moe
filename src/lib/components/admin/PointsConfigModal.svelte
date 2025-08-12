@@ -8,6 +8,7 @@
 	export let open = false;
 	export let roomId;
 	export let pointsConfig;
+	export let room;
 	export let onOpenChange;
 	export let supabase;
 
@@ -16,12 +17,17 @@
 		song_title: pointsConfig?.song_title || 0,
 		song_artist: pointsConfig?.song_artist || 0,
 		other: pointsConfig?.other || 0,
+		other2: pointsConfig?.other2 || 0,
+		other3: pointsConfig?.other3 || 0,
 		hint_penalty_percent: pointsConfig?.hint_penalty_percent || 40, // Add this new field with default 40%
+		incorrect_answer_penalty_percent: pointsConfig?.incorrect_answer_penalty_percent || 50, // Add penalty for incorrect answers
 		tiebreaker: {
 			main_answer: pointsConfig?.tiebreaker?.main_answer || 0,
 			song_title: pointsConfig?.tiebreaker?.song_title || 1,
 			song_artist: pointsConfig?.tiebreaker?.song_artist || 1,
-			other: pointsConfig?.tiebreaker?.other || 1
+			other: pointsConfig?.tiebreaker?.other || 1,
+			other2: pointsConfig?.tiebreaker?.other2 || 1,
+			other3: pointsConfig?.tiebreaker?.other3 || 1
 		}
 	};
 
@@ -58,9 +64,23 @@
 					<Input type="number" id="artist_points" bind:value={config.song_artist} min="0" class="border-gray-700 bg-gray-800 text-gray-100" />
 				</div>
 				<div class="space-y-2">
-					<Label for="other_points" class="text-gray-200">Inne</Label>
+					<Label for="other_points" class="text-gray-200">{room?.enabled_fields?.field_names?.other || "Inne"}</Label>
 					<Input type="number" id="other_points" bind:value={config.other} min="0" class="border-gray-700 bg-gray-800 text-gray-100" />
 				</div>
+
+				{#if room?.enabled_fields?.other2}
+					<div class="space-y-2">
+						<Label for="other2_points" class="text-gray-200">{room?.enabled_fields?.field_names?.other2 || "Inne2"}</Label>
+						<Input type="number" id="other2_points" bind:value={config.other2} min="0" class="border-gray-700 bg-gray-800 text-gray-100" />
+					</div>
+				{/if}
+
+				{#if room?.enabled_fields?.other3}
+					<div class="space-y-2">
+						<Label for="other3_points" class="text-gray-200">{room?.enabled_fields?.field_names?.other3 || "Inne3"}</Label>
+						<Input type="number" id="other3_points" bind:value={config.other3} min="0" class="border-gray-700 bg-gray-800 text-gray-100" />
+					</div>
+				{/if}
 			</div>
 
 			<div class="space-y-4">
@@ -78,9 +98,23 @@
 					<Input type="number" id="artist_tiebreaker" bind:value={config.tiebreaker.song_artist} min="0" class="border-gray-700 bg-gray-800 text-gray-100" />
 				</div>
 				<div class="space-y-2">
-					<Label for="other_tiebreaker" class="text-gray-200">Inne</Label>
+					<Label for="other_tiebreaker" class="text-gray-200">{room?.enabled_fields?.field_names?.other || "Inne"}</Label>
 					<Input type="number" id="other_tiebreaker" bind:value={config.tiebreaker.other} min="0" class="border-gray-700 bg-gray-800 text-gray-100" />
 				</div>
+
+				{#if room?.enabled_fields?.other2}
+					<div class="space-y-2">
+						<Label for="other2_tiebreaker" class="text-gray-200">{room?.enabled_fields?.field_names?.other2 || "Inne2"}</Label>
+						<Input type="number" id="other2_tiebreaker" bind:value={config.tiebreaker.other2} min="0" class="border-gray-700 bg-gray-800 text-gray-100" />
+					</div>
+				{/if}
+
+				{#if room?.enabled_fields?.other3}
+					<div class="space-y-2">
+						<Label for="other3_tiebreaker" class="text-gray-200">{room?.enabled_fields?.field_names?.other3 || "Inne3"}</Label>
+						<Input type="number" id="other3_tiebreaker" bind:value={config.tiebreaker.other3} min="0" class="border-gray-700 bg-gray-800 text-gray-100" />
+					</div>
+				{/if}
 			</div>
 
 			<!-- Hint penalty setting -->
@@ -91,6 +125,16 @@
 					<span class="text-gray-300">%</span>
 				</div>
 				<p class="text-xs text-gray-400">Procent punktów odejmowanych po użyciu podpowiedzi</p>
+			</div>
+
+			<!-- Incorrect answer penalty setting -->
+			<div class="col-span-2 mt-2 space-y-2 border-t border-gray-800 pt-4">
+				<Label for="incorrect_penalty" class="text-gray-200">Kara za błędne odpowiedzi (%)</Label>
+				<div class="flex items-center gap-2">
+					<Input type="number" id="incorrect_penalty" bind:value={config.incorrect_answer_penalty_percent} min="0" max="100" class="border-gray-700 bg-gray-800 text-gray-100" />
+					<span class="text-gray-300">%</span>
+				</div>
+				<p class="text-xs text-gray-400">Procent punktów odejmowanych za błędne odpowiedzi</p>
 			</div>
 		</div>
 		<Dialog.Footer>
