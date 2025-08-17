@@ -13,6 +13,7 @@
 	import { invalidate, invalidateAll } from '$app/navigation';
 	import AnswerFieldsModal from '$lib/components/admin/AnswerFieldsModal.svelte';
 	import { Plus } from 'lucide-svelte';
+	import { canModifyRoom } from '$lib/client/roomSecurity.js';
 
 	export let data;
 	let inputFieldsModal = false;
@@ -51,6 +52,10 @@
 		savingScreenMode = true;
 
 		try {
+			// Validate room ownership
+			const room = rooms.find((r) => r.id === selectedScreenRoomId);
+			canModifyRoom(room, user, profile);
+
 			const { error } = await supabase
 				.from('rooms')
 				.update({
@@ -141,14 +146,20 @@
 	}
 
 	async function toggleAdditionalAnswers(roomId, currentValue) {
-		// No admin role check required - admin pages are now unprotected
+		try {
+			// Validate room ownership
+			const room = rooms.find((r) => r.id === roomId);
+			canModifyRoom(room, user, profile);
 
-		const { error } = await supabase.from('rooms').update({ additional_answers_enabled: !currentValue }).eq('id', roomId);
+			const { error } = await supabase.from('rooms').update({ additional_answers_enabled: !currentValue }).eq('id', roomId);
 
-		if (error) {
-			toast.error('Nie udało się zaktualizować ustawienia');
-		} else {
-			toast.success('Zaktualizowano ustawienie');
+			if (error) {
+				toast.error('Nie udało się zaktualizować ustawienia');
+			} else {
+				toast.success('Zaktualizowano ustawienie');
+			}
+		} catch (validationError) {
+			toast.error('Nie masz uprawnień do modyfikacji tego pokoju');
 		}
 	}
 
@@ -168,6 +179,9 @@
 
 		deletingRoom = true;
 		try {
+			// Validate room ownership
+			canModifyRoom(roomToDelete, user, profile);
+
 			const { error } = await supabase.from('rooms').delete().eq('id', roomToDelete.id);
 
 			if (error) {
@@ -179,8 +193,8 @@
 				deleteConfirmationText = '';
 				await invalidateAll();
 			}
-		} catch (error) {
-			toast.error('Wystąpił błąd podczas usuwania pokoju');
+		} catch (validationError) {
+			toast.error('Nie masz uprawnień do usunięcia tego pokoju');
 		} finally {
 			deletingRoom = false;
 		}
@@ -245,14 +259,21 @@
 			</Avatar.Root>
 			<div>
 				<h2 class="text-xl font-bold text-white">{profile.username}</h2>
-				<p class="text-sm text-gray-400">Admin Dashboard</p>
+				<p class="text-sm text-gray-400">
+					{profile?.role === 'admin' ? 'Admin Dashboard' : 'My Rooms Dashboard'}
+				</p>
 			</div>
 		</div>
 	</div>
 
 	<Card.Root class="border-gray-800 bg-gray-900">
 		<Card.Header>
-			<Card.Title class="text-white">Pokoje</Card.Title>
+			<Card.Title class="text-white">
+				{profile?.role === 'admin' ? 'Wszystkie pokoje' : 'Moje pokoje'}
+			</Card.Title>
+			{#if profile?.role !== 'admin'}
+				<p class="mt-2 text-sm text-gray-400">Tutaj możesz zarządzać pokojami, które utworzyłeś/aś. Możesz tworzyć nowe pokoje i konfigurować te istniejące.</p>
+			{/if}
 		</Card.Header>
 		<Card.Content>
 			<Button on:click={openCreateRoomDialog} class="border border-gray-700 bg-gray-800 text-white hover:bg-gray-700">
@@ -260,61 +281,74 @@
 				Utwórz nowy pokój
 			</Button>
 
-			<Table.Root>
-				<Table.Header>
-					<Table.Row class="border-gray-800 hover:bg-gray-900">
-						<Table.Head class="text-gray-300">Nazwa</Table.Head>
-						<Table.Head class="text-gray-300">Stworzone przez</Table.Head>
-						<Table.Head class="text-gray-300">Ustawienia</Table.Head>
-						<Table.Head class="text-gray-300">Akcje</Table.Head>
-					</Table.Row>
-				</Table.Header>
-				<Table.Body>
-					{#each rooms as room}
+			{#if rooms.length === 0}
+				<div class="flex flex-col items-center justify-center px-4 py-12 text-center">
+					<div class="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gray-800">
+						<Plus class="h-8 w-8 text-gray-400" />
+					</div>
+					<h3 class="mb-2 text-lg font-semibold text-white">Nie masz jeszcze żadnych pokoi</h3>
+					<Button on:click={openCreateRoomDialog} class="border border-gray-700 bg-gray-800 text-white hover:bg-gray-700">
+						<Plus class="mr-2 h-4 w-4" />
+						Utwórz pierwszy pokój
+					</Button>
+				</div>
+			{:else}
+				<Table.Root>
+					<Table.Header>
 						<Table.Row class="border-gray-800 hover:bg-gray-900">
-							<Table.Cell class="text-gray-200">
-								{room.name}
-								<span class="ml-2 rounded-full bg-gray-800 px-2 py-0.5 text-xs text-gray-300">
-									{room.type === 'screen' ? 'Screen' : 'Song'}
-								</span>
-							</Table.Cell>
-							<Table.Cell class="flex items-center gap-2">
-								<Avatar.Root class="h-6 w-6 border border-gray-800">
-									<Avatar.Image src={room.profiles.avatar_url} alt={room.profiles.username} />
-									<Avatar.Fallback class="bg-gray-800 text-gray-200">
-										{room.profiles.username?.[0]?.toUpperCase()}
-									</Avatar.Fallback>
-								</Avatar.Root>
-								<span class="text-gray-200">{room.profiles.username}</span>
-							</Table.Cell>
-							<Table.Cell>
-								{#if room.type === 'screen'}
-									<Button variant="outline" size="sm" class="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700" on:click={() => openScreenModeModal(room.id)}>Konfiguruj tryb screenówki</Button>
-								{:else}
-									<Button variant="outline" size="sm" class="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700" on:click={() => openInputFieldsModal(room.id)}>Konfiguruj pola odpowiedzi</Button>
-								{/if}
-
-								{#if room.type === 'screen'}
-									<Button variant="outline" size="sm" class="ml-2 border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700" href="/admin/rooms/{room.id}/screen/answers">Konfiguruj odpowiedzi rund</Button>
-								{:else}
-									<Button variant="outline" size="sm" class="ml-2 border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700" href="/admin/rooms/{room.id}/answers">Konfiguruj odpowiedzi rund</Button>
-								{/if}
-							</Table.Cell>
-							<Table.Cell>
-								<div class="flex gap-2">
-									<Button variant="outline" size="sm" class="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700" href="/admin/rooms/{room.id}">Wejdź</Button>
-
+							<Table.Head class="text-gray-300">Nazwa</Table.Head>
+							<Table.Head class="text-gray-300">Stworzone przez</Table.Head>
+							<Table.Head class="text-gray-300">Ustawienia</Table.Head>
+							<Table.Head class="text-gray-300">Akcje</Table.Head>
+						</Table.Row>
+					</Table.Header>
+					<Table.Body>
+						{#each rooms as room}
+							<Table.Row class="border-gray-800 hover:bg-gray-900">
+								<Table.Cell class="text-gray-200">
+									{room.name}
+									<span class="ml-2 rounded-full bg-gray-800 px-2 py-0.5 text-xs text-gray-300">
+										{room.type === 'screen' ? 'Screen' : 'Song'}
+									</span>
+								</Table.Cell>
+								<Table.Cell class="flex items-center gap-2">
+									<Avatar.Root class="h-6 w-6 border border-gray-800">
+										<Avatar.Image src={room.profiles.avatar_url} alt={room.profiles.username} />
+										<Avatar.Fallback class="bg-gray-800 text-gray-200">
+											{room.profiles.username?.[0]?.toUpperCase()}
+										</Avatar.Fallback>
+									</Avatar.Root>
+									<span class="text-gray-200">{room.profiles.username}</span>
+								</Table.Cell>
+								<Table.Cell>
 									{#if room.type === 'screen'}
-										<Button variant="outline" size="sm" class="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700" href="/admin/rooms/{room.id}/screen/viewer" target="_blank">Otwórz</Button>
+										<Button variant="outline" size="sm" class="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700" on:click={() => openScreenModeModal(room.id)}>Konfiguruj tryb screenówki</Button>
+									{:else}
+										<Button variant="outline" size="sm" class="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700" on:click={() => openInputFieldsModal(room.id)}>Konfiguruj pola odpowiedzi</Button>
 									{/if}
 
-									<Button variant="destructive" size="sm" class="border border-red-900 bg-gray-900 text-red-400 hover:bg-gray-800" on:click={() => showDeleteConfirmation(room)}>Usuń</Button>
-								</div>
-							</Table.Cell>
-						</Table.Row>
-					{/each}
-				</Table.Body>
-			</Table.Root>
+									{#if room.type === 'screen'}
+										<Button variant="outline" size="sm" class="ml-2 border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700" href="/admin/rooms/{room.id}/screen/answers">Konfiguruj odpowiedzi rund</Button>
+									{:else}
+										<Button variant="outline" size="sm" class="ml-2 border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700" href="/admin/rooms/{room.id}/answers">Konfiguruj odpowiedzi rund</Button>
+									{/if}
+								</Table.Cell>
+								<Table.Cell>
+									<div class="flex gap-2">
+										<Button variant="outline" size="sm" class="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700" href="/admin/rooms/{room.id}">Wejdź</Button>
+
+										{#if room.type === 'screen'}
+											<Button variant="outline" size="sm" class="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700" href="/admin/rooms/{room.id}/screen/viewer" target="_blank">Otwórz</Button>
+										{/if}
+
+										<Button variant="destructive" size="sm" class="border border-red-900 bg-gray-900 text-red-400 hover:bg-gray-800" on:click={() => showDeleteConfirmation(room)}>Usuń</Button>
+									</div>
+								</Table.Cell>
+							</Table.Row>
+						{/each}
+					</Table.Body>
+				</Table.Root>
+			{/if}
 		</Card.Content>
 	</Card.Root>
 </div>
@@ -422,31 +456,19 @@
 			<DialogDescription class="text-gray-300">
 				{#if roomToDelete}
 					Czy na pewno chcesz usunąć pokój "<strong>{roomToDelete.name}</strong>"?
-					<br><br>
+					<br /><br />
 					Ta akcja jest nieodwracalna i usunie wszystkie dane związane z tym pokojem.
-					<br><br>
+					<br /><br />
 					Aby potwierdzić, wpisz <strong>DELETE</strong> w polu poniżej:
 				{/if}
 			</DialogDescription>
 		</DialogHeader>
 		<div class="py-4">
-			<Input
-				bind:value={deleteConfirmationText}
-				placeholder="Wpisz DELETE aby potwierdzić"
-				class="border-gray-700 bg-gray-800 text-gray-100"
-				disabled={deletingRoom}
-			/>
+			<Input bind:value={deleteConfirmationText} placeholder="Wpisz DELETE aby potwierdzić" class="border-gray-700 bg-gray-800 text-gray-100" disabled={deletingRoom} />
 		</div>
 		<DialogFooter>
-			<Button variant="outline" on:click={cancelDeleteRoom} disabled={deletingRoom} class="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700">
-				Anuluj
-			</Button>
-			<Button
-				variant="destructive"
-				on:click={confirmDeleteRoom}
-				disabled={deletingRoom || deleteConfirmationText !== 'DELETE'}
-				class="border border-red-900 bg-red-900 text-white hover:bg-red-800"
-			>
+			<Button variant="outline" on:click={cancelDeleteRoom} disabled={deletingRoom} class="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700">Anuluj</Button>
+			<Button variant="destructive" on:click={confirmDeleteRoom} disabled={deletingRoom || deleteConfirmationText !== 'DELETE'} class="border border-red-900 bg-red-900 text-white hover:bg-red-800">
 				{#if deletingRoom}
 					Usuwanie...
 				{:else}

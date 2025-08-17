@@ -12,6 +12,7 @@
 	import PointsConfigModal from '$lib/components/admin/PointsConfigModal.svelte';
 	import { Plus } from 'lucide-svelte';
 	import { Input } from '$lib/components/ui/input';
+	import { canModifyRoom } from '$lib/client/roomSecurity.js';
 
 	let pointsConfigModalOpen = false;
 	let takeoverModeActive = false;
@@ -51,16 +52,11 @@
 
 		try {
 			// Find the player's name
-			const player = players.find(p => p.id === playerId);
+			const player = players.find((p) => p.id === playerId);
 			if (!player) return;
 
 			// Find the player's answer in the current round
-			const { data: answers, error: answersError } = await supabase
-				.from('answers')
-				.select('id')
-				.eq('room_id', room.id)
-				.eq('round_id', selectedRoundId)
-				.eq('player_name', player.name);
+			const { data: answers, error: answersError } = await supabase.from('answers').select('id').eq('room_id', room.id).eq('round_id', selectedRoundId).eq('player_name', player.name);
 
 			if (answersError) throw answersError;
 			if (!answers || answers.length === 0) return; // No answers to update
@@ -73,10 +69,7 @@
 				if (tiebreaker !== undefined) updateData.tiebreaker_snapshot = tiebreaker;
 
 				if (Object.keys(updateData).length > 0) {
-					const { error: updateError } = await supabase
-						.from('answers')
-						.update(updateData)
-						.eq('id', answer.id);
+					const { error: updateError } = await supabase.from('answers').update(updateData).eq('id', answer.id);
 
 					if (updateError) throw updateError;
 				}
@@ -90,6 +83,9 @@
 		if (!editingPlayer || editValue === null) return;
 
 		try {
+			// Validate room ownership
+			canModifyRoom(room, user, profile);
+
 			const { error } = await supabase
 				.from('players')
 				.update({ [editType]: editValue })
@@ -141,13 +137,7 @@
 
 		// First check if this player has a quick guess answer with potential_points
 		if (quickGuessEnabled) {
-			const { data: answerData, error: answerError } = await supabase
-				.from('answers')
-				.select('potential_points')
-				.eq('room_id', room.id)
-				.eq('round_id', selectedRoundId)
-				.eq('player_name', player.name)
-				.maybeSingle();
+			const { data: answerData, error: answerError } = await supabase.from('answers').select('potential_points').eq('room_id', room.id).eq('round_id', selectedRoundId).eq('player_name', player.name).maybeSingle();
 
 			if (!answerError && answerData && answerData.potential_points !== null) {
 				// Use the potential_points from the answer
@@ -155,12 +145,7 @@
 			} else {
 				// Fall back to screen points or default points
 				if (room.type === 'screen') {
-					const { data: screenPointsData, error: screenPointsError } = await supabase
-						.from('screen_game_points')
-						.select('points_value')
-						.eq('room_id', room.id)
-						.eq('round_id', selectedRoundId)
-						.maybeSingle();
+					const { data: screenPointsData, error: screenPointsError } = await supabase.from('screen_game_points').select('points_value').eq('room_id', room.id).eq('round_id', selectedRoundId).maybeSingle();
 
 					if (!screenPointsError && screenPointsData) {
 						pointsToAdd = screenPointsData.points_value;
@@ -174,12 +159,7 @@
 		} else {
 			// Quick guess not enabled, use screen points or default points
 			if (room.type === 'screen') {
-				const { data: screenPointsData, error: screenPointsError } = await supabase
-					.from('screen_game_points')
-					.select('points_value')
-					.eq('room_id', room.id)
-					.eq('round_id', selectedRoundId)
-					.maybeSingle();
+				const { data: screenPointsData, error: screenPointsError } = await supabase.from('screen_game_points').select('points_value').eq('room_id', room.id).eq('round_id', selectedRoundId).maybeSingle();
 
 				if (!screenPointsError && screenPointsData) {
 					pointsToAdd = screenPointsData.points_value;
@@ -201,10 +181,7 @@
 			const newScore = currentPlayer.score + pointsToAdd;
 
 			// Update the player score
-			const { error } = await supabase
-				.from('players')
-				.update({ score: newScore })
-				.eq('id', playerId);
+			const { error } = await supabase.from('players').update({ score: newScore }).eq('id', playerId);
 
 			if (error) throw error;
 
@@ -213,12 +190,7 @@
 
 			// Clear potential_points from the answer if it was used
 			if (quickGuessEnabled) {
-				await supabase
-					.from('answers')
-					.update({ potential_points: null })
-					.eq('room_id', room.id)
-					.eq('round_id', selectedRoundId)
-					.eq('player_name', player.name);
+				await supabase.from('answers').update({ potential_points: null }).eq('room_id', room.id).eq('round_id', selectedRoundId).eq('player_name', player.name);
 			}
 
 			toast.success(`Dodano ${pointsToAdd} punktów dla ${player.name}`);
@@ -245,13 +217,7 @@
 
 		// First check if this player has a quick guess answer with potential_points
 		if (quickGuessEnabled) {
-			const { data: answerData, error: answerError } = await supabase
-				.from('answers')
-				.select('potential_points')
-				.eq('room_id', room.id)
-				.eq('round_id', selectedRoundId)
-				.eq('player_name', player.name)
-				.maybeSingle();
+			const { data: answerData, error: answerError } = await supabase.from('answers').select('potential_points').eq('room_id', room.id).eq('round_id', selectedRoundId).eq('player_name', player.name).maybeSingle();
 
 			if (!answerError && answerData && answerData.potential_points !== null) {
 				// Use custom penalty percentage of the potential_points from the answer
@@ -260,12 +226,7 @@
 			} else {
 				// Fall back to screen points or default points
 				if (room.type === 'screen') {
-					const { data: screenPointsData, error: screenPointsError } = await supabase
-						.from('screen_game_points')
-						.select('points_value')
-						.eq('room_id', room.id)
-						.eq('round_id', selectedRoundId)
-						.maybeSingle();
+					const { data: screenPointsData, error: screenPointsError } = await supabase.from('screen_game_points').select('points_value').eq('room_id', room.id).eq('round_id', selectedRoundId).maybeSingle();
 
 					if (!screenPointsError && screenPointsData) {
 						const penaltyPercent = room.points_config.incorrect_answer_penalty_percent || 50;
@@ -282,12 +243,7 @@
 		} else {
 			// Quick guess not enabled, use screen points or default points
 			if (room.type === 'screen') {
-				const { data: screenPointsData, error: screenPointsError } = await supabase
-					.from('screen_game_points')
-					.select('points_value')
-					.eq('room_id', room.id)
-					.eq('round_id', selectedRoundId)
-					.maybeSingle();
+				const { data: screenPointsData, error: screenPointsError } = await supabase.from('screen_game_points').select('points_value').eq('room_id', room.id).eq('round_id', selectedRoundId).maybeSingle();
 
 				if (!screenPointsError && screenPointsData) {
 					const penaltyPercent = room.points_config.incorrect_answer_penalty_percent || 50;
@@ -312,10 +268,7 @@
 			const newScore = currentPlayer.score - pointsToDeduct;
 
 			// Update the player score
-			const { error } = await supabase
-				.from('players')
-				.update({ score: newScore })
-				.eq('id', playerId);
+			const { error } = await supabase.from('players').update({ score: newScore }).eq('id', playerId);
 
 			if (error) throw error;
 
@@ -324,12 +277,7 @@
 
 			// Clear potential_points from the answer if it was used
 			if (quickGuessEnabled) {
-				await supabase
-					.from('answers')
-					.update({ potential_points: null })
-					.eq('room_id', room.id)
-					.eq('round_id', selectedRoundId)
-					.eq('player_name', player.name);
+				await supabase.from('answers').update({ potential_points: null }).eq('room_id', room.id).eq('round_id', selectedRoundId).eq('player_name', player.name);
 			}
 
 			toast.success(`Odjęto ${pointsToDeduct} punktów dla ${player.name}`);
@@ -364,10 +312,7 @@
 			const newTiebreaker = currentPlayer.tiebreaker + tiebreakerToAdd;
 
 			// Update the player tiebreaker
-			const { error } = await supabase
-				.from('players')
-				.update({ tiebreaker: newTiebreaker })
-				.eq('id', playerId);
+			const { error } = await supabase.from('players').update({ tiebreaker: newTiebreaker }).eq('id', playerId);
 
 			if (error) throw error;
 
@@ -382,7 +327,7 @@
 	}
 
 	export let data;
-	$: ({ supabase, room, players, currentAnswers, rounds, roundAnswers, currentRound, hintUsageMap } = data);
+	$: ({ supabase, room, players, currentAnswers, rounds, roundAnswers, currentRound, hintUsageMap, user, profile } = data);
 	$: quickGuessEnabled = room.quick_guess_enabled || false;
 
 	let activeTab = 'answers';
@@ -393,10 +338,7 @@
 		try {
 			const newValue = !quickGuessEnabled;
 
-			const { error } = await supabase
-				.from('rooms')
-				.update({ quick_guess_enabled: newValue })
-				.eq('id', room.id);
+			const { error } = await supabase.from('rooms').update({ quick_guess_enabled: newValue }).eq('id', room.id);
 
 			if (error) throw error;
 
@@ -444,6 +386,9 @@
 
 	async function handleNextRound() {
 		try {
+			// Validate room ownership
+			canModifyRoom(room, user, profile);
+
 			clearAllHandRaises(false);
 			// Get current round number
 			const currentRound = rounds.find((r) => r.id === selectedRoundId);
@@ -486,8 +431,11 @@
 	}
 
 	async function handlePreviousRound() {
-		clearAllHandRaises(false);
 		try {
+			// Validate room ownership
+			canModifyRoom(room, user, profile);
+
+			clearAllHandRaises(false);
 			const currentRoundNumber = rounds.find((r) => r.id === selectedRoundId)?.round_number;
 			if (!currentRoundNumber || currentRoundNumber <= 1) return;
 
@@ -707,10 +655,7 @@
 
 					// Clear potential_points if it was used
 					if (quickGuessEnabled && answer.potential_points !== null) {
-						await supabase
-							.from('answers')
-							.update({ potential_points: null })
-							.eq('id', answer.id);
+						await supabase.from('answers').update({ potential_points: null }).eq('id', answer.id);
 					}
 				}
 			}
@@ -835,10 +780,7 @@
 
 					// Clear potential_points if it was used
 					if (quickGuessEnabled && answer.potential_points !== null) {
-						await supabase
-							.from('answers')
-							.update({ potential_points: null })
-							.eq('id', answer.id);
+						await supabase.from('answers').update({ potential_points: null }).eq('id', answer.id);
 					}
 				}
 			}
@@ -895,11 +837,18 @@
 
 	async function deletePlayer(playerId) {
 		try {
+			// Validate room ownership
+			canModifyRoom(room, user, profile);
+
 			const { error } = await supabase.from('players').delete().eq('id', playerId);
 			if (error) throw error;
 			toast.success('Gracz usunięty z gry');
 		} catch (error) {
-			toast.error('Nie udało się usunąć gracza: ' + error.message);
+			if (error.message?.includes('Access denied')) {
+				toast.error('Nie masz uprawnień do usuwania graczy w tym pokoju');
+			} else {
+				toast.error('Nie udało się usunąć gracza: ' + error.message);
+			}
 		}
 	}
 
@@ -910,12 +859,7 @@
 		}
 
 		try {
-			const { error } = await supabase
-				.from('answers')
-				.delete()
-				.eq('room_id', room.id)
-				.eq('round_id', selectedRoundId)
-				.eq('player_name', playerName);
+			const { error } = await supabase.from('answers').delete().eq('room_id', room.id).eq('round_id', selectedRoundId).eq('player_name', playerName);
 
 			if (error) throw error;
 
@@ -946,6 +890,9 @@
 
 	async function toggleTakeoverMode() {
 		try {
+			// Validate room ownership
+			canModifyRoom(room, user, profile);
+
 			if (takeoverModeActive) {
 				// Deactivate takeover mode
 				const { error } = await supabase
@@ -1236,19 +1183,19 @@
 									{/if}
 									{#if currentCorrectAnswers[0].extra_fields.other}
 										<div class="text-gray-300">
-											<span class="text-gray-400">{room.enabled_fields?.field_names?.other || "Inne"}:</span>
+											<span class="text-gray-400">{room.enabled_fields?.field_names?.other || 'Inne'}:</span>
 											{currentCorrectAnswers[0].extra_fields.other}
 										</div>
 									{/if}
 									{#if currentCorrectAnswers[0].extra_fields.other2}
 										<div class="text-gray-300">
-											<span class="text-gray-400">{room.enabled_fields?.field_names?.other2 || "Inne2"}:</span>
+											<span class="text-gray-400">{room.enabled_fields?.field_names?.other2 || 'Inne2'}:</span>
 											{currentCorrectAnswers[0].extra_fields.other2}
 										</div>
 									{/if}
 									{#if currentCorrectAnswers[0].extra_fields.other3}
 										<div class="text-gray-300">
-											<span class="text-gray-400">{room.enabled_fields?.field_names?.other3 || "Inne3"}:</span>
+											<span class="text-gray-400">{room.enabled_fields?.field_names?.other3 || 'Inne3'}:</span>
 											{currentCorrectAnswers[0].extra_fields.other3}
 										</div>
 									{/if}
@@ -1306,13 +1253,13 @@
 											<Table.Head class="text-gray-300">Artysta</Table.Head>
 										{/if}
 										{#if room.enabled_fields?.other}
-											<Table.Head class="text-gray-300">{room.enabled_fields?.field_names?.other || "Inne"}</Table.Head>
+											<Table.Head class="text-gray-300">{room.enabled_fields?.field_names?.other || 'Inne'}</Table.Head>
 										{/if}
 										{#if room.enabled_fields?.other2}
-											<Table.Head class="text-gray-300">{room.enabled_fields?.field_names?.other2 || "Inne2"}</Table.Head>
+											<Table.Head class="text-gray-300">{room.enabled_fields?.field_names?.other2 || 'Inne2'}</Table.Head>
 										{/if}
 										{#if room.enabled_fields?.other3}
-											<Table.Head class="text-gray-300">{room.enabled_fields?.field_names?.other3 || "Inne3"}</Table.Head>
+											<Table.Head class="text-gray-300">{room.enabled_fields?.field_names?.other3 || 'Inne3'}</Table.Head>
 										{/if}
 										<Table.Head class="text-gray-300">Czas</Table.Head>
 										<Table.Head class="text-gray-300">Wynik</Table.Head>
@@ -1447,13 +1394,13 @@
 
 											<Table.Cell>
 												<span class="text-center text-gray-200">
-													{isCurrentRound ? (player?.score || 0) : (answer.score_snapshot !== undefined ? answer.score_snapshot : (player?.score || 0))}
+													{isCurrentRound ? player?.score || 0 : answer.score_snapshot !== undefined ? answer.score_snapshot : player?.score || 0}
 												</span>
 											</Table.Cell>
 
 											<Table.Cell>
 												<span class="text-center text-gray-200">
-													{isCurrentRound ? (player?.tiebreaker || 0) : (answer.tiebreaker_snapshot !== undefined ? answer.tiebreaker_snapshot : (player?.tiebreaker || 0))}
+													{isCurrentRound ? player?.tiebreaker || 0 : answer.tiebreaker_snapshot !== undefined ? answer.tiebreaker_snapshot : player?.tiebreaker || 0}
 												</span>
 											</Table.Cell>
 
@@ -1566,7 +1513,7 @@
 
 										{#if quickGuessEnabled}
 											<Table.Cell>
-												{@const playerAnswer = displayedAnswers.find(a => a.player_name === player.name)}
+												{@const playerAnswer = displayedAnswers.find((a) => a.player_name === player.name)}
 												{#if playerAnswer && playerAnswer.potential_points !== null}
 													<span class="rounded-md bg-amber-900/30 px-2 py-1 text-amber-400">{playerAnswer.potential_points} pkt</span>
 												{:else}
@@ -1574,8 +1521,6 @@
 												{/if}
 											</Table.Cell>
 										{/if}
-
-
 
 										<Table.Cell>
 											<div class="flex gap-2">

@@ -1,7 +1,8 @@
 // src/routes/admin/rooms/[roomId]/+page.server.js
 import { error } from '@sveltejs/kit';
+import { validateRoomOwnership } from '$lib/server/ownership.js';
 
-export const load = async ({ depends, params, locals: { supabase } }) => {
+export const load = async ({ depends, params, locals: { supabase, user, profile } }) => {
 
   // Add dependency tracking for realtime updates
   depends('room');
@@ -10,6 +11,9 @@ export const load = async ({ depends, params, locals: { supabase } }) => {
   depends('rounds');
 
   try {
+    // Validate room ownership
+    const room = await validateRoomOwnership(supabase, params.roomId, user, profile);
+
     const { data: hintUsages, error: hintUsagesError } = await supabase
       .from('hint_usages')
       .select('player_name, round_id')
@@ -25,24 +29,21 @@ export const load = async ({ depends, params, locals: { supabase } }) => {
       hintUsageMap[key] = true;
     });
 
-
-    // Fetch room data with all configurations
-    const { data: rooms, error: roomError } = await supabase
+    // Fetch full room data with all configurations
+    const { data: roomData, error: roomError } = await supabase
       .from('rooms')
       .select(`
         *,
         enabled_fields,
         points_config
       `)
-      .eq('id', params.roomId);
+      .eq('id', params.roomId)
+      .single();
 
     if (roomError) {
       console.error('Room fetch error:', roomError);
       throw error(500, { message: 'Failed to fetch room' });
     }
-    if (!rooms?.length) throw error(404, { message: 'Room not found' });
-
-    const room = rooms[0];
 
     // Fetch all rounds for this room
     const { data: rounds, error: roundError } = await supabase
@@ -195,13 +196,15 @@ export const load = async ({ depends, params, locals: { supabase } }) => {
     }, {});
 
     return {
-      room,
+      room: roomData,
       rounds,
       currentRound,
       players: players || [],
       roundAnswers,
-      currentAnswers: roundAnswers[room.current_round] || [],
-      hintUsageMap
+      currentAnswers: roundAnswers[roomData.current_round] || [],
+      hintUsageMap,
+      user,
+      profile
     };
   } catch (err) {
     console.error('Load error:', err);

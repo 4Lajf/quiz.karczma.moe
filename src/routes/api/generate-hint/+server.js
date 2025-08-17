@@ -1,13 +1,47 @@
 import { json } from '@sveltejs/kit';
 
 export async function POST({ request, locals }) {
-    const { supabase } = locals;
+    const { supabase, user, profile } = locals;
 
     try {
         const { content, roundId } = await request.json();
 
         if (!content || !roundId) {
             return json({ error: 'Missing required parameters' }, { status: 400 });
+        }
+
+        // For authenticated users, validate round ownership
+        if (user && profile) {
+            try {
+                const { validateRoundOwnership } = await import('$lib/server/ownership.js');
+                await validateRoundOwnership(supabase, roundId, user, profile);
+            } catch (error) {
+                // If ownership validation fails, continue with public access check
+                console.log('Ownership validation failed, checking public access:', error.message);
+            }
+        }
+
+        // For all users (authenticated or not), validate that round exists and belongs to an active room
+        const { data: round, error: roundError } = await supabase
+            .from('quiz_rounds')
+            .select(`
+                id,
+                rooms!quiz_rounds_room_id_fkey (
+                    id,
+                    is_active
+                )
+            `)
+            .eq('id', roundId)
+            .single();
+        console.log(round, roundError)
+        console.log(content, roundId)
+
+        if (roundError || !round) {
+            return json({ error: 'Round not found' }, { status: 404 });
+        }
+
+        if (!round.rooms.is_active) {
+            return json({ error: 'Room is not active' }, { status: 403 });
         }
 
         // Process the answer to create the hint
@@ -46,45 +80,51 @@ export async function POST({ request, locals }) {
 
         console.log(`Title length: ${nonSpaceChars}, revealing: ${charsToReveal} characters`);
 
-        // Prepare array of character positions to potentially reveal (excluding spaces)
-        const allPositions = [];
-        for (let i = 0; i < content.length; i++) {
-            if (content[i] !== ' ') {
-                allPositions.push(i);
-            }
-        }
-
-        // Randomly select positions to reveal
-        const positionsToReveal = [];
-        while (positionsToReveal.length < charsToReveal && allPositions.length > 0) {
-            const randomIndex = Math.floor(Math.random() * allPositions.length);
-            positionsToReveal.push(allPositions[randomIndex]);
-            allPositions.splice(randomIndex, 1);
-        }
+        const isAlphaNumeric = (ch) => /[A-Za-z0-9]/.test(ch);
 
         // Process each word
-        let currentPos = 0;
         for (const word of words) {
-            let hintWord = '';
-
-            for (let i = 0; i < word.length; i++) {
-                const globalPos = currentPos + i;
-                const char = word[i];
-
-                if (positionsToReveal.includes(globalPos)) {
-                    // Reveal this character
-                    hintWord += char;
-                } else if (/[a-zA-Z0-9]/.test(char)) {
-                    // Replace alphanumeric characters with underscore
-                    hintWord += '_';
-                } else {
-                    // Replace special characters with a symbol
-                    hintWord += '•';
-                }
+            if (word.length === 0) {
+                hintWords.push('');
+                continue;
             }
 
-            hintWords.push(hintWord);
-            currentPos += word.length + 1; // +1 for the space
+            // For very short words (1-2 chars), handle per-character masking
+            if (word.length <= 2) {
+                const masked = word
+                    .split('')
+                    .map((ch, idx) => {
+                        if (!isAlphaNumeric(ch)) {
+                            return '•';
+                        }
+                        return Math.random() < 0.3 ? ch : '_';
+                    })
+                    .join('');
+                hintWords.push(masked);
+                continue;
+            }
+
+            // For longer words, reveal characters based on the calculated amount
+            let revealedChars = 0;
+            const wordChars = word.split('');
+            const maskedChars = wordChars.map((char, index) => {
+                // Non-alphanumeric characters are replaced with a bullet
+                if (!isAlphaNumeric(char)) {
+                    return '•';
+                }
+
+                // Reveal alphanumeric characters probabilistically up to the cap
+                // console.log(`Revaling char ${char}`)
+                if (revealedChars < charsToReveal && Math.random() < 0.3) {
+                    revealedChars++;
+                    // console.log('passed')
+                    return char;
+                }
+                // console.log('failed')
+                return '_';
+            });
+
+            hintWords.push(maskedChars.join(''));
         }
 
         // Join words with spaces for the final hint
@@ -118,6 +158,9 @@ export async function POST({ request, locals }) {
         return json({ hint: maskedAnswer });
     } catch (error) {
         console.error('Error generating hint:', error);
+        if (error.status) {
+            return json({ error: error.body.message }, { status: error.status });
+        }
         return json({ error: error.message }, { status: 500 });
     }
 }

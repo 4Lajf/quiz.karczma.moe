@@ -1,9 +1,14 @@
 //src/routes/admin/rooms/[roomId]/screen/answers/+page.server.js
-//src/routes/admin/rooms/[roomId]/screen/answers/+page.server.js
-export const load = async ({ params, depends, locals: { supabase } }) => {
+import { error } from '@sveltejs/kit';
+import { validateRoomOwnership } from '$lib/server/ownership.js';
+
+export const load = async ({ params, depends, locals: { supabase, user, profile } }) => {
     depends('answers');
 
     try {
+        // Validate room ownership
+        await validateRoomOwnership(supabase, params.roomId, user, profile);
+
         // Fetch room data
         const { data: room, error: roomError } = await supabase
             .from('rooms')
@@ -11,7 +16,9 @@ export const load = async ({ params, depends, locals: { supabase } }) => {
             .eq('id', params.roomId)
             .single();
 
-        if (roomError) throw roomError;
+        if (roomError) {
+            throw roomError;
+        }
 
         // Verify this is a screen-type room
         if (room.type !== 'screen') {

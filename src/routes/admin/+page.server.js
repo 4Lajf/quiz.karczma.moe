@@ -2,7 +2,8 @@
 export const load = async ({ depends, locals: { supabase, user, profile } }) => {
   depends('rooms');
 
-  const { data: rooms, error } = await supabase
+  // Build query based on user role
+  let query = supabase
     .from('rooms')
     .select(`
       id,
@@ -21,6 +22,13 @@ export const load = async ({ depends, locals: { supabase, user, profile } }) => 
       )
     `)
     .order('created_at', { ascending: false });
+
+  // If user is not an admin, only show rooms they created
+  if (!profile || profile.role !== 'admin') {
+    query = query.eq('created_by', user.id);
+  }
+
+  const { data: rooms, error } = await query;
 
   return {
     rooms: rooms || [],
