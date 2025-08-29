@@ -42,9 +42,7 @@
 		}
 
 		const lowerQuery = query.toLowerCase();
-		filteredSuggestions = suggestions
-			.filter(item => item.toLowerCase().includes(lowerQuery))
-			.slice(0, 10); // Limit to 10 suggestions
+		filteredSuggestions = suggestions.filter((item) => item.toLowerCase().includes(lowerQuery)).slice(0, 10); // Limit to 10 suggestions
 	}
 
 	// Handle input changes
@@ -108,7 +106,7 @@
 
 	// Close dropdown when clicking outside
 	function handleClickOutside(event) {
-		if (inputElement && !inputElement.contains(event.target)) {
+		if (inputElement && typeof inputElement.contains === 'function' && !inputElement.contains(event.target)) {
 			showDropdown = false;
 			selectedIndex = -1;
 		}
@@ -131,17 +129,7 @@
 </script>
 
 <div class="relative w-full">
-	<Input
-		bind:this={inputElement}
-		bind:value
-		{placeholder}
-		{disabled}
-		class={cn('bg-gray-800 border-gray-700 text-white placeholder:text-gray-400', className)}
-		on:input={handleInput}
-		on:keydown={handleKeydown}
-		on:focus={handleFocus}
-		on:blur={handleBlur}
-	/>
+	<Input bind:this={inputElement} bind:value {placeholder} {disabled} class={cn('border-gray-700 bg-gray-800 text-white placeholder:text-gray-400', className)} on:input={handleInput} on:keydown={handleKeydown} on:focus={handleFocus} on:blur={handleBlur} />
 
 	{#if loading}
 		<div class="absolute right-3 top-1/2 -translate-y-1/2 transform">
@@ -150,16 +138,9 @@
 	{/if}
 
 	{#if showDropdown && filteredSuggestions.length > 0}
-		<div class="absolute z-50 w-full mt-1 bg-gray-800 border border-gray-700 rounded-md shadow-lg max-h-60 overflow-y-auto">
+		<div class="absolute z-50 mt-1 max-h-60 w-full overflow-y-auto rounded-md border border-gray-700 bg-gray-800 shadow-lg">
 			{#each filteredSuggestions as suggestion, index}
-				<button
-					type="button"
-					class={cn(
-						'w-full px-3 py-2 text-left text-white hover:bg-gray-700 focus:bg-gray-700 focus:outline-none',
-						index === selectedIndex && 'bg-gray-700'
-					)}
-					on:click={() => selectSuggestion(suggestion)}
-				>
+				<button type="button" class={cn('w-full px-3 py-2 text-left text-white hover:bg-gray-700 focus:bg-gray-700 focus:outline-none', index === selectedIndex && 'bg-gray-700')} on:click={() => selectSuggestion(suggestion)}>
 					{suggestion}
 				</button>
 			{/each}
