@@ -13,7 +13,6 @@
 		partsCount: 100,
 		pixelationLevel: 64
 	};
-	export let showMetadata = false;
 	export let showImage = true; // Control whether to show the actual image or placeholder
 	export let operatorMode = false; // Special mode for operators (hides image but keeps functionality)
 
@@ -267,7 +266,8 @@
 			showImage,
 			isLoaded,
 			mode,
-			modeSettings
+			modeSettings,
+			operatorMode
 		});
 
 		if (isRevealing) {
@@ -275,34 +275,22 @@
 			return;
 		}
 
-		// If in operator mode or no image loaded, just simulate the reveal for presenter sync
-		if (operatorMode || !isLoaded) {
-			console.log('[ImagePlayer] No image to show or not loaded, simulating reveal');
+		// In operator mode, only simulate for UI feedback (presenter controls via shortcuts)
+		if (operatorMode) {
 			isRevealing = true;
 			revealProgress = 0;
 			currentRevealIndex = 0;
+			simulateRevealProgress();
+			return;
+		}
 
-			switch (mode) {
-				case 'grid':
-					revealGrid();
-					break;
-				case 'stripes-vertical':
-				case 'stripes-horizontal':
-				case 'stripes-random':
-					revealStripes();
-					break;
-				case 'shattered':
-					revealShattered();
-					break;
-				case 'pixelated':
-					revealPixelated();
-					break;
-				default:
-					// Normal mode - instant reveal
-					console.log('[ImagePlayer] Normal mode instant reveal');
-					isRevealing = false;
-					break;
-			}
+		// If no image loaded, just simulate the reveal
+		if (!isLoaded) {
+			console.log('[ImagePlayer] No image loaded, simulating reveal');
+			isRevealing = true;
+			revealProgress = 0;
+			currentRevealIndex = 0;
+			simulateRevealProgress();
 			return;
 		}
 
@@ -333,6 +321,19 @@
 				isRevealing = false;
 				break;
 		}
+	}
+
+	function simulateRevealProgress() {
+		const totalSteps = mode === 'normal' ? 1 : 50; // Simulate 50 steps for non-normal modes
+		const interval = setInterval(() => {
+			currentRevealIndex++;
+			revealProgress = (currentRevealIndex / totalSteps) * 100;
+
+			if (currentRevealIndex >= totalSteps) {
+				isRevealing = false;
+				clearInterval(interval);
+			}
+		}, modeSettings.revealDelay || 100);
 	}
 
 	function revealGrid() {
@@ -442,19 +443,28 @@
 	}
 
 	function stopReveal() {
-		console.log('[ImagePlayer] stopReveal called', { isRevealing, revealTimeout });
+		console.log('[ImagePlayer] stopReveal called', { isRevealing, revealTimeout, operatorMode });
 		isRevealing = false;
 		if (revealTimeout) {
 			clearTimeout(revealTimeout);
 			revealTimeout = null;
 			console.log('[ImagePlayer] Cleared reveal timeout');
 		}
+
+		// In operator mode, do not propagate to presenter (presenter controls via shortcuts)
 	}
 
 	function instantReveal() {
 		console.log('[ImagePlayer] instantReveal called', { operatorMode, isLoaded, image });
-		if (operatorMode || !isLoaded) {
-			console.log('[ImagePlayer] In operator mode or not loaded, resetting');
+
+		// In operator mode, do not propagate to presenter (presenter controls via shortcuts)
+		if (operatorMode) {
+			resetReveal();
+			return;
+		}
+
+		if (!isLoaded) {
+			console.log('[ImagePlayer] Not loaded, resetting');
 			resetReveal();
 			return;
 		}
@@ -527,8 +537,8 @@
 		</CardContent>
 	</Card>
 
-	<!-- Controls -->
-	{#if isLoaded || !showImage}
+	<!-- Controls (hidden in operator mode - presenter controls via keyboard) -->
+	{#if (isLoaded || !showImage) && !operatorMode}
 		<div class="flex flex-wrap gap-2">
 			<Button on:click={startReveal} disabled={isRevealing} class="bg-green-600 text-white hover:bg-green-700">
 				{#if isRevealing}
@@ -550,98 +560,104 @@
 				Odkryj natychmiast
 			</Button>
 		</div>
+	{:else if operatorMode}
+		<div class="text-center text-sm text-gray-500 py-4">
+			Sterowanie tylko w trybie prezentera (skróty klawiszowe)
+		</div>
 
-		<!-- Mode-specific settings -->
-		{#if mode === 'grid' || mode.includes('stripes')}
-			<Card class="border-gray-700 bg-gray-800">
-				<CardContent class="p-4">
-					<div class="mb-3 flex items-center gap-2">
-						<Settings class="h-4 w-4 text-gray-400" />
-						<span class="text-sm font-medium text-gray-300">Ustawienia siatki</span>
-					</div>
-					<div class="grid grid-cols-1 gap-4 md:grid-cols-3">
-						{#if mode === 'grid'}
-							<div>
-								<label class="mb-1 block text-xs text-gray-400">Wiersze</label>
-								<input type="range" min="2" max="16" value={modeSettings.gridRows} on:input={(e) => handleModeSettingsChange({ gridRows: parseInt(e.target.value) })} class="w-full" />
-								<span class="text-xs text-gray-500">{modeSettings.gridRows}</span>
-							</div>
-						{/if}
+		<!-- Mode settings hidden in operator mode (presenter controls via keyboard) -->
+	{/if}
+
+	<!-- Mode-specific settings (hidden in operator mode) -->
+	{#if !operatorMode && (mode === 'grid' || mode.includes('stripes'))}
+		<Card class="border-gray-700 bg-gray-800">
+			<CardContent class="p-4">
+				<div class="mb-3 flex items-center gap-2">
+					<Settings class="h-4 w-4 text-gray-400" />
+					<span class="text-sm font-medium text-gray-300">Ustawienia siatki</span>
+				</div>
+				<div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+					{#if mode === 'grid'}
 						<div>
-							<label class="mb-1 block text-xs text-gray-400">Kolumny</label>
-							<input type="range" min="2" max="16" value={modeSettings.gridCols} on:input={(e) => handleModeSettingsChange({ gridCols: parseInt(e.target.value) })} class="w-full" />
-							<span class="text-xs text-gray-500">{modeSettings.gridCols}</span>
+							<label for="grid-rows" class="mb-1 block text-xs text-gray-400">Wiersze</label>
+							<input id="grid-rows" type="range" min="2" max="16" value={modeSettings.gridRows} on:input={(e) => handleModeSettingsChange({ gridRows: parseInt(e.target.value) })} class="w-full" />
+							<span class="text-xs text-gray-500">{modeSettings.gridRows}</span>
 						</div>
-						<div>
-							<label class="mb-1 block text-xs text-gray-400">Opóźnienie (ms)</label>
-							<input type="range" min="10" max="1000" value={modeSettings.revealDelay} on:input={(e) => handleModeSettingsChange({ revealDelay: parseInt(e.target.value) })} class="w-full" />
-							<span class="text-xs text-gray-500">{modeSettings.revealDelay}ms</span>
-						</div>
+					{/if}
+					<div>
+						<label for="grid-cols" class="mb-1 block text-xs text-gray-400">Kolumny</label>
+						<input id="grid-cols" type="range" min="2" max="16" value={modeSettings.gridCols} on:input={(e) => handleModeSettingsChange({ gridCols: parseInt(e.target.value) })} class="w-full" />
+						<span class="text-xs text-gray-500">{modeSettings.gridCols}</span>
 					</div>
-				</CardContent>
-			</Card>
-		{:else if mode === 'shattered'}
-			<Card class="border-gray-700 bg-gray-800">
-				<CardContent class="p-4">
-					<div class="mb-3 flex items-center gap-2">
-						<Settings class="h-4 w-4 text-gray-400" />
-						<span class="text-sm font-medium text-gray-300">Ustawienia rozbicia</span>
+					<div>
+						<label for="reveal-delay" class="mb-1 block text-xs text-gray-400">Opóźnienie (ms)</label>
+						<input id="reveal-delay" type="range" min="10" max="1000" value={modeSettings.revealDelay} on:input={(e) => handleModeSettingsChange({ revealDelay: parseInt(e.target.value) })} class="w-full" />
+						<span class="text-xs text-gray-500">{modeSettings.revealDelay}ms</span>
 					</div>
-					<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-						<div>
-							<label class="mb-1 block text-xs text-gray-400">Liczba części</label>
-							<input type="range" min="50" max="200" value={modeSettings.partsCount} on:input={(e) => handleModeSettingsChange({ partsCount: parseInt(e.target.value) })} class="w-full" />
-							<span class="text-xs text-gray-500">{modeSettings.partsCount}</span>
-						</div>
-						<div>
-							<label class="mb-1 block text-xs text-gray-400">Opóźnienie (ms)</label>
-							<input type="range" min="10" max="500" value={modeSettings.revealDelay} on:input={(e) => handleModeSettingsChange({ revealDelay: parseInt(e.target.value) })} class="w-full" />
-							<span class="text-xs text-gray-500">{modeSettings.revealDelay}ms</span>
-						</div>
+				</div>
+			</CardContent>
+		</Card>
+	{:else if !operatorMode && mode === 'shattered'}
+		<Card class="border-gray-700 bg-gray-800">
+			<CardContent class="p-4">
+				<div class="mb-3 flex items-center gap-2">
+					<Settings class="h-4 w-4 text-gray-400" />
+					<span class="text-sm font-medium text-gray-300">Ustawienia rozbicia</span>
+				</div>
+				<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+					<div>
+						<label for="parts-count" class="mb-1 block text-xs text-gray-400">Liczba części</label>
+						<input id="parts-count" type="range" min="50" max="200" value={modeSettings.partsCount} on:input={(e) => handleModeSettingsChange({ partsCount: parseInt(e.target.value) })} class="w-full" />
+						<span class="text-xs text-gray-500">{modeSettings.partsCount}</span>
 					</div>
-				</CardContent>
-			</Card>
-		{:else if mode === 'pixelated'}
-			<Card class="border-gray-700 bg-gray-800">
-				<CardContent class="p-4">
-					<div class="mb-3 flex items-center gap-2">
-						<Settings class="h-4 w-4 text-gray-400" />
-						<span class="text-sm font-medium text-gray-300">Ustawienia pixelizacji</span>
+					<div>
+						<label for="shatter-delay" class="mb-1 block text-xs text-gray-400">Opóźnienie (ms)</label>
+						<input id="shatter-delay" type="range" min="10" max="500" value={modeSettings.revealDelay} on:input={(e) => handleModeSettingsChange({ revealDelay: parseInt(e.target.value) })} class="w-full" />
+						<span class="text-xs text-gray-500">{modeSettings.revealDelay}ms</span>
 					</div>
-					<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-						<div>
-							<label class="mb-1 block text-xs text-gray-400">Poziom pixelizacji</label>
-							<select value={modeSettings.pixelationLevel} on:change={(e) => handleModeSettingsChange({ pixelationLevel: parseInt(e.target.value) })} class="w-full rounded border border-gray-600 bg-gray-700 px-2 py-1 text-white">
-								<option value="64">64 (duże pixele)</option>
-								<option value="56">56</option>
-								<option value="48">48</option>
-								<option value="40">40</option>
-								<option value="32">32</option>
-								<option value="28">28</option>
-								<option value="24">24</option>
-								<option value="20">20</option>
-								<option value="16">16</option>
-								<option value="14">14</option>
-								<option value="12">12</option>
-								<option value="10">10</option>
-								<option value="8">8</option>
-								<option value="7">7</option>
-								<option value="6">6</option>
-								<option value="5">5</option>
-								<option value="4">4</option>
-								<option value="3">3</option>
-								<option value="2">2</option>
-								<option value="1">1 (małe pixele)</option>
-							</select>
-						</div>
-						<div>
-							<label class="mb-1 block text-xs text-gray-400">Opóźnienie (ms)</label>
-							<input type="range" min="5" max="200" value={modeSettings.revealDelay} on:input={(e) => handleModeSettingsChange({ revealDelay: parseInt(e.target.value) })} class="w-full" />
-							<span class="text-xs text-gray-500">{modeSettings.revealDelay}ms</span>
-						</div>
+				</div>
+			</CardContent>
+		</Card>
+	{:else if !operatorMode && mode === 'pixelated'}
+		<Card class="border-gray-700 bg-gray-800">
+			<CardContent class="p-4">
+				<div class="mb-3 flex items-center gap-2">
+					<Settings class="h-4 w-4 text-gray-400" />
+					<span class="text-sm font-medium text-gray-300">Ustawienia pixelizacji</span>
+				</div>
+				<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+					<div>
+						<label for="pixelation-level" class="mb-1 block text-xs text-gray-400">Poziom pixelizacji</label>
+						<select id="pixelation-level" value={modeSettings.pixelationLevel} on:change={(e) => handleModeSettingsChange({ pixelationLevel: parseInt(e.target.value) })} class="w-full rounded border border-gray-600 bg-gray-700 px-2 py-1 text-white">
+							<option value="64">64 (duże pixele)</option>
+							<option value="56">56</option>
+							<option value="48">48</option>
+							<option value="40">40</option>
+							<option value="32">32</option>
+							<option value="28">28</option>
+							<option value="24">24</option>
+							<option value="20">20</option>
+							<option value="16">16</option>
+							<option value="14">14</option>
+							<option value="12">12</option>
+							<option value="10">10</option>
+							<option value="8">8</option>
+							<option value="7">7</option>
+							<option value="6">6</option>
+							<option value="5">5</option>
+							<option value="4">4</option>
+							<option value="3">3</option>
+							<option value="2">2</option>
+							<option value="1">1 (małe pixele)</option>
+						</select>
 					</div>
-				</CardContent>
-			</Card>
-		{/if}
+					<div>
+						<label for="pixel-delay" class="mb-1 block text-xs text-gray-400">Opóźnienie (ms)</label>
+						<input id="pixel-delay" type="range" min="5" max="200" value={modeSettings.revealDelay} on:input={(e) => handleModeSettingsChange({ revealDelay: parseInt(e.target.value) })} class="w-full" />
+						<span class="text-xs text-gray-500">{modeSettings.revealDelay}ms</span>
+					</div>
+				</div>
+			</CardContent>
+		</Card>
 	{/if}
 </div>

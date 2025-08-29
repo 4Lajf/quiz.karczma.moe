@@ -55,16 +55,7 @@
 		pixelationLevel: 64
 	};
 
-	// Available screen modes
-	const screenModes = [
-		{ id: 'normal', name: 'Normalna screenówka', icon: Image },
-		{ id: 'grid', name: 'Siatka', icon: Settings },
-		{ id: 'stripes-vertical', name: 'Kratka (pionowe)', icon: Settings },
-		{ id: 'stripes-horizontal', name: 'Kratka (poziome)', icon: Settings },
-		{ id: 'stripes-random', name: 'Kratka (losowe)', icon: Settings },
-		{ id: 'pixelated', name: 'Pixelowana', icon: Settings },
-		{ id: 'shattered', name: 'Rozbita', icon: Settings }
-	];
+	// Mode selection removed: presenter controls modes via keyboard shortcuts
 
 	onMount(() => {
 		// Load saved volume (if any)
@@ -248,9 +239,7 @@
 			showMetadata: false,
 			showImagePlaceholder: true,
 			guessingPhase: true,
-			imageSrc: currentImageSrc,
-			currentMode,
-			modeSettings
+			imageSrc: currentImageSrc
 		});
 
 		// Update local state and notify other tabs about metadata toggle reset
@@ -387,42 +376,11 @@
 		searchScreens();
 	}
 
-	function handleModeChange(mode) {
-		currentMode = mode;
-		// Save mode to local state
-		const state = {
-			currentScreen,
-			showMetadata,
-			currentMode,
-			modeSettings
-		};
-		localStorage.setItem('screens_local_state', JSON.stringify(state));
+	// Mode changes now handled by presenter via keyboard shortcuts
 
-		// Update presenter state
-		updatePresenterState({
-			currentMode,
-			modeSettings
-		});
+	// Mode settings now handled by presenter via keyboard shortcuts
 
-		toast.success(`Zmieniono tryb na: ${screenModes.find((m) => m.id === mode)?.name || mode}`);
-	}
-
-	function handleModeSettingsChange(settings) {
-		modeSettings = { ...modeSettings, ...settings };
-		// Save settings to local state
-		const state = {
-			currentScreen,
-			showMetadata,
-			currentMode,
-			modeSettings
-		};
-		localStorage.setItem('screens_local_state', JSON.stringify(state));
-
-		// Update presenter state
-		updatePresenterState({
-			modeSettings
-		});
-	}
+	// Reveal controls now handled by presenter via keyboard shortcuts
 
 	function previousScreen() {
 		if (!localImageFiles.length) return;
@@ -559,8 +517,8 @@
 									</div>
 								</div>
 
-								<!-- Image Player Component -->
-								<ImagePlayer bind:this={imagePlayer} src={currentImageSrc} mode={currentMode} {modeSettings} {showMetadata} operatorMode={true} on:modeSettingsChange={handleModeSettingsChange} />
+								<!-- Image Player Component (operator preview only) -->
+								<ImagePlayer bind:this={imagePlayer} src={currentImageSrc} mode={currentMode} {modeSettings} operatorMode={true} />
 							{:else}
 								<!-- Placeholder when no screen is loaded -->
 								<div class="space-y-4">
@@ -618,18 +576,7 @@
 
 							<!-- Quick actions -->
 							<div class="space-y-4">
-								<!-- Mode selection -->
-								<div class="space-y-3">
-									<p class="text-sm text-gray-400">Tryb wyświetlania:</p>
-									<div class="grid grid-cols-2 gap-2">
-										{#each screenModes as mode}
-											<Button size="sm" class={currentMode === mode.id ? 'bg-purple-600 text-white' : 'border border-gray-600 bg-gray-700 text-gray-300 hover:bg-gray-600'} on:click={() => handleModeChange(mode.id)}>
-												<svelte:component this={mode.icon} class="mr-2 h-3 w-3" />
-												{mode.name}
-											</Button>
-										{/each}
-									</div>
-								</div>
+								<!-- Mode selection removed: presenter controls modes via keyboard -->
 
 								<!-- Screen controls -->
 								<div class="space-y-3">
