@@ -67,6 +67,7 @@
 	let stateSyncInterval;
 	let lastStateUpdate = 0;
 	let showSettingsPanel = false;
+	let showHelpOverlay = false;
 
 	onMount(async () => {
 		// Check if we have a stored directory handle on startup
@@ -237,6 +238,20 @@
 		if (event.ctrlKey && event.shiftKey && (event.key === 'm' || event.key === 'M')) {
 			event.preventDefault();
 			showSettingsPanel = !showSettingsPanel;
+			return;
+		}
+
+		// Toggle help: Ctrl+/
+		if (event.ctrlKey && event.key === '/') {
+			event.preventDefault();
+			showHelpOverlay = !showHelpOverlay;
+			return;
+		}
+
+		// Close help with Escape when help is open
+		if (showHelpOverlay && event.key === 'Escape') {
+			event.preventDefault();
+			showHelpOverlay = false;
 			return;
 		}
 	}
@@ -1328,6 +1343,162 @@
 				{/if}
 
 				<div class="mt-4 text-xs text-gray-500">Skróty: Enter/Space start/stop, Esc force stop, Ctrl+R natychmiast, Ctrl+1..7 tryby, Ctrl+Shift+M ustawienia</div>
+			</div>
+		{/if}
+
+		<!-- Help Overlay -->
+		{#if showHelpOverlay}
+			<div class="fixed inset-0 z-10002 bg-black/90 flex items-center justify-center p-4" on:click={() => (showHelpOverlay = false)} on:keydown={(e) => { if (e.key === 'Escape') showHelpOverlay = false; }} role="dialog" aria-modal="true" aria-labelledby="help-title" tabindex="-1">
+				<div class="bg-gray-900 border border-gray-700 rounded-lg max-w-2xl w-full max-h-[80vh] overflow-y-auto" role="document">
+					<div class="p-6">
+						<div class="flex items-center justify-between mb-6">
+							<h2 id="help-title" class="text-2xl font-bold text-white flex items-center gap-3">
+								<kbd class="px-2 py-1 text-xs bg-gray-700 rounded">Ctrl</kbd> +
+								<kbd class="px-2 py-1 text-xs bg-gray-700 rounded">/</kbd>
+								<span>Pomoc - Skróty klawiszowe</span>
+							</h2>
+							<Button size="sm" variant="outline" class="border-gray-600 text-gray-300 hover:bg-gray-800" on:click={() => (showHelpOverlay = false)}>
+								<kbd class="px-2 py-1 text-xs bg-gray-700 rounded mr-2">Esc</kbd> Zamknij
+							</Button>
+						</div>
+
+						<div class="space-y-6">
+							<!-- Basic Controls -->
+							<div>
+								<h3 class="text-lg font-semibold text-purple-400 mb-3">Sterowanie odtwarzaniem</h3>
+								<div class="grid gap-3">
+									<div class="flex items-center justify-between p-3 bg-gray-800 rounded">
+										<div class="flex items-center gap-3">
+											<kbd class="px-2 py-1 text-xs bg-gray-700 rounded">Enter</kbd> lub
+											<kbd class="px-2 py-1 text-xs bg-gray-700 rounded">Space</kbd>
+											<span class="text-gray-300">Rozpocznij/Zatrzymaj odkrywanie</span>
+										</div>
+									</div>
+
+									<div class="flex items-center justify-between p-3 bg-gray-800 rounded">
+										<div class="flex items-center gap-3">
+											<kbd class="px-2 py-1 text-xs bg-gray-700 rounded">Esc</kbd>
+											<span class="text-gray-300">Przymusowe zatrzymanie odkrywania</span>
+										</div>
+									</div>
+
+									<div class="flex items-center justify-between p-3 bg-gray-800 rounded">
+										<div class="flex items-center gap-3">
+											<kbd class="px-2 py-1 text-xs bg-gray-700 rounded">Ctrl</kbd> +
+											<kbd class="px-2 py-1 text-xs bg-gray-700 rounded">R</kbd>
+											<span class="text-gray-300">Natychmiastowe pełne odkrycie</span>
+										</div>
+									</div>
+								</div>
+							</div>
+
+							<!-- Mode Selection -->
+							<div>
+								<h3 class="text-lg font-semibold text-blue-400 mb-3">Wybór trybu odkrywania</h3>
+								<div class="grid gap-2">
+									<div class="flex items-center justify-between p-3 bg-gray-800 rounded">
+										<div class="flex items-center gap-3">
+											<kbd class="px-2 py-1 text-xs bg-gray-700 rounded">Ctrl</kbd> +
+											<kbd class="px-2 py-1 text-xs bg-gray-700 rounded">1</kbd>
+											<span class="text-gray-300">Normalny</span>
+										</div>
+									</div>
+
+									<div class="flex items-center justify-between p-3 bg-gray-800 rounded">
+										<div class="flex items-center gap-3">
+											<kbd class="px-2 py-1 text-xs bg-gray-700 rounded">Ctrl</kbd> +
+											<kbd class="px-2 py-1 text-xs bg-gray-700 rounded">2</kbd>
+											<span class="text-gray-300">Siatka</span>
+										</div>
+									</div>
+
+									<div class="flex items-center justify-between p-3 bg-gray-800 rounded">
+										<div class="flex items-center gap-3">
+											<kbd class="px-2 py-1 text-xs bg-gray-700 rounded">Ctrl</kbd> +
+											<kbd class="px-2 py-1 text-xs bg-gray-700 rounded">3</kbd>
+											<span class="text-gray-300">Paski pionowe</span>
+										</div>
+									</div>
+
+									<div class="flex items-center justify-between p-3 bg-gray-800 rounded">
+										<div class="flex items-center gap-3">
+											<kbd class="px-2 py-1 text-xs bg-gray-700 rounded">Ctrl</kbd> +
+											<kbd class="px-2 py-1 text-xs bg-gray-700 rounded">4</kbd>
+											<span class="text-gray-300">Paski poziome</span>
+										</div>
+									</div>
+
+									<div class="flex items-center justify-between p-3 bg-gray-800 rounded">
+										<div class="flex items-center gap-3">
+											<kbd class="px-2 py-1 text-xs bg-gray-700 rounded">Ctrl</kbd> +
+											<kbd class="px-2 py-1 text-xs bg-gray-700 rounded">5</kbd>
+											<span class="text-gray-300">Paski losowe</span>
+										</div>
+									</div>
+
+									<div class="flex items-center justify-between p-3 bg-gray-800 rounded">
+										<div class="flex items-center gap-3">
+											<kbd class="px-2 py-1 text-xs bg-gray-700 rounded">Ctrl</kbd> +
+											<kbd class="px-2 py-1 text-xs bg-gray-700 rounded">6</kbd>
+											<span class="text-gray-300">Pikselizacja</span>
+										</div>
+									</div>
+
+									<div class="flex items-center justify-between p-3 bg-gray-800 rounded">
+										<div class="flex items-center gap-3">
+											<kbd class="px-2 py-1 text-xs bg-gray-700 rounded">Ctrl</kbd> +
+											<kbd class="px-2 py-1 text-xs bg-gray-700 rounded">7</kbd>
+											<span class="text-gray-300">Rozbite</span>
+										</div>
+									</div>
+								</div>
+							</div>
+
+							<!-- Settings -->
+							<div>
+								<h3 class="text-lg font-semibold text-green-400 mb-3">Ustawienia</h3>
+								<div class="grid gap-3">
+									<div class="flex items-center justify-between p-3 bg-gray-800 rounded">
+										<div class="flex items-center gap-3">
+											<kbd class="px-2 py-1 text-xs bg-gray-700 rounded">Ctrl</kbd> +
+											<kbd class="px-2 py-1 text-xs bg-gray-700 rounded">Shift</kbd> +
+											<kbd class="px-2 py-1 text-xs bg-gray-700 rounded">M</kbd>
+											<span class="text-gray-300">Pokaż/ukryj panel ustawień</span>
+										</div>
+									</div>
+								</div>
+							</div>
+
+							<!-- Help -->
+							<div>
+								<h3 class="text-lg font-semibold text-yellow-400 mb-3">Pomoc</h3>
+								<div class="grid gap-3">
+									<div class="flex items-center justify-between p-3 bg-gray-800 rounded">
+										<div class="flex items-center gap-3">
+											<kbd class="px-2 py-1 text-xs bg-gray-700 rounded">Ctrl</kbd> +
+											<kbd class="px-2 py-1 text-xs bg-gray-700 rounded">/</kbd>
+											<span class="text-gray-300">Pokaż/ukryj tę pomoc</span>
+										</div>
+									</div>
+
+									<div class="flex items-center justify-between p-3 bg-gray-800 rounded">
+										<div class="flex items-center gap-3">
+											<kbd class="px-2 py-1 text-xs bg-gray-700 rounded">Esc</kbd>
+											<span class="text-gray-300">Zamknij pomoc (gdy jest otwarta)</span>
+										</div>
+									</div>
+								</div>
+							</div>
+						</div>
+
+						<div class="mt-6 p-4 bg-gray-800 rounded-lg">
+							<p class="text-sm text-gray-400">
+								<strong>💡 Wskazówka:</strong> Wszystkie skróty klawiszowe działają tylko wtedy, gdy nie edytujesz tekstu w polach formularza.
+								Panel ustawień pozwala na dostosowanie parametrów dla każdego trybu odkrywania.
+							</p>
+						</div>
+					</div>
+				</div>
 			</div>
 		{/if}
 	</div>
