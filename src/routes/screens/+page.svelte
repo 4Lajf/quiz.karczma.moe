@@ -239,7 +239,9 @@
 			showMetadata: false,
 			showImagePlaceholder: true,
 			guessingPhase: true,
-			imageSrc: currentImageSrc
+			imageSrc: currentImageSrc,
+			currentMode,
+			modeSettings
 		});
 
 		// Update local state and notify other tabs about metadata toggle reset
