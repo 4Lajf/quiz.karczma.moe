@@ -317,13 +317,27 @@
 			showLeaderboard: false,
 			showImagePlaceholder: true,
 			guessingPhase: true,
-			imageSrc: currentImageSrc
+			imageSrc: currentImageSrc,
+			currentMode: presenterState.currentMode,
+			modeSettings: presenterState.modeSettings
 		});
 
 		// Save final state
 		saveLocalState();
 
 		console.log(`[Presenter] Loaded random screen: ${screen.title || screen.JPName || screen.FileName}`);
+	}
+
+	async function updatePresenterState(updates) {
+		try {
+			await fetch('/api/screens/presenter-state', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(updates)
+			});
+		} catch (error) {
+			console.error('[Presenter] Failed to update presenter state:', error);
+		}
 	}
 
 	function loadLocalState() {
