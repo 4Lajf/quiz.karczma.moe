@@ -5,10 +5,12 @@
 	import { Badge } from '$lib/components/ui/badge';
 	import { Play, Square, RotateCcw, Eye, EyeOff, Monitor } from 'lucide-svelte';
 	import { screenFileSystemClient } from '$lib/utils/screenFileSystemAPI.js';
+	import LeaderboardDisplay from '$lib/components/screens/LeaderboardDisplay.svelte';
 
 	let presenterState = {
 		currentScreen: null,
 		showMetadata: false,
+		showLeaderboard: false,
 		showImagePlaceholder: true,
 		guessingPhase: true,
 		imageSrc: '',
@@ -25,7 +27,7 @@
 			speedMode: 'constant',
 			minRandomSpeed: 100,
 			maxRandomSpeed: 2000,
-			customSequence: '64:2000, 56:2000, 48:2000, 40:2000, 32:2000, 28:2000, 24:2000, 20:2000, 16:2000, 14:2000, 12:2000, 10:2000, 8:2000, 7:2000, 6:2000, 5:2000, 4:2000, 3:2000, 2:2000, 1',
+			customSequence: '64:1000, 56:1000, 48:1000, 40:1000, 32:1000, 28:1000, 24:1000, 20:1000, 16:1000, 14:1000, 12:1000, 10:1000, 8:1000, 7:1000, 6:1000, 5:1000, 4:1000, 3:1000, 2:1000, 1',
 			minPoints: 25,
 			minArea: 400,
 			randomPolygons: false,
@@ -34,6 +36,10 @@
 		},
 		lastUpdated: Date.now()
 	};
+
+	// Current screen and playback state
+	let currentScreen = null;
+	let currentImageSrc = '';
 
 	// Canvas and image
 	let gameContainer;
@@ -69,7 +75,49 @@
 	let showSettingsPanel = false;
 	let showHelpOverlay = false;
 
+	// Local reactive variables for settings panel binding
+	let gridRows = presenterState.modeSettings.gridRows;
+	let gridCols = presenterState.modeSettings.gridCols;
+	let revealDelay = presenterState.modeSettings.revealDelay;
+	let stripeCount = presenterState.modeSettings.stripeCount;
+	let partsCount = presenterState.modeSettings.partsCount;
+	let pixelationLevel = presenterState.modeSettings.pixelationLevel;
+	let minPoints = presenterState.modeSettings.minPoints;
+	let customSequence = presenterState.modeSettings.customSequence;
+
+	// Reactive statements to sync local variables with presenterState
+	$: if (gridRows !== presenterState.modeSettings.gridRows) {
+		presenterState.modeSettings.gridRows = gridRows;
+	}
+	$: if (gridCols !== presenterState.modeSettings.gridCols) {
+		presenterState.modeSettings.gridCols = gridCols;
+	}
+	$: if (revealDelay !== presenterState.modeSettings.revealDelay) {
+		presenterState.modeSettings.revealDelay = revealDelay;
+	}
+	$: if (stripeCount !== presenterState.modeSettings.stripeCount) {
+		presenterState.modeSettings.stripeCount = stripeCount;
+	}
+	$: if (partsCount !== presenterState.modeSettings.partsCount) {
+		presenterState.modeSettings.partsCount = partsCount;
+	}
+	$: if (pixelationLevel !== presenterState.modeSettings.pixelationLevel) {
+		presenterState.modeSettings.pixelationLevel = pixelationLevel;
+	}
+	$: if (minPoints !== presenterState.modeSettings.minPoints) {
+		presenterState.modeSettings.minPoints = minPoints;
+	}
+	$: if (customSequence !== presenterState.modeSettings.customSequence) {
+		presenterState.modeSettings.customSequence = customSequence;
+	}
+
 	onMount(async () => {
+		// Load saved local state (including mode settings)
+		loadLocalState();
+
+		// Update display after loading settings to ensure UI reflects loaded values
+		updateDisplay();
+
 		// Check if we have a stored directory handle on startup
 		if (screenFileSystemClient.hasDirectory()) {
 			needDirectoryAccess = false;
@@ -151,19 +199,188 @@
 			} catch (error) {
 				console.error('Failed to parse storage event:', error);
 			}
+		} else if (event.key === 'screens_presenter_state') {
+			try {
+				const newState = JSON.parse(event.newValue);
+				if (newState) {
+					// Restore mode settings and presenter state from localStorage
+					if (newState.modeSettings) {
+						presenterState.modeSettings = { ...presenterState.modeSettings, ...newState.modeSettings };
+					}
+					if (newState.showMetadata !== undefined) {
+						presenterState.showMetadata = newState.showMetadata;
+					}
+					if (newState.showLeaderboard !== undefined) {
+						presenterState.showLeaderboard = newState.showLeaderboard;
+					}
+					if (newState.currentMode !== undefined) {
+						presenterState.currentMode = newState.currentMode;
+					}
+					updateDisplay();
+				}
+			} catch (error) {
+				console.error('Failed to parse presenter storage event:', error);
+			}
 		}
 	}
 
 	function handleMetadataToggle(event) {
 		if (event.detail) {
 			presenterState.showMetadata = event.detail.showMetadata;
+			saveLocalState();
 			updateDisplay();
+		}
+	}
+
+	function toggleMetadataViewer() {
+		// Toggle between screen view and metadata view (no scoreboard)
+		if (presenterState.showMetadata) {
+			// Currently showing metadata, switch back to normal screen view
+			presenterState.showMetadata = false;
+			presenterState.showLeaderboard = false; // Ensure leaderboard is also off
+			// Ensure canvas is properly set up when returning to normal view
+			if (canvas && presenterState.currentScreen) {
+				updateDisplay();
+			}
+		} else {
+			// Currently showing screen, switch to metadata view
+			presenterState.showMetadata = true;
+			presenterState.showLeaderboard = false; // Ensure leaderboard stays off
+		}
+		updateDisplay();
+		saveLocalState();
+	}
+
+	async function loadRandomScreen() {
+		try {
+			// Check if we have directory access
+			if (!screenFileSystemClient.hasDirectory()) {
+				console.warn('[Presenter] No directory access for random screen');
+				return;
+			}
+
+			// Get all available screens
+			const availableScreens = await screenFileSystemClient.getImageFiles();
+
+			if (!availableScreens || availableScreens.length === 0) {
+				console.warn('[Presenter] No screens available');
+				return;
+			}
+
+			// Select a random screen
+			const randomIndex = Math.floor(Math.random() * availableScreens.length);
+			const randomScreen = availableScreens[randomIndex];
+
+			console.log('[Presenter] Loading random screen:', randomScreen.FileName);
+
+			// Load the selected screen
+			await loadScreenForPresenter(randomScreen);
+
+		} catch (error) {
+			console.error('[Presenter] Failed to load random screen:', error);
+		}
+	}
+
+	async function loadScreenForPresenter(screen) {
+		// Step 1: First turn off metadata display to prevent leakage
+		presenterState.showMetadata = false;
+		presenterState.showLeaderboard = false;
+
+		// Save metadata off state immediately
+		const metadataOffState = {
+			currentScreen: presenterState.currentScreen,
+			showMetadata: false,
+			showLeaderboard: false
+		};
+		localStorage.setItem('screens_presenter_state', JSON.stringify(metadataOffState));
+
+		// Step 2: Wait a brief moment before loading new screen
+		await new Promise((resolve) => setTimeout(resolve, 200));
+
+		// Step 3: Now load the new screen
+		presenterState.currentScreen = screen;
+
+		// Set image source for local file
+		if (typeof window !== 'undefined') {
+			try {
+				currentImageSrc = await screenFileSystemClient.createFileURL(screen.FileName);
+			} catch (error) {
+				console.error('Error creating file URL:', error);
+				return;
+			}
+		}
+
+		// Update presenter state
+		await updatePresenterState({
+			currentScreen: screen,
+			showMetadata: false,
+			showLeaderboard: false,
+			showImagePlaceholder: true,
+			guessingPhase: true,
+			imageSrc: currentImageSrc
+		});
+
+		// Save final state
+		saveLocalState();
+
+		console.log(`[Presenter] Loaded random screen: ${screen.title || screen.JPName || screen.FileName}`);
+	}
+
+	function loadLocalState() {
+		try {
+			const savedState = localStorage.getItem('screens_presenter_state');
+			if (savedState) {
+				const state = JSON.parse(savedState);
+
+				// Restore mode settings
+				if (state.modeSettings) {
+					presenterState.modeSettings = { ...presenterState.modeSettings, ...state.modeSettings };
+
+					// Update local reactive variables for settings panel
+					gridRows = presenterState.modeSettings.gridRows;
+					gridCols = presenterState.modeSettings.gridCols;
+					revealDelay = presenterState.modeSettings.revealDelay;
+					stripeCount = presenterState.modeSettings.stripeCount;
+					partsCount = presenterState.modeSettings.partsCount;
+					pixelationLevel = presenterState.modeSettings.pixelationLevel;
+					minPoints = presenterState.modeSettings.minPoints;
+					customSequence = presenterState.modeSettings.customSequence;
+				}
+
+				// Restore other presenter state
+				if (state.showMetadata !== undefined) {
+					presenterState.showMetadata = state.showMetadata;
+				}
+				if (state.showLeaderboard !== undefined) {
+					presenterState.showLeaderboard = state.showLeaderboard;
+				}
+				if (state.currentMode !== undefined) {
+					presenterState.currentMode = state.currentMode;
+				}
+			}
+		} catch (error) {
+			console.error('Failed to load local state:', error);
+		}
+	}
+
+	function saveLocalState() {
+		try {
+			const state = {
+				modeSettings: presenterState.modeSettings,
+				showMetadata: presenterState.showMetadata,
+				showLeaderboard: presenterState.showLeaderboard,
+				currentMode: presenterState.currentMode
+			};
+			localStorage.setItem('screens_presenter_state', JSON.stringify(state));
+		} catch (error) {
+			console.error('Failed to save local state:', error);
 		}
 	}
 
 	function handleScreenChange(event) {
 		if (event.detail && event.detail.currentScreen) {
 			presenterState.currentScreen = event.detail.currentScreen;
+			saveLocalState();
 			updateDisplay();
 		}
 	}
@@ -248,6 +465,20 @@
 			return;
 		}
 
+		// Toggle metadata viewer: M
+		if (!event.ctrlKey && !event.metaKey && event.key === 'm' || event.key === 'M') {
+			event.preventDefault();
+			toggleMetadataViewer();
+			return;
+		}
+
+		// Load random screen: Ctrl + Right Arrow
+		if (event.ctrlKey && event.key === 'ArrowRight') {
+			event.preventDefault();
+			loadRandomScreen();
+			return;
+		}
+
 		// Close help with Escape when help is open
 		if (showHelpOverlay && event.key === 'Escape') {
 			event.preventDefault();
@@ -258,15 +489,18 @@
 
 	function setMode(modeId) {
 		if (presenterState.currentMode === modeId) return;
-		
+
 		// Stop any current reveals
 		stopReveal();
-		
+
 		presenterState.currentMode = modeId;
-		
+
+		// Save the mode change to localStorage
+		saveLocalState();
+
 		// Always reset game state when switching modes
 		resetGame();
-		
+
 		// Re-initialize the new mode
 		if (isImageLoaded && ctx) {
 			initializeMode();
@@ -276,9 +510,12 @@
 	function handleSettingsChange(settings) {
 		// Stop any current reveals
 		stopReveal();
-		
+
 		presenterState.modeSettings = { ...presenterState.modeSettings, ...settings };
-		
+
+		// Save settings to localStorage
+		saveLocalState();
+
 		// Reset and re-initialize
 		resetGame();
 		if (isImageLoaded && ctx) {
@@ -331,7 +568,7 @@
 		// Clear the canvas
 		if (ctx && canvas) {
 			ctx.fillStyle = '#000000';
-			ctx.fillRect(0, 0, canvas.width, canvas.height);
+			ctx.fillRect(0, 0, canvas.width || 0, canvas.height || 0);
 		}
 	}
 
@@ -385,12 +622,16 @@
 
 		image.onload = () => {
 			// Set canvas to fullscreen dimensions
-			canvas.width = window.innerWidth;
-			canvas.height = window.innerHeight;
-			ctx = canvas.getContext('2d');
-			isImageLoaded = true;
+			if (canvas) {
+				canvas.width = window.innerWidth;
+				canvas.height = window.innerHeight;
+				ctx = canvas.getContext('2d');
+				isImageLoaded = true;
+			}
 
-			console.log('[Presenter] Image loaded, canvas size:', canvas.width, 'x', canvas.height);
+			if (canvas) {
+				console.log('[Presenter] Image loaded, canvas size:', canvas.width, 'x', canvas.height);
+			}
 			console.log('[Presenter] Image size:', image.width, 'x', image.height);
 
 			if (presenterState.guessingPhase && !presenterState.showMetadata) {
@@ -452,7 +693,7 @@
 	}
 
 	function getImageScaling() {
-		if (!image) return null;
+		if (!image || !canvas) return null;
 
 		const imageAspect = image.width / image.height;
 		const screenAspect = canvas.width / canvas.height;
@@ -482,13 +723,13 @@
 	}
 
 	function drawImageFullscreen() {
-		if (!ctx || !image) return;
+		if (!ctx || !image || !canvas) return;
 
 		const scaling = getImageScaling();
 		if (!scaling) return;
 
 		ctx.fillStyle = '#000000';
-		ctx.fillRect(0, 0, canvas.width, canvas.height);
+		ctx.fillRect(0, 0, canvas.width || 0, canvas.height || 0);
 		ctx.drawImage(image, scaling.offsetX, scaling.offsetY, scaling.drawWidth, scaling.drawHeight);
 	}
 
@@ -722,7 +963,7 @@
 		// Provide fallback if sequenceStr is undefined or empty
 		if (!sequenceStr || typeof sequenceStr !== 'string') {
 			console.warn('Invalid pixelation sequence, using default');
-			sequenceStr = '64:2000, 56:2000, 48:2000, 40:2000, 32:2000, 28:2000, 24:2000, 20:2000, 16:2000, 14:2000, 12:2000, 10:2000, 8:2000, 7:2000, 6:2000, 5:2000, 4:2000, 3:2000, 2:2000, 1';
+			sequenceStr = '64:1000, 56:1000, 48:1000, 40:1000, 32:1000, 28:1000, 24:1000, 20:1000, 16:1000, 14:1000, 12:1000, 10:1000, 8:1000, 7:1000, 6:1000, 5:1000, 4:1000, 3:1000, 2:1000, 1';
 		}
 
 		const stepStrings = sequenceStr
@@ -1164,8 +1405,8 @@
 				</div>
 			</div>
 		{:else}
-			<!-- Main Image Display -->
-			{#if presenterState.currentScreen}
+			<!-- Main Image Display (only show when not in metadata or leaderboard mode) -->
+			{#if presenterState.currentScreen && !presenterState.showMetadata && !presenterState.showLeaderboard}
 				<!-- Create a container for the canvas -->
 				<div bind:this={gameContainer} class="w-full h-full relative">
 				<canvas bind:this={canvas} class="presenter-canvas"></canvas>
@@ -1190,7 +1431,7 @@
 					</div>
 				{/if}
 			{:else}
-				<!-- Placeholder when no screen is loaded -->
+				<!-- Placeholder when no screen is loaded or when showing metadata/leaderboard -->
 				<div class="fixed inset-0 flex flex-col items-center justify-center text-white">
 					<div class="text-center">
 						<h2 class="mb-4 text-3xl font-bold">Oczekiwanie na screen...</h2>
@@ -1201,37 +1442,92 @@
 			{/if}
 		{/if}
 
-		<!-- Metadata Display -->
+		<!-- Metadata/Leaderboard Display -->
 		{#if presenterState.showMetadata && presenterState.currentScreen && !needDirectoryAccess}
-				<div class="presenter-metadata">
-					<h1 class="mb-2 text-4xl font-bold text-green-400">
-						{presenterState.currentScreen.title || presenterState.currentScreen.JPName}
-					</h1>
-					{#if presenterState.currentScreen.ENName}
-						<h2 class="mb-4 text-2xl text-gray-300">
-							{presenterState.currentScreen.ENName}
-						</h2>
-					{/if}
-
-					<div class="flex flex-wrap justify-center gap-4 text-sm">
-						{#if presenterState.currentScreen.rank}
-							<Badge variant="outline" class="border-yellow-500 text-yellow-400">
-								#{presenterState.currentScreen.rank}
-							</Badge>
-						{/if}
-						{#if presenterState.currentScreen.Vintage || presenterState.currentScreen.Year}
-							<Badge variant="outline" class="border-blue-500 text-blue-400">
-								{presenterState.currentScreen.Vintage || presenterState.currentScreen.Year}
-							</Badge>
-						{/if}
-						{#if presenterState.currentScreen.season}
-							<Badge variant="outline" class="border-purple-500 text-purple-400">
-								{presenterState.currentScreen.season}
-							</Badge>
-						{/if}
+			<!-- Fullscreen Metadata Display -->
+			<div class="fixed inset-0 z-10 flex flex-col h-screen bg-black">
+				<!-- Top section with scaled screen -->
+				<div class="flex-1 flex items-center justify-center p-4">
+					<div class="relative w-full h-full max-w-5xl max-h-[60vh]">
+						<div class="absolute inset-0 bg-gradient-to-r from-purple-500/20 to-blue-500/20 rounded-2xl blur-xl"></div>
+						<div class="relative w-full h-full rounded-2xl shadow-2xl border-2 border-gray-700 overflow-hidden bg-black flex items-center justify-center">
+							{#if image && ctx}
+								<div class="w-full h-full flex items-center justify-center">
+									<canvas bind:this={canvas} class="max-w-full max-h-full object-contain rounded-lg"></canvas>
+								</div>
+							{:else}
+								<div class="w-full h-full bg-black flex items-center justify-center text-white text-xl">
+									Loading...
+								</div>
+							{/if}
+						</div>
 					</div>
 				</div>
-			{/if}
+
+				<!-- Bottom section with metadata -->
+				<div class="flex-shrink-0 p-6">
+					<div class="max-w-6xl mx-auto">
+						<div class="mb-6 space-y-4 text-center">
+							<h2 class="text-5xl font-bold text-green-400 drop-shadow-lg">{presenterState.currentScreen.title || presenterState.currentScreen.JPName}</h2>
+							<p class="text-3xl font-light text-gray-300">{presenterState.currentScreen.ENName}</p>
+						</div>
+
+						<div class="grid grid-cols-2 gap-4 text-left md:grid-cols-4 max-w-4xl mx-auto">
+							<div class="p-4 border bg-blue-900/30 rounded-xl border-blue-700/50">
+								<div class="flex items-center space-x-3">
+									<div class="text-2xl">🖼️</div>
+									<div>
+										<p class="text-xs tracking-wide text-blue-300 uppercase">Screen</p>
+										<p class="text-lg font-semibold text-white">{presenterState.currentScreen.FileName}</p>
+									</div>
+								</div>
+							</div>
+
+							{#if presenterState.currentScreen.rank}
+								<div class="p-4 border bg-yellow-900/30 rounded-xl border-yellow-700/50">
+									<div class="flex items-center space-x-3">
+										<div class="text-2xl">🏆</div>
+										<div>
+											<p class="text-xs tracking-wide text-yellow-300 uppercase">Ranking</p>
+											<p class="text-lg font-semibold text-white">#{presenterState.currentScreen.rank}</p>
+										</div>
+									</div>
+								</div>
+							{/if}
+
+							{#if presenterState.currentScreen.Vintage || presenterState.currentScreen.Year}
+								<div class="p-4 border bg-purple-900/30 rounded-xl border-purple-700/50">
+									<div class="flex items-center space-x-3">
+										<div class="text-2xl">📅</div>
+										<div>
+											<p class="text-xs tracking-wide text-purple-300 uppercase">Rok</p>
+											<p class="text-lg font-semibold text-white">{presenterState.currentScreen.Vintage || presenterState.currentScreen.Year}</p>
+										</div>
+									</div>
+								</div>
+							{/if}
+
+							{#if presenterState.currentScreen.season}
+								<div class="bg-gradient-to-r from-purple-900/30 to-blue-900/30 rounded-xl p-4 border border-purple-700/50 {presenterState.currentScreen.rank ? '' : 'col-span-2'}">
+									<div class="flex items-center space-x-3">
+										<div class="text-2xl">🌸</div>
+										<div>
+											<p class="text-xs tracking-wide text-purple-300 uppercase">Sezon</p>
+											<p class="text-lg font-semibold text-white">{presenterState.currentScreen.season}</p>
+										</div>
+									</div>
+								</div>
+							{/if}
+						</div>
+					</div>
+				</div>
+			</div>
+		{:else if presenterState.showLeaderboard && !needDirectoryAccess}
+			<!-- Fullscreen Leaderboard Display -->
+			<div class="fixed inset-0 z-10 bg-black">
+				<LeaderboardDisplay showAllDifficulties={true} limit={999} autoRefresh={true} fullscreen={true} />
+			</div>
+		{/if}
 
 		<!-- Settings Panel -->
 		{#if showSettingsPanel}
@@ -1247,18 +1543,18 @@
 					<div class="space-y-3">
 						<div>
 							<label for="presenter-grid-rows" class="mb-1 block text-xs text-gray-400">Wiersze</label>
-							<input id="presenter-grid-rows" type="range" min="2" max="16" value={presenterState.modeSettings.gridRows} on:input={(e) => handleSettingsChange({ gridRows: parseInt(e.target.value) })} class="w-full" />
-							<span class="text-xs text-gray-500">{presenterState.modeSettings.gridRows}</span>
+							<input id="presenter-grid-rows" type="range" min="2" max="16" bind:value={gridRows} on:input={(e) => handleSettingsChange({ gridRows: parseInt(e.target.value) })} class="w-full" />
+							<span class="text-xs text-gray-500">{gridRows}</span>
 </div>
 						<div>
 							<label for="presenter-grid-cols" class="mb-1 block text-xs text-gray-400">Kolumny</label>
-							<input id="presenter-grid-cols" type="range" min="2" max="16" value={presenterState.modeSettings.gridCols} on:input={(e) => handleSettingsChange({ gridCols: parseInt(e.target.value) })} class="w-full" />
-							<span class="text-xs text-gray-500">{presenterState.modeSettings.gridCols}</span>
+							<input id="presenter-grid-cols" type="range" min="2" max="16" bind:value={gridCols} on:input={(e) => handleSettingsChange({ gridCols: parseInt(e.target.value) })} class="w-full" />
+							<span class="text-xs text-gray-500">{gridCols}</span>
 						</div>
 						<div>
 							<label for="presenter-reveal-delay" class="mb-1 block text-xs text-gray-400">Opóźnienie (ms)</label>
-							<input id="presenter-reveal-delay" type="range" min="10" max="2000" value={presenterState.modeSettings.revealDelay} on:input={(e) => handleSettingsChange({ revealDelay: parseInt(e.target.value) })} class="w-full" />
-							<span class="text-xs text-gray-500">{presenterState.modeSettings.revealDelay}ms</span>
+							<input id="presenter-reveal-delay" type="range" min="10" max="2000" bind:value={revealDelay} on:input={(e) => handleSettingsChange({ revealDelay: parseInt(e.target.value) })} class="w-full" />
+							<span class="text-xs text-gray-500">{revealDelay}ms</span>
 						</div>
 						<div class="flex items-center">
 							<input id="presenter-random-reveal" type="checkbox" checked={presenterState.modeSettings.randomReveal} on:change={(e) => handleSettingsChange({ randomReveal: e.target.checked })} class="mr-2" />
@@ -1269,13 +1565,13 @@
 					<div class="space-y-3">
 						<div>
 							<label for="presenter-stripe-count" class="mb-1 block text-xs text-gray-400">Liczba pasków</label>
-							<input id="presenter-stripe-count" type="range" min="2" max="20" value={presenterState.modeSettings.stripeCount} on:input={(e) => handleSettingsChange({ stripeCount: parseInt(e.target.value) })} class="w-full" />
-							<span class="text-xs text-gray-500">{presenterState.modeSettings.stripeCount}</span>
+							<input id="presenter-stripe-count" type="range" min="2" max="20" bind:value={stripeCount} on:input={(e) => handleSettingsChange({ stripeCount: parseInt(e.target.value) })} class="w-full" />
+							<span class="text-xs text-gray-500">{stripeCount}</span>
 						</div>
 						<div>
 							<label for="presenter-reveal-delay" class="mb-1 block text-xs text-gray-400">Opóźnienie (ms)</label>
-							<input id="presenter-reveal-delay" type="range" min="10" max="2000" value={presenterState.modeSettings.revealDelay} on:input={(e) => handleSettingsChange({ revealDelay: parseInt(e.target.value) })} class="w-full" />
-							<span class="text-xs text-gray-500">{presenterState.modeSettings.revealDelay}ms</span>
+							<input id="presenter-reveal-delay" type="range" min="10" max="2000" bind:value={revealDelay} on:input={(e) => handleSettingsChange({ revealDelay: parseInt(e.target.value) })} class="w-full" />
+							<span class="text-xs text-gray-500">{revealDelay}ms</span>
 						</div>
 						<div class="flex items-center">
 							<input id="presenter-random-reveal-stripes" type="checkbox" checked={presenterState.modeSettings.randomReveal} on:change={(e) => handleSettingsChange({ randomReveal: e.target.checked })} class="mr-2" />
@@ -1297,8 +1593,8 @@
 						{#if !presenterState.modeSettings.randomPolygons}
 							<div>
 								<label for="presenter-parts-count" class="mb-1 block text-xs text-gray-400">Liczba części</label>
-								<input id="presenter-parts-count" type="range" min="20" max="150" value={presenterState.modeSettings.partsCount} on:input={(e) => handleSettingsChange({ partsCount: parseInt(e.target.value) })} class="w-full" />
-								<span class="text-xs text-gray-500">{presenterState.modeSettings.partsCount}</span>
+								<input id="presenter-parts-count" type="range" min="20" max="150" bind:value={partsCount} on:input={(e) => handleSettingsChange({ partsCount: parseInt(e.target.value) })} class="w-full" />
+								<span class="text-xs text-gray-500">{partsCount}</span>
 							</div>
 						{:else}
 							<div>
@@ -1331,13 +1627,13 @@
 					<div class="space-y-3">
 						<div>
 							<label for="presenter-custom-sequence" class="mb-1 block text-xs text-gray-400">Sekwencja pixelacji</label>
-							<textarea id="presenter-custom-sequence" value={presenterState.modeSettings.customSequence} placeholder="64:2000, 56:2000, 48:2000, 40:2000, 32:2000, 28:2000, 24:2000, 20:2000, 16:2000, 14:2000, 12:2000, 10:2000, 8:2000, 7:2000, 6:2000, 5:2000, 4:2000, 3:2000, 2:2000, 1" on:input={(e) => handleSettingsChange({ customSequence: e.target.value })} class="w-full h-20 rounded border border-gray-600 bg-gray-800 px-2 py-1 text-white text-xs"></textarea>
-							<div class="mt-1 text-[10px] text-gray-500">Domyślna: <code>64:2000, 56:2000, 48:2000, 40:2000, 32:2000, 28:2000, 24:2000, 20:2000, 16:2000, 14:2000, 12:2000, 10:2000, 8:2000, 7:2000, 6:2000, 5:2000, 4:2000, 3:2000, 2:2000, 1</code></div>
+							<textarea id="presenter-custom-sequence" bind:value={customSequence} on:input={(e) => handleSettingsChange({ customSequence: e.target.value })} class="w-full h-20 rounded border border-gray-600 bg-gray-800 px-2 py-1 text-white text-xs"></textarea>
+							<div class="mt-1 text-[10px] text-gray-500">Domyślna: <code>64:1000, 56:1000, 48:1000, 40:1000, 32:1000, 28:1000, 24:1000, 20:1000, 16:1000, 14:1000, 12:1000, 10:1000, 8:1000, 7:1000, 6:1000, 5:1000, 4:1000, 3:1000, 2:1000, 1</code></div>
 						</div>
 						<div>
 							<label for="presenter-min-points" class="mb-1 block text-xs text-gray-400">Minimalne punkty</label>
-							<input id="presenter-min-points" type="range" min="0" max="50" value={presenterState.modeSettings.minPoints} on:input={(e) => handleSettingsChange({ minPoints: parseInt(e.target.value) })} class="w-full" />
-							<span class="text-xs text-gray-500">{presenterState.modeSettings.minPoints}</span>
+							<input id="presenter-min-points" type="range" min="0" max="50" bind:value={minPoints} on:input={(e) => handleSettingsChange({ minPoints: parseInt(e.target.value) })} class="w-full" />
+							<span class="text-xs text-gray-500">{minPoints}</span>
 						</div>
 					</div>
 				{/if}
@@ -1387,6 +1683,14 @@
 											<kbd class="px-2 py-1 text-xs bg-gray-700 rounded">Ctrl</kbd> +
 											<kbd class="px-2 py-1 text-xs bg-gray-700 rounded">R</kbd>
 											<span class="text-gray-300">Natychmiastowe pełne odkrycie</span>
+										</div>
+									</div>
+
+									<div class="flex items-center justify-between p-3 bg-gray-800 rounded">
+										<div class="flex items-center gap-3">
+											<kbd class="px-2 py-1 text-xs bg-gray-700 rounded">Ctrl</kbd> +
+											<kbd class="px-2 py-1 text-xs bg-gray-700 rounded">→</kbd>
+											<span class="text-gray-300">Losowy screen</span>
 										</div>
 									</div>
 								</div>
@@ -1464,6 +1768,19 @@
 											<kbd class="px-2 py-1 text-xs bg-gray-700 rounded">Shift</kbd> +
 											<kbd class="px-2 py-1 text-xs bg-gray-700 rounded">M</kbd>
 											<span class="text-gray-300">Pokaż/ukryj panel ustawień</span>
+										</div>
+									</div>
+								</div>
+							</div>
+
+							<!-- Metadata Viewer -->
+							<div>
+								<h3 class="text-lg font-semibold text-green-400 mb-3">Przeglądarka metadanych</h3>
+								<div class="grid gap-3">
+									<div class="flex items-center justify-between p-3 bg-gray-800 rounded">
+										<div class="flex items-center gap-3">
+											<kbd class="px-2 py-1 text-xs bg-gray-700 rounded">M</kbd>
+											<span class="text-gray-300">Przełącz między metadanymi a widokiem normalnym</span>
 										</div>
 									</div>
 								</div>
