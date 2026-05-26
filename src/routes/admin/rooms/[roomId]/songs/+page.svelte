@@ -19,8 +19,6 @@
 	let batchProgress = { current: 0, total: 0, fileName: '' };
 	let batchFileInput;
 
-	const SONG_AUDIO_BUCKET = 'song-quiz-audio';
-	const MAX_DATA_URL_SONG_BYTES = 8 * 1024 * 1024;
 	const AUDIO_EXTENSIONS = new Set(['.mp3', '.wav', '.ogg', '.flac', '.m4a', '.aac', '.webm', '.opus']);
 
 	$: sortedRounds = [...rounds].sort((a, b) => a.round_number - b.round_number);
@@ -41,15 +39,6 @@
 				...updates
 			}
 		};
-	}
-
-	function fileToDataUrl(file) {
-		return new Promise((resolve, reject) => {
-			const reader = new FileReader();
-			reader.onload = () => resolve(reader.result);
-			reader.onerror = () => reject(reader.error);
-			reader.readAsDataURL(file);
-		});
 	}
 
 	function isAudioFile(file) {
@@ -98,34 +87,25 @@
 		if (batchFileInput) batchFileInput.value = '';
 	}
 
-	async function uploadAudioForRound(file, round) {
-		let audioUrl = null;
-		let audioPath = null;
-		const safeFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-		const storagePath = `${room.id}/${round.id}/${Date.now()}-${safeFileName}`;
+	async function uploadAudioForRound(file) {
+		const formData = new FormData();
+		formData.append('file', file);
 
-		try {
-			const { error: uploadError } = await supabase.storage.from(SONG_AUDIO_BUCKET).upload(storagePath, file, {
-				cacheControl: '3600',
-				upsert: true
-			});
+		const response = await fetch('/api/upload', {
+			method: 'POST',
+			body: formData
+		});
 
-			if (uploadError) throw uploadError;
+		const result = await response.json().catch(() => null);
 
-			const { data: publicUrlData } = supabase.storage.from(SONG_AUDIO_BUCKET).getPublicUrl(storagePath);
-			audioUrl = publicUrlData.publicUrl;
-			audioPath = storagePath;
-		} catch (storageError) {
-			if (file.size > MAX_DATA_URL_SONG_BYTES) {
-				throw new Error(`Nie udało się wysłać do storage (${storageError.message}). Pliki powyżej 8 MB wymagają skonfigurowanego bucketu "${SONG_AUDIO_BUCKET}".`);
-			}
-
-			audioUrl = await fileToDataUrl(file);
+		if (!response.ok || !result?.success) {
+			const message = result?.message || `HTTP ${response.status}`;
+			throw new Error(`Pixeldrain odrzucił "${file.name}": ${message}`);
 		}
 
 		return {
-			audioUrl,
-			audioPath,
+			audioUrl: result.url,
+			audioPath: result.fileId,
 			fileName: file.name,
 			contentType: file.type || 'audio/mpeg',
 			uploadedAt: new Date().toISOString()
@@ -177,8 +157,13 @@
 					fileName: file.name
 				};
 
-				nextRounds[round.id] = await uploadAudioForRound(file, round);
+				nextRounds[round.id] = await uploadAudioForRound(file);
 				importedCount++;
+
+				if (index % 5 === 4 || index === batchFiles.length - 1) {
+					const partialSettings = buildSongQuizSettings({ rounds: nextRounds });
+					await supabase.from('rooms').update({ settings: partialSettings }).eq('id', room.id);
+				}
 			}
 
 			const settings = buildSongQuizSettings({ rounds: nextRounds });
@@ -209,7 +194,7 @@
 
 			const nextRounds = {
 				...songRounds,
-				[round.id]: await uploadAudioForRound(file, round)
+				[round.id]: await uploadAudioForRound(file)
 			};
 			const settings = buildSongQuizSettings({ rounds: nextRounds });
 
@@ -317,7 +302,7 @@
 			<Card.Header>
 				<Card.Title class="text-white">Masowy import utworów</Card.Title>
 				<Card.Description class="text-gray-400">
-					Wybierz wiele plików audio naraz. Zostaną posortowane alfabetycznie i przypisane do rund 1, 2, 3 itd. Jeśli brakuje rund, zostaną utworzone automatycznie.
+					Wybierz wiele plików audio naraz. Zostaną posortowane alfabetycznie i wgrane na Pixeldrain, a następnie przypisane do rund 1, 2, 3 itd. Jeśli brakuje rund, zostaną utworzone automatycznie.
 				</Card.Description>
 			</Card.Header>
 			<Card.Content>
