@@ -1,6 +1,6 @@
 <script>
 	//src/routes/[roomId]/+page.svelte
-	import { onMount, onDestroy } from 'svelte';
+	import { onMount, onDestroy, tick } from 'svelte';
 	import * as Card from '$lib/components/ui/card';
 	import { Input } from '$lib/components/ui/input';
 	import { Button } from '$lib/components/ui/button';
@@ -8,6 +8,8 @@
 	import { invalidateAll } from '$app/navigation';
 	import Autocomplete from '$lib/components/player/Autocomplete.svelte';
 	import { nanoid } from 'nanoid';
+	import { createClockSync } from '$lib/client/clockSync.js';
+	import { SongPlayback } from '$lib/client/songPlayback.js';
 
 	let inTakeoverMode = false;
 	let handRaised = false;
@@ -22,6 +24,17 @@
 	let hintRequested = false;
 	let maskedAnswer = '';
 	let checkingHandRaiseStatus = false;
+	let earlyTakeoverMessage = '';
+	let currentSongUrl = '';
+	let currentSongRoundId = '';
+	let currentPrepareToken = '';
+	let currentPlayToken = '';
+	let songIsLoading = false;
+	let songIsReady = false;
+	let songLoadError = '';
+	const clockSync = createClockSync();
+	let songPlayback = null;
+	let songPlayChannel = null;
 
 	// Quick guess state
 	let isQuickGuessActive = false;
@@ -566,6 +579,168 @@
 		console.log(handRaiseResults);
 	}
 
+	function getSongQuizSettings() {
+		return room?.settings?.songQuiz || {};
+	}
+
+	function hasSongPlaybackStarted() {
+		const playAt = getSongQuizSettings().playAt;
+		return room.type !== 'song' || (!!playAt && getEstimatedServerNow() >= new Date(playAt).getTime());
+	}
+
+	function getActiveSong() {
+		const songQuiz = getSongQuizSettings();
+		return songQuiz.rounds?.[songQuiz.activeRoundId || room.current_round] || null;
+	}
+
+	function getEstimatedServerNow() {
+		return clockSync.serverNow();
+	}
+
+	function getLatencyAdjustedTimestamp(result) {
+		const timestamp = new Date(result.server_timestamp).getTime();
+		const roundTripLatency = result.measured_latency || 0;
+		return timestamp - roundTripLatency / 2;
+	}
+
+	function getReactionMs(result, playAtMs) {
+		if (!playAtMs) return null;
+		const clientTs = Number(result.client_timestamp);
+		if (!Number.isFinite(clientTs)) return null;
+		return clientTs - playAtMs;
+	}
+
+	async function syncServerClock(samples = 5) {
+		await clockSync.resync({ samples });
+		return clockSync.offsetMs;
+	}
+
+	function ensureSongPlayback() {
+		if (!songPlayback) {
+			songPlayback = new SongPlayback();
+		}
+		return songPlayback;
+	}
+
+	function emitReady(token) {
+		if (!token || !songPlayChannel) return;
+		try {
+			songPlayChannel.send({
+				type: 'broadcast',
+				event: 'ready',
+				payload: { token, playerName }
+			});
+		} catch (error) {
+			console.warn('Failed to emit ready ack', error);
+		}
+	}
+
+	async function preloadSong({ url, prepareToken, playToken }) {
+		const playback = ensureSongPlayback();
+		songIsLoading = true;
+		songIsReady = false;
+		songLoadError = '';
+		try {
+			await playback.load(url);
+			if (!playback.isReady()) {
+				throw new Error('Audio buffer not ready after load');
+			}
+			songIsReady = true;
+			emitReady(playToken || prepareToken);
+			return true;
+		} catch (error) {
+			console.error('Song preload failed', error);
+			songIsReady = false;
+			songLoadError = error?.message || 'Nieznany błąd ładowania utworu';
+			toast.error('Nie udało się załadować utworu. Nie możesz brać udziału w tej rundzie.');
+			return false;
+		} finally {
+			songIsLoading = false;
+		}
+	}
+
+	async function handleSongQuizSettings() {
+		if (room.type !== 'song') return;
+		const songQuiz = getSongQuizSettings();
+		const activeSong = getActiveSong();
+		if (!activeSong?.audioUrl) return;
+
+		const prepareToken = songQuiz.prepareToken || null;
+		const playToken = songQuiz.playToken || null;
+		const activeRoundId = songQuiz.activeRoundId || room.current_round || null;
+
+		const url = activeSong.audioUrl;
+
+		// (Re)load when round/prepare token changes.
+		const needsLoad = url !== currentSongUrl || (prepareToken && prepareToken !== currentPrepareToken);
+
+		if (needsLoad) {
+			currentSongUrl = url;
+			currentSongRoundId = activeRoundId;
+			currentPrepareToken = prepareToken || '';
+			currentPlayToken = '';
+			earlyTakeoverMessage = '';
+			// Sync the clock while the file decodes.
+			syncServerClock().catch(() => {});
+			const ok = await preloadSong({ url, prepareToken, playToken });
+			if (!ok) return;
+		}
+
+		// On a fresh play token, schedule playback.
+		if (playToken && playToken !== currentPlayToken) {
+			if (!songIsReady) {
+				toast.error('Utwór nie jest załadowany - nie można rozpocząć odtwarzania.');
+				return;
+			}
+			currentPlayToken = playToken;
+			await scheduleCurrentSong();
+		}
+	}
+
+	async function scheduleCurrentSong() {
+		if (room.type !== 'song') return;
+		const songQuiz = getSongQuizSettings();
+		if (!songQuiz.playAt) return;
+
+		const playback = ensureSongPlayback();
+		if (!playback.isReady()) {
+			throw new Error('Web Audio buffer not ready');
+		}
+
+		// Re-sync once just before playAt to compensate any drift since prepare.
+		await syncServerClock(3);
+		const playAtMs = new Date(songQuiz.playAt).getTime();
+		const offsetSec = (songQuiz.startOffsetMs ?? 0) / 1000;
+
+		const startedScheduling = performance.now();
+		try {
+			const result = await playback.scheduleAt({
+				playAtMs,
+				serverNowProvider: () => clockSync.serverNow(),
+				offsetSec
+			});
+
+			if (result.delayMs <= 0) {
+				toast.success('Utwór wystartował. Teraz przejęcia się liczą!');
+			} else {
+				toast.info(`Utwór wystartuje za ${(result.delayMs / 1000).toFixed(1)}s`);
+			}
+
+			console.info('Song scheduled', {
+				delayMs: result.delayMs,
+				offsetSec: result.offsetSec,
+				clockOffsetMs: clockSync.offsetMs,
+				rttMs: clockSync.lastRttMs,
+				scheduledAtPerf: startedScheduling
+			});
+		} catch (error) {
+			console.error('Failed to schedule song playback', error);
+			songLoadError = error?.message || 'Nie udało się zaplanować odtwarzania';
+			songIsReady = false;
+			toast.error('Nie udało się zaplanować odtwarzania utworu.');
+		}
+	}
+
 	async function checkHintStatus() {
 		if (!hasJoined || !playerName || !room?.current_round) return false;
 
@@ -665,11 +840,7 @@
 	async function checkAnswerStatus() {
 		if (!hasJoined || !playerName || !room?.current_round) return;
 
-		const [{ data: existingAnswer }, isHintRequested, { data: pointsData }] = await Promise.all([
-			supabase.from('answers').select('*, extra_fields, created_at').eq('room_id', room.id).eq('player_name', playerName).eq('round_id', room.current_round).maybeSingle(),
-			checkHintStatus(),
-			supabase.from('screen_game_points').select('points_value').eq('room_id', room.id).eq('round_id', room.current_round).maybeSingle()
-		]);
+		const [{ data: existingAnswer }, isHintRequested, { data: pointsData }] = await Promise.all([supabase.from('answers').select('*, extra_fields, created_at').eq('room_id', room.id).eq('player_name', playerName).eq('round_id', room.current_round).maybeSingle(), checkHintStatus(), supabase.from('screen_game_points').select('points_value').eq('room_id', room.id).eq('round_id', room.current_round).maybeSingle()]);
 
 		// Update states
 		hintRequested = isHintRequested;
@@ -716,6 +887,13 @@
 
 	function subscribeToChanges() {
 		if (channel) channel.unsubscribe();
+		if (songPlayChannel) songPlayChannel.unsubscribe();
+
+		songPlayChannel = supabase
+			.channel(`song-play:${room.id}`, {
+				config: { broadcast: { self: false, ack: false } }
+			})
+			.subscribe();
 
 		channel = supabase
 			.channel(`room:${room.id}:${playerName}`)
@@ -729,6 +907,7 @@
 				},
 				async (payload) => {
 					console.log('Room change detected:', payload);
+					room = { ...room, ...payload.new };
 					if (payload.new.current_round !== payload.old?.current_round) {
 						toast.info('Rozpoczęła się nowa runda!');
 						resetAnswerStateWithHint();
@@ -749,6 +928,15 @@
 						}
 
 						await invalidateAll();
+					}
+
+					const newSong = payload.new.settings?.songQuiz || {};
+					const oldSong = payload.old?.settings?.songQuiz || {};
+					if (newSong.prepareToken !== oldSong.prepareToken || newSong.playToken !== oldSong.playToken || newSong.activeRoundId !== oldSong.activeRoundId) {
+						await loadHandRaiseResults();
+						if (inTakeoverMode) {
+							await handleSongQuizSettings();
+						}
 					}
 				}
 			)
@@ -839,6 +1027,7 @@
 					filter: `id=eq.${room.id}`
 				},
 				(payload) => {
+					room = { ...room, ...payload.new };
 					if (payload.new.takeover_mode === false && inTakeoverMode) {
 						// Admin disabled takeover mode
 						inTakeoverMode = false;
@@ -1041,13 +1230,7 @@
 		}
 
 		// Check if an answer already exists for this round
-		const { data: existingAnswer } = await supabase
-			.from('answers')
-			.select('*, created_at')
-			.eq('room_id', room.id)
-			.eq('round_id', room.current_round)
-			.eq('player_name', playerName)
-			.maybeSingle();
+		const { data: existingAnswer } = await supabase.from('answers').select('*, created_at').eq('room_id', room.id).eq('round_id', room.current_round).eq('player_name', playerName).maybeSingle();
 
 		// If an answer exists, it means the user has already submitted or is in quick guess mode
 		if (existingAnswer) {
@@ -1060,12 +1243,7 @@
 		try {
 			// Fetch a fresh state of the points_value from screen_game_points
 			try {
-				const { data: screenPointsData, error: screenPointsError } = await supabase
-					.from('screen_game_points')
-					.select('points_value')
-					.eq('room_id', room.id)
-					.eq('round_id', room.current_round)
-					.maybeSingle();
+				const { data: screenPointsData, error: screenPointsError } = await supabase.from('screen_game_points').select('points_value').eq('room_id', room.id).eq('round_id', room.current_round).maybeSingle();
 
 				if (!screenPointsError && screenPointsData && screenPointsData.points_value !== null) {
 					// Update the current points value with the fresh data
@@ -1160,6 +1338,11 @@
 			// Continue with normal takeover mode flow
 			inTakeoverMode = true;
 			checkingHandRaiseStatus = true; // Set loading state
+			await tick();
+			ensureSongPlayback();
+			// Initial multi-sample sync while we wait for the user to settle in.
+			syncServerClock().catch(() => {});
+			await handleSongQuizSettings();
 
 			// Start monitoring latency
 			setupLatencyMonitoring();
@@ -1187,12 +1370,23 @@
 	async function raiseHand() {
 		if (handRaised) return;
 
+		// In song rooms, refuse to record a hand-raise if the audio never loaded.
+		if (room.type === 'song' && !songIsReady) {
+			toast.error('Utwór nie jest załadowany - nie możesz brać udziału.');
+			return;
+		}
+
+		const isTooEarly = !hasSongPlaybackStarted();
+
 		// Force a fresh latency measurement before submission
 		if (!measuringLatency) {
 			await measureNetworkLatency();
 		}
 
-		const clientTimestamp = Date.now();
+		// For song rooms we record click time in *server clock* so the admin can
+		// compute a real reaction-time relative to playAt. For other rooms keep
+		// the legacy behaviour (Date.now()).
+		const clientTimestamp = room.type === 'song' ? clockSync.serverNow() : Date.now();
 		handRaised = true;
 
 		try {
@@ -1213,6 +1407,11 @@
 			} else {
 				// Add this to load results after successful insert
 				await loadHandRaiseResults();
+			}
+
+			if (isTooEarly) {
+				earlyTakeoverMessage = 'Za wcześnie! To przejęcie było przed zaplanowanym startem utworu i nie liczy się do pierwszego miejsca.';
+				toast.warning('Za wcześnie - poczekaj na start utworu');
 			}
 		} catch (error) {
 			console.error('Failed to raise hand:', error);
@@ -1235,25 +1434,69 @@
 
 			if (error) throw error;
 
-			if (data && data.length > 0) {
+			let rankedData = data || [];
+			let playerHadEarlyTakeover = false;
+			const playAt = room.type === 'song' ? getSongQuizSettings().playAt : null;
+			const playAtMs = playAt ? new Date(playAt).getTime() : null;
+
+			if (room.type === 'song') {
+				if (!playAtMs) {
+					const hasEarlyRow = rankedData.some((d) => d.player_name === playerName);
+					if (hasEarlyRow) {
+						playerHadEarlyTakeover = true;
+						earlyTakeoverMessage = 'Za wcześnie! Utwór jeszcze nie został zaplanowany, więc to przejęcie nie liczy się do pierwszego miejsca.';
+					}
+					rankedData = [];
+				} else {
+					const earlyRows = rankedData.filter((d) => {
+						const reaction = getReactionMs(d, playAtMs);
+						if (reaction !== null) return reaction < 0;
+						return new Date(d.server_timestamp).getTime() < playAtMs;
+					});
+					const hasEarlyRow = earlyRows.some((d) => d.player_name === playerName);
+					playerHadEarlyTakeover = hasEarlyRow;
+					rankedData = rankedData.filter((d) => !earlyRows.includes(d));
+
+					if (hasEarlyRow && !rankedData.some((d) => d.player_name === playerName)) {
+						earlyTakeoverMessage = 'Twoje wcześniejsze przejęcie było za wcześnie i nie liczy się do pierwszego miejsca.';
+					}
+				}
+			}
+
+			const useReactionRank = room.type === 'song' && !!playAtMs;
+
+			if (rankedData.length > 0) {
+				rankedData = [...rankedData].sort((a, b) => {
+					if (useReactionRank) {
+						const reactionA = getReactionMs(a, playAtMs);
+						const reactionB = getReactionMs(b, playAtMs);
+						if (reactionA !== null && reactionB !== null) {
+							return reactionA - reactionB;
+						}
+					}
+					const adjustedDifference = getLatencyAdjustedTimestamp(a) - getLatencyAdjustedTimestamp(b);
+					if (adjustedDifference !== 0) return adjustedDifference;
+					return new Date(a.server_timestamp).getTime() - new Date(b.server_timestamp).getTime();
+				});
+
 				// Find the player's position
-				const playerIndex = data.findIndex((d) => d.player_name === playerName);
+				const playerIndex = rankedData.findIndex((d) => d.player_name === playerName);
+
+				const referenceFirst = useReactionRank ? getReactionMs(rankedData[0], playAtMs) : getLatencyAdjustedTimestamp(rankedData[0]);
 
 				if (playerIndex >= 0) {
 					const position = playerIndex + 1;
-
-					// Calculate time differences with latency correction
-					const firstTimestamp = new Date(data[0].server_timestamp).getTime();
-					const firstLatency = data[0].measured_latency || 0;
-
-					const playerTimestamp = new Date(data[playerIndex].server_timestamp).getTime();
-					const playerLatency = data[playerIndex].measured_latency || 0;
-
-					// Adjust timestamps by subtracting latency
-					const adjustedFirstTime = firstTimestamp - firstLatency;
-					const adjustedPlayerTime = playerTimestamp - playerLatency;
-
-					const timeDifferenceMs = adjustedPlayerTime - adjustedFirstTime;
+					earlyTakeoverMessage = '';
+					const playerRow = rankedData[playerIndex];
+					const playerLatency = playerRow.measured_latency || 0;
+					let timeDifferenceMs;
+					if (useReactionRank) {
+						const playerReaction = getReactionMs(playerRow, playAtMs);
+						timeDifferenceMs = playerReaction !== null && referenceFirst !== null ? playerReaction - referenceFirst : 0;
+					} else {
+						const adjustedPlayerTime = getLatencyAdjustedTimestamp(playerRow);
+						timeDifferenceMs = adjustedPlayerTime - referenceFirst;
+					}
 
 					handRaiseResults = {
 						position,
@@ -1262,16 +1505,16 @@
 					};
 				}
 
-				// Update the full leaderboard with latency-corrected times
-				const firstTimestamp = new Date(data[0].server_timestamp).getTime();
-				const firstLatency = data[0].measured_latency || 0;
-				const adjustedFirstTime = firstTimestamp - firstLatency;
-
-				playerPositions = data.map((d, index) => {
-					const timestamp = new Date(d.server_timestamp).getTime();
+				playerPositions = rankedData.map((d, index) => {
 					const latency = d.measured_latency || 0;
-					const adjustedTime = timestamp - latency;
-					const timeDifferenceMs = index === 0 ? 0 : adjustedTime - adjustedFirstTime;
+					let timeDifferenceMs;
+					if (useReactionRank) {
+						const reaction = getReactionMs(d, playAtMs);
+						timeDifferenceMs = reaction !== null && referenceFirst !== null ? reaction - referenceFirst : 0;
+					} else {
+						const adjustedTime = getLatencyAdjustedTimestamp(d);
+						timeDifferenceMs = index === 0 ? 0 : adjustedTime - referenceFirst;
+					}
 
 					return {
 						name: d.player_name,
@@ -1284,6 +1527,10 @@
 				playerPositions = [];
 				if (handRaised) {
 					handRaiseResults = null;
+				}
+				if (!playerHadEarlyTakeover && !rankedData.some((d) => d.player_name === playerName) && hasSongPlaybackStarted()) {
+					handRaised = false;
+					earlyTakeoverMessage = '';
 				}
 			}
 		} catch (error) {
@@ -1367,12 +1614,7 @@
 
 		// Fetch a fresh state of the points_value from screen_game_points
 		try {
-			const { data: screenPointsData, error: screenPointsError } = await supabase
-				.from('screen_game_points')
-				.select('points_value')
-				.eq('room_id', room.id)
-				.eq('round_id', room.current_round)
-				.maybeSingle();
+			const { data: screenPointsData, error: screenPointsError } = await supabase.from('screen_game_points').select('points_value').eq('room_id', room.id).eq('round_id', room.current_round).maybeSingle();
 
 			if (!screenPointsError && screenPointsData && screenPointsData.points_value !== null) {
 				// Update the current points value with the fresh data
@@ -1384,13 +1626,7 @@
 		}
 
 		// First check if an answer already exists for this round
-		const { data: existingAnswer } = await supabase
-			.from('answers')
-			.select('*, created_at')
-			.eq('room_id', room.id)
-			.eq('round_id', room.current_round)
-			.eq('player_name', playerName)
-			.maybeSingle();
+		const { data: existingAnswer } = await supabase.from('answers').select('*, created_at').eq('room_id', room.id).eq('round_id', room.current_round).eq('player_name', playerName).maybeSingle();
 
 		if (existingAnswer) {
 			// Check if the answer was created within the last 15 seconds
@@ -1420,7 +1656,8 @@
 
 				if (error) {
 					console.error('Error creating placeholder answer:', error);
-					if (error.code === '23505') { // Unique constraint violation
+					if (error.code === '23505') {
+						// Unique constraint violation
 						toast.error('Odpowiedź dla tej rundy została już wysłana');
 					} else {
 						toast.error('Nie udało się rozpocząć odliczania');
@@ -1472,13 +1709,7 @@
 		// that was created when the user clicked "Zgaduję!"
 
 		// Check if an answer exists
-		const { data: existingAnswer, error: fetchError } = await supabase
-			.from('answers')
-			.select('*, created_at')
-			.eq('room_id', room.id)
-			.eq('round_id', room.current_round)
-			.eq('player_name', playerName)
-			.maybeSingle();
+		const { data: existingAnswer, error: fetchError } = await supabase.from('answers').select('*, created_at').eq('room_id', room.id).eq('round_id', room.current_round).eq('player_name', playerName).maybeSingle();
 
 		if (fetchError) {
 			console.error('Error fetching answer:', fetchError);
@@ -1527,7 +1758,7 @@
 
 			// Apply regex rules to input fields
 			const processedAnswer = answer ? answer.trim() : '';
-			console.log(processedAnswer)
+			console.log(processedAnswer);
 
 			if (room.enabled_fields?.song_title && songTitle) {
 				extraFields.song_title = songTitle;
@@ -1563,7 +1794,7 @@
 						other: false,
 						other2: false,
 						other3: false
-					},
+					}
 				})
 				.eq('room_id', room.id)
 				.eq('round_id', room.current_round)
@@ -1595,8 +1826,13 @@
 	onDestroy(() => {
 		cleanupLatencyMonitoring();
 		if (channel) channel.unsubscribe();
+		if (songPlayChannel) songPlayChannel.unsubscribe();
 		if (countdownInterval) {
 			clearInterval(countdownInterval);
+		}
+		if (songPlayback) {
+			songPlayback.dispose();
+			songPlayback = null;
 		}
 	});
 
@@ -1609,11 +1845,11 @@
 
 <div class="min-h-screen bg-gray-950">
 	{#if hasJoined && teamCode}
-		<div class="fixed z-20 flex items-center gap-2 px-3 py-2 rounded-md shadow-lg left-4 top-4 bg-gray-800/90">
+		<div class="fixed left-4 top-4 z-20 flex items-center gap-2 rounded-md bg-gray-800/90 px-3 py-2 shadow-lg">
 			<span class="text-sm text-gray-300">Kod drużyny: <span class="font-mono font-bold text-cyan-400">{teamCode}</span></span>
 			<!-- svelte-ignore a11y_consider_explicit_label -->
 			<button
-				class="p-1 ml-2 text-gray-400 rounded-full hover:bg-gray-700 hover:text-white"
+				class="ml-2 rounded-full p-1 text-gray-400 hover:bg-gray-700 hover:text-white"
 				on:click={() => {
 					navigator.clipboard.writeText(teamCode);
 					toast.success('Kod skopiowany do schowka');
@@ -1623,8 +1859,8 @@
 			</button>
 		</div>
 	{/if}
-	<div class="container flex items-center justify-center max-w-2xl min-h-screen p-6 mx-auto">
-		<Card.Root class="w-full bg-gray-900 border-gray-800 shadow-xl">
+	<div class="container mx-auto flex min-h-screen max-w-2xl items-center justify-center p-6">
+		<Card.Root class="w-full border-gray-800 bg-gray-900 shadow-xl">
 			<Card.Header>
 				<Card.Title class="text-white">
 					{room.name}
@@ -1650,38 +1886,38 @@
 										teamCodeRequired = false;
 										teamCodeCorrect = true;
 									}}
-									class="flex-1 text-white bg-gray-800 border border-gray-700 hover:bg-gray-700"
+									class="flex-1 border border-gray-700 bg-gray-800 text-white hover:bg-gray-700"
 								>
 									Wróć
 								</Button>
-								<Button type="submit" disabled={loading} class="flex-1 text-white bg-blue-800 border border-gray-700 hover:bg-blue-700">
+								<Button type="submit" disabled={loading} class="flex-1 border border-gray-700 bg-blue-800 text-white hover:bg-blue-700">
 									{loading ? 'Weryfikacja...' : 'Weryfikuj'}
 								</Button>
 							</div>
 						</form>
 					{:else}
 						<form on:submit|preventDefault={joinGame} class="space-y-4">
-							<Input type="text" placeholder="Twój nick" bind:value={playerName} required disabled={loading} class="text-gray-100 bg-gray-800 border-gray-700 placeholder:text-gray-500 focus-visible:ring-1 focus-visible:ring-gray-600 focus-visible:ring-offset-0" />
-							<Button type="submit" disabled={loading} class="w-full text-white bg-gray-800 border border-gray-700 hover:bg-gray-700">
+							<Input type="text" placeholder="Twój nick" bind:value={playerName} required disabled={loading} class="border-gray-700 bg-gray-800 text-gray-100 placeholder:text-gray-500 focus-visible:ring-1 focus-visible:ring-gray-600 focus-visible:ring-offset-0" />
+							<Button type="submit" disabled={loading} class="w-full border border-gray-700 bg-gray-800 text-white hover:bg-gray-700">
 								{loading ? 'Dołączanie...' : 'Dołącz do pokoju'}
 							</Button>
 						</form>
 					{/if}
 				{:else if !hasSubmitted}
-					<div class="mb-6 overflow-hidden border border-gray-700 shadow-lg rounded-xl bg-gray-800/60">
+					<div class="mb-6 overflow-hidden rounded-xl border border-gray-700 bg-gray-800/60 shadow-lg">
 						{#if !hintRequested && room.enabled_fields?.hint_mode}
 							<div class="flex items-center justify-between p-4">
 								<div class="flex items-center gap-3">
-									<div class="flex items-center justify-center w-10 h-10 text-xl text-blue-400 rounded-full bg-gray-700/50">?</div>
+									<div class="flex h-10 w-10 items-center justify-center rounded-full bg-gray-700/50 text-xl text-blue-400">?</div>
 								</div>
-								<Button on:click={requestHint} class="text-white bg-blue-600/50 hover:bg-blue-600/70" size="sm">
+								<Button on:click={requestHint} class="bg-blue-600/50 text-white hover:bg-blue-600/70" size="sm">
 									Pokaż podpowiedź (-{room.points_config?.hint_penalty_percent || 40}% punktów)
 								</Button>
 							</div>
 						{:else if hintRequested}
 							<div class="p-4">
-								<div class="flex items-center gap-3 mb-2">
-									<div class="flex items-center justify-center w-8 h-8 text-lg text-blue-400 rounded-full bg-blue-600/30">
+								<div class="mb-2 flex items-center gap-3">
+									<div class="flex h-8 w-8 items-center justify-center rounded-full bg-blue-600/30 text-lg text-blue-400">
 										<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 											<circle cx="12" cy="12" r="10"></circle>
 											<line x1="12" y1="16" x2="12" y2="12"></line>
@@ -1690,12 +1926,12 @@
 									</div>
 									<h3 class="font-medium text-blue-400">Podpowiedź</h3>
 								</div>
-								<div class="p-3 mt-2 rounded-lg bg-gray-900/60">
+								<div class="mt-2 rounded-lg bg-gray-900/60 p-3">
 									{#if maskedAnswer}
-										<p class="font-mono text-lg tracking-tight text-center text-white">
+										<p class="text-center font-mono text-lg tracking-tight text-white">
 											<!-- Process the hint to make it more word-like -->
 											{#each maskedAnswer.split(' ') as word, i}
-												<span class="inline-block mb-1 mr-2">
+												<span class="mb-1 mr-2 inline-block">
 													{#each word.split('') as char}
 														<span class={char === '_' ? 'mx-px' : char === '•' ? 'mx-px text-blue-500' : 'mx-px font-bold text-blue-400'}>
 															{char}
@@ -1705,11 +1941,11 @@
 											{/each}
 										</p>
 									{:else}
-										<p class="font-mono text-lg text-center text-white">Ładowanie...</p>
+										<p class="text-center font-mono text-lg text-white">Ładowanie...</p>
 									{/if}
 								</div>
-								<p class="mt-2 text-xs text-center text-gray-400">
-									<span class="inline-flex items-center px-2 py-1 mx-auto font-mono text-sm text-blue-400 border border-gray-700 rounded bg-gray-800/80">
+								<p class="mt-2 text-center text-xs text-gray-400">
+									<span class="mx-auto inline-flex items-center rounded border border-gray-700 bg-gray-800/80 px-2 py-1 font-mono text-sm text-blue-400">
 										<span class="mr-1 font-bold">•</span> = Dowolny znak specjalny
 									</span>
 								</p>
@@ -1719,7 +1955,7 @@
 
 					<form on:submit|preventDefault={handleSubmit} class="space-y-4">
 						{#if isQuickGuessActive}
-							<div class="p-4 mb-4 text-center rounded-lg bg-amber-900/30">
+							<div class="mb-4 rounded-lg bg-amber-900/30 p-4 text-center">
 								<p class="mb-2 text-xl font-bold text-amber-400">Masz {countdownValue}s na odpowiedź</p>
 								<p class="mb-4 text-sm text-amber-300">Twoja odpowiedź zostanie automatycznie wysłana za {countdownValue} sekund.</p>
 								<p class="text-sm text-amber-300">Potencjalne punkty: <span class="font-bold">{lockedPointsValue}</span></p>
@@ -1738,25 +1974,25 @@
 						{/if}
 
 						{#if room.enabled_fields?.other}
-							<Input type="text" placeholder={room.enabled_fields?.field_names?.other || "Inne"} bind:value={otherAnswer} disabled={loading} class="text-gray-100 bg-gray-800 border-gray-700 placeholder:text-gray-500 focus-visible:ring-1 focus-visible:ring-gray-600 focus-visible:ring-offset-0" />
+							<Input type="text" placeholder={room.enabled_fields?.field_names?.other || 'Inne'} bind:value={otherAnswer} disabled={loading} class="border-gray-700 bg-gray-800 text-gray-100 placeholder:text-gray-500 focus-visible:ring-1 focus-visible:ring-gray-600 focus-visible:ring-offset-0" />
 						{/if}
 
 						{#if room.enabled_fields?.other2}
-							<Input type="text" placeholder={room.enabled_fields?.field_names?.other2 || "Inne2"} bind:value={other2Answer} disabled={loading} class="text-gray-100 bg-gray-800 border-gray-700 placeholder:text-gray-500 focus-visible:ring-1 focus-visible:ring-gray-600 focus-visible:ring-offset-0" />
+							<Input type="text" placeholder={room.enabled_fields?.field_names?.other2 || 'Inne2'} bind:value={other2Answer} disabled={loading} class="border-gray-700 bg-gray-800 text-gray-100 placeholder:text-gray-500 focus-visible:ring-1 focus-visible:ring-gray-600 focus-visible:ring-offset-0" />
 						{/if}
 
 						{#if room.enabled_fields?.other3}
-							<Input type="text" placeholder={room.enabled_fields?.field_names?.other3 || "Inne3"} bind:value={other3Answer} disabled={loading} class="text-gray-100 bg-gray-800 border-gray-700 placeholder:text-gray-500 focus-visible:ring-1 focus-visible:ring-gray-600 focus-visible:ring-offset-0" />
+							<Input type="text" placeholder={room.enabled_fields?.field_names?.other3 || 'Inne3'} bind:value={other3Answer} disabled={loading} class="border-gray-700 bg-gray-800 text-gray-100 placeholder:text-gray-500 focus-visible:ring-1 focus-visible:ring-gray-600 focus-visible:ring-offset-0" />
 						{/if}
 
 						{#if !isQuickGuessActive}
 							<div class="flex gap-2">
-								<Button type="submit" disabled={loading || hasSubmitted} class="flex-1 text-white bg-green-800 border-green-700 hover:bg-green-700">
+								<Button type="submit" disabled={loading || hasSubmitted} class="flex-1 border-green-700 bg-green-800 text-white hover:bg-green-700">
 									{loading ? 'Wysyłanie...' : 'Wyślij odpowiedź'}
 								</Button>
 
 								{#if room.type === 'screen' && room.quick_guess_enabled}
-									<Button type="button" on:click={startQuickGuess} disabled={loading || hasSubmitted} class="flex-1 text-white border border-amber-700 bg-amber-800 hover:bg-amber-700">
+									<Button type="button" on:click={startQuickGuess} disabled={loading || hasSubmitted} class="flex-1 border border-amber-700 bg-amber-800 text-white hover:bg-amber-700">
 										Zgaduję! ({currentPointsValue}pkt)
 									</Button>
 								{/if}
@@ -1778,24 +2014,24 @@
 						{/if}
 
 						{#if room.enabled_fields?.other}
-							<Input type="text" placeholder={room.enabled_fields?.field_names?.other || "Inne"} bind:value={otherAnswer} disabled={loading} class="text-gray-100 bg-gray-800 border-gray-700 placeholder:text-gray-500 focus-visible:ring-1 focus-visible:ring-gray-600 focus-visible:ring-offset-0" />
+							<Input type="text" placeholder={room.enabled_fields?.field_names?.other || 'Inne'} bind:value={otherAnswer} disabled={loading} class="border-gray-700 bg-gray-800 text-gray-100 placeholder:text-gray-500 focus-visible:ring-1 focus-visible:ring-gray-600 focus-visible:ring-offset-0" />
 						{/if}
 
 						{#if room.enabled_fields?.other2}
-							<Input type="text" placeholder={room.enabled_fields?.field_names?.other2 || "Inne2"} bind:value={other2Answer} disabled={loading} class="text-gray-100 bg-gray-800 border-gray-700 placeholder:text-gray-500 focus-visible:ring-1 focus-visible:ring-gray-600 focus-visible:ring-offset-0" />
+							<Input type="text" placeholder={room.enabled_fields?.field_names?.other2 || 'Inne2'} bind:value={other2Answer} disabled={loading} class="border-gray-700 bg-gray-800 text-gray-100 placeholder:text-gray-500 focus-visible:ring-1 focus-visible:ring-gray-600 focus-visible:ring-offset-0" />
 						{/if}
 
 						{#if room.enabled_fields?.other3}
-							<Input type="text" placeholder={room.enabled_fields?.field_names?.other3 || "Inne3"} bind:value={other3Answer} disabled={loading} class="text-gray-100 bg-gray-800 border-gray-700 placeholder:text-gray-500 focus-visible:ring-1 focus-visible:ring-gray-600 focus-visible:ring-offset-0" />
+							<Input type="text" placeholder={room.enabled_fields?.field_names?.other3 || 'Inne3'} bind:value={other3Answer} disabled={loading} class="border-gray-700 bg-gray-800 text-gray-100 placeholder:text-gray-500 focus-visible:ring-1 focus-visible:ring-gray-600 focus-visible:ring-offset-0" />
 						{/if}
 
 						<div class="flex gap-2">
-							<Button type="submit" disabled={loading} class="flex-1 text-white bg-green-800 border-green-700 hover:bg-green-700">
+							<Button type="submit" disabled={loading} class="flex-1 border-green-700 bg-green-800 text-white hover:bg-green-700">
 								{loading ? 'Wysyłanie...' : 'Wyślij odpowiedź'}
 							</Button>
 
 							{#if room.type === 'screen' && room.quick_guess_enabled}
-								<Button type="button" on:click={startQuickGuess} disabled={loading} class="flex-1 text-white border border-amber-700 bg-amber-800 hover:bg-amber-700">
+								<Button type="button" on:click={startQuickGuess} disabled={loading} class="flex-1 border border-amber-700 bg-amber-800 text-white hover:bg-amber-700">
 									Zgaduję! ({currentPointsValue}pkt)
 								</Button>
 							{/if}
@@ -1810,16 +2046,19 @@
 		</Card.Root>
 
 		{#if hasJoined && !inTakeoverMode}
-			<div class="fixed z-20 right-4 top-4">
-				<Button on:click={enterTakeoverMode} class="text-white bg-gray-600 border border-gray-700 hover:bg-gray-700">Tryb przejęć</Button>
+			<div class="fixed right-4 top-4 z-20">
+				<Button on:click={enterTakeoverMode} class="border border-gray-700 bg-gray-600 text-white hover:bg-gray-700">Tryb przejęć</Button>
 			</div>
 		{/if}
 
 		<!-- Takeover Mode Overlay -->
 		{#if inTakeoverMode}
 			<div class="fixed inset-0 z-50 flex flex-col items-center justify-center bg-gray-900">
-				<div class="absolute flex flex-col items-end gap-2 right-4 top-4">
-					<div class="flex items-center gap-2 p-3 bg-gray-800 rounded-lg">
+				<div class="absolute right-4 top-4 flex flex-col items-end gap-2">
+					{#if room.type === 'song' && songIsReady && !getSongQuizSettings().playAt}
+						<div class="rounded-lg bg-gray-800 px-3 py-2 text-xs text-green-300">Utwór załadowany. Czekamy na sygnał Play.</div>
+					{/if}
+					<div class="flex items-center gap-2 rounded-lg bg-gray-800 p-3">
 						<span class="text-gray-300">Twój ping:</span>
 						<span class={getLatencyColorClass(displayLatency)}>
 							{displayLatency}ms
@@ -1835,21 +2074,40 @@
 						</span>
 					</div>
 					<div class="flex gap-2">
-						<Button on:click={exitTakeoverMode} class="text-white bg-gray-800 border border-gray-700 hover:bg-gray-700">Wyjdź</Button>
-						<Button on:click={showLeaderboard} class="text-white bg-gray-800 border border-gray-700 hover:bg-gray-700">Wyniki</Button>
+						<Button on:click={exitTakeoverMode} class="border border-gray-700 bg-gray-800 text-white hover:bg-gray-700">Wyjdź</Button>
+						<Button on:click={showLeaderboard} class="border border-gray-700 bg-gray-800 text-white hover:bg-gray-700">Wyniki</Button>
 					</div>
 				</div>
 
 				{#if checkingHandRaiseStatus}
 					<!-- Show loading indicator while checking status -->
 					<div class="flex flex-col items-center justify-center">
-						<div class="w-12 h-12 mb-4 border-4 border-blue-600 rounded-full animate-spin border-t-transparent"></div>
+						<div class="mb-4 h-12 w-12 animate-spin rounded-full border-4 border-blue-600 border-t-transparent"></div>
 						<p class="text-xl text-white">Ładowanie...</p>
 					</div>
+				{:else if room.type === 'song' && songIsLoading}
+					<div class="flex flex-col items-center justify-center">
+						<div class="mb-4 h-12 w-12 animate-spin rounded-full border-4 border-amber-500 border-t-transparent"></div>
+						<p class="text-xl text-white">Ładowanie utworu...</p>
+						<p class="mt-2 text-sm text-gray-400">Czekaj, aż plik się załaduje. Klikanie się nie liczy.</p>
+					</div>
+				{:else if room.type === 'song' && songLoadError}
+					<div class="max-w-lg rounded-lg border border-red-700 bg-red-900/30 p-8 text-center">
+						<h2 class="mb-3 text-2xl font-bold text-red-300">Nie udało się załadować utworu</h2>
+						<p class="mb-2 text-base text-red-100">Twoja przeglądarka nie zdołała pobrać i zdekodować pliku audio.</p>
+						<p class="text-sm text-red-100/80">Powód: {songLoadError}</p>
+						<p class="mt-4 text-sm text-red-100/80">Nie możesz brać udziału w tej rundzie. Spróbuj odświeżyć stronę.</p>
+					</div>
 				{:else if !handRaised}
-					<button on:mousedown={raiseHand} on:touchstart|preventDefault={raiseHand} class="flex items-center justify-center w-full h-full text-4xl font-bold text-white bg-blue-600 active:bg-blue-800"> DOTKNIJ BY PODNIEŚĆ ŁAPĘ </button>
+					<button on:mousedown={raiseHand} on:touchstart|preventDefault={raiseHand} class="flex h-full w-full items-center justify-center bg-blue-600 text-4xl font-bold text-white active:bg-blue-800"> DOTKNIJ BY PODNIEŚĆ ŁAPĘ </button>
+				{:else if earlyTakeoverMessage && !handRaiseResults}
+					<div class="max-w-lg rounded-lg border border-yellow-700 bg-yellow-900/30 p-8 text-center">
+						<h2 class="mb-4 text-3xl font-bold text-yellow-300">Za wcześnie!</h2>
+						<p class="mb-6 text-xl text-yellow-100">{earlyTakeoverMessage}</p>
+						<p class="text-sm text-yellow-100/80">Gdy admin naciśnie Play, ten klik zostanie wyczyszczony i będzie można spróbować ponownie.</p>
+					</div>
 				{:else if handRaiseResults}
-					<div class="flex flex-col items-center justify-center p-8 bg-gray-800 rounded-lg">
+					<div class="flex flex-col items-center justify-center rounded-lg bg-gray-800 p-8">
 						<!-- Show player's position only if they participated -->
 						{#if playerPositions.some((p) => p.name === playerName)}
 							<h2 class="mb-4 text-3xl font-bold text-white">
@@ -1876,8 +2134,8 @@
 						{/if}
 
 						<h3 class="mb-2 text-xl font-semibold text-white">Kto był pierwszy?</h3>
-						<div class="w-full overflow-y-auto max-h-96">
-							<table class="w-full text-left transition-colors duration-300 leaderboard-table">
+						<div class="max-h-96 w-full overflow-y-auto">
+							<table class="leaderboard-table w-full text-left transition-colors duration-300">
 								<thead>
 									<tr>
 										<th class="px-4 py-2 text-gray-300">Pozycja</th>
@@ -1904,9 +2162,9 @@
 								</tbody>
 							</table>
 						</div>
-						<p class="mb-2 text-base text-center text-yellow-400">Pamiętaj by wyjść z tego ekranu<br /> przed rozpoczęciem kolejnej rundy!</p>
+						<p class="mb-2 text-center text-base text-yellow-400">Pamiętaj by wyjść z tego ekranu<br /> przed rozpoczęciem kolejnej rundy!</p>
 
-						<Button on:click={closeLeaderboardView} class="mt-6 text-white bg-gray-800 border border-gray-700 hover:bg-gray-700">Wróć</Button>
+						<Button on:click={closeLeaderboardView} class="mt-6 border border-gray-700 bg-gray-800 text-white hover:bg-gray-700">Wróć</Button>
 					</div>
 				{:else}
 					<div class="text-xl text-white">Przetwarzanie...</div>

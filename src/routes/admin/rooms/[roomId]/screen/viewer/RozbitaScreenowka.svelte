@@ -106,11 +106,7 @@
 		if (!currentRound || !room) return;
 
 		try {
-			const { count, error } = await supabase
-				.from('answers')
-				.select('*', { count: 'exact', head: true })
-				.eq('room_id', room.id)
-				.eq('round_id', currentRound.id);
+			const { count, error } = await supabase.from('answers').select('*', { count: 'exact', head: true }).eq('room_id', room.id).eq('round_id', currentRound.id);
 
 			if (error) throw error;
 
@@ -355,6 +351,12 @@
 	// Initialize image as null to avoid server-side errors
 	let image = null;
 
+	function getLatencyAdjustedTimestamp(result) {
+		const timestamp = new Date(result.server_timestamp).getTime();
+		const roundTripLatency = result.measured_latency || 0;
+		return timestamp - roundTripLatency / 2;
+	}
+
 	// Load hand raise results
 	async function loadHandRaiseResults() {
 		try {
@@ -363,14 +365,16 @@
 			if (error) throw error;
 
 			if (data && data.length > 0) {
-				const firstTimestamp = new Date(data[0].server_timestamp).getTime();
-				const firstLatency = data[0].measured_latency || 0;
-				const adjustedFirstTime = firstTimestamp - firstLatency;
+				const rankedData = [...data].sort((a, b) => {
+					const adjustedDifference = getLatencyAdjustedTimestamp(a) - getLatencyAdjustedTimestamp(b);
+					if (adjustedDifference !== 0) return adjustedDifference;
+					return new Date(a.server_timestamp).getTime() - new Date(b.server_timestamp).getTime();
+				});
+				const adjustedFirstTime = getLatencyAdjustedTimestamp(rankedData[0]);
 
-				handRaiseResults = data.map((result, index) => {
-					const timestamp = new Date(result.server_timestamp).getTime();
+				handRaiseResults = rankedData.map((result, index) => {
 					const latency = result.measured_latency || 0;
-					const adjustedTime = timestamp - latency;
+					const adjustedTime = getLatencyAdjustedTimestamp(result);
 					const timeDifferenceMs = index === 0 ? 0 : adjustedTime - adjustedFirstTime;
 
 					return {
@@ -1312,10 +1316,7 @@
 						<h4 class="mb-2 border-b border-gray-700 pb-1 text-sm font-medium uppercase tracking-wider">Szybkość animacji</h4>
 
 						{#if config.revealInBatches}
-							<div class="mb-2 p-2 rounded bg-gray-700/50 text-sm">
-								Ustawienia szybkości są nieaktywne w trybie odsłaniania w częściach.
-								Kliknij lub naciśnij spację, aby odsłonić kolejną część.
-							</div>
+							<div class="mb-2 rounded bg-gray-700/50 p-2 text-sm">Ustawienia szybkości są nieaktywne w trybie odsłaniania w częściach. Kliknij lub naciśnij spację, aby odsłonić kolejną część.</div>
 						{:else}
 							<div class="mb-2">
 								<!-- svelte-ignore a11y_label_has_associated_control -->

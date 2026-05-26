@@ -2,13 +2,13 @@
 	//src/routes/admin/rooms/[roomId]/+page.svelte
 	import { enhance } from '$app/forms';
 	import { invalidateAll, invalidate } from '$app/navigation';
-	import { onMount, onDestroy } from 'svelte';
+	import { onMount, onDestroy, tick } from 'svelte';
 	import * as Card from '$lib/components/ui/card';
 	import * as Table from '$lib/components/ui/table';
 	import * as Tabs from '$lib/components/ui/tabs';
 	import { Button } from '$lib/components/ui/button';
 	import { toast } from 'svelte-sonner';
-	import { Check, X, Circle } from 'lucide-svelte';
+	import { Check, X, Circle, Minus, Shuffle, RefreshCw } from 'lucide-svelte';
 	import PointsConfigModal from '$lib/components/admin/PointsConfigModal.svelte';
 	import { Plus } from 'lucide-svelte';
 	import { Input } from '$lib/components/ui/input';
@@ -18,6 +18,7 @@
 	let takeoverModeActive = false;
 	let quickGuessEnabled = false;
 	let handRaiseResults = [];
+	let earlyHandRaiseResults = [];
 	let lastUpdated = '';
 	let lastChangedPlayer = null;
 	let currentCorrectAnswers = [];
@@ -28,10 +29,187 @@
 	let isAddingPoints = false;
 	let minusPointsAddedForRounds = {};
 	let isAddingMinusPoints = false;
+	let isPreparingSong = false;
+	let isStartingSong = false;
+	let songReadyPlayers = new Set();
+	let songReadyToken = null;
+	let songPlayChannel = null;
 
 	$: if (selectedRoundId && selectedRoundId !== room.current_round) {
 		// Reset points added tracking when switching to a different round
 		isAddingPoints = false;
+	}
+
+	$: songQuizState = room?.settings?.songQuiz || {};
+	$: selectedRoundSong = songQuizState.rounds?.[selectedRoundId] || null;
+	$: selectedRoundIsActive = songQuizState.activeRoundId === selectedRoundId;
+	$: selectedRoundIsPrepared = selectedRoundIsActive && !!songQuizState.prepareToken && !songQuizState.playAt;
+	$: selectedRoundSongIsPlaying = selectedRoundIsActive && !!songQuizState.playAt;
+	$: activePrepareOrPlayToken = songQuizState.playToken || songQuizState.prepareToken || null;
+	$: readyCount = songReadyToken === activePrepareOrPlayToken ? songReadyPlayers.size : 0;
+	$: totalPlayerCount = Array.isArray(players) ? players.length : 0;
+
+	async function callSongPlayApi(phase, extras = {}) {
+		const response = await fetch(`/api/rooms/${room.id}/song-play`, {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify({
+				roundId: selectedRoundId,
+				phase,
+				...extras
+			})
+		});
+
+		const result = await response.json();
+		if (!response.ok) {
+			throw new Error(result.message || 'Nie udało się wysłać żądania');
+		}
+		return result;
+	}
+
+	const SAMPLE_LABELS = {
+		first: 'Pierwsze 20s',
+		mid: 'Środek',
+		last: 'Ostatnie 20s'
+	};
+
+	function fetchSongDuration(url) {
+		return new Promise((resolve, reject) => {
+			const audio = new Audio();
+			audio.preload = 'metadata';
+			audio.src = url;
+			audio.onloadedmetadata = () => {
+				if (Number.isFinite(audio.duration) && audio.duration > 0) {
+					resolve(audio.duration);
+				} else {
+					reject(new Error('Nieznana długość pliku audio'));
+				}
+			};
+			audio.onerror = () => reject(new Error('Nie udało się odczytać metadanych audio'));
+		});
+	}
+
+	// Pick a random start offset (in seconds) for the requested sample type.
+	// Constraint: at least 20s of audio must remain after the start point.
+	function pickSampleOffsetSec(durationSec, sampleType) {
+		if (!Number.isFinite(durationSec) || durationSec <= 0) return 0;
+		const minRemaining = 20;
+		const maxStart = Math.max(0, durationSec - minRemaining);
+		if (maxStart <= 0) return 0;
+
+		if (sampleType === 'first') {
+			return Math.random() * Math.min(20, maxStart);
+		}
+		if (sampleType === 'last') {
+			// Pick a start in the last 20-second window that still leaves
+			// 20 seconds of audio remaining: [duration-40, duration-20].
+			const lower = Math.max(0, durationSec - 40);
+			const upper = maxStart;
+			if (upper <= lower) return lower;
+			return lower + Math.random() * (upper - lower);
+		}
+		if (sampleType === 'mid') {
+			// Anchor a 20-second-wide window around the middle, clamped so we
+			// never start in the first/last 20s and always leave 20s remaining.
+			const center = durationSec / 2;
+			const lower = Math.max(20, center - 10);
+			const upper = Math.min(maxStart, center + 10);
+			if (upper <= lower) return Math.min(maxStart, Math.max(0, center));
+			return lower + Math.random() * (upper - lower);
+		}
+		return 0;
+	}
+
+	async function prepareSampleForCurrentRound(sampleType) {
+		if (room.type !== 'song' || !selectedRoundSong) return;
+		isPreparingSong = true;
+		try {
+			canModifyRoom(room, user, profile);
+
+			let resolvedSample = sampleType;
+			if (sampleType === 'random') {
+				const choices = ['first', 'mid', 'last'];
+				resolvedSample = choices[Math.floor(Math.random() * choices.length)];
+			}
+
+			const duration = await fetchSongDuration(selectedRoundSong.audioUrl);
+			const offsetSec = pickSampleOffsetSec(duration, resolvedSample);
+			const offsetMs = Math.round(offsetSec * 1000);
+
+			const result = await callSongPlayApi('prepare', {
+				startOffsetMs: offsetMs,
+				sampleType: resolvedSample
+			});
+			room = { ...room, settings: result.settings };
+			songReadyPlayers = new Set();
+			songReadyToken = result.prepareToken;
+			await loadHandRaiseResults();
+			toast.success(`Sample: ${SAMPLE_LABELS[resolvedSample]} (start ${offsetSec.toFixed(1)}s).`);
+		} catch (error) {
+			toast.error('Nie udało się przygotować utworu: ' + error.message);
+		} finally {
+			isPreparingSong = false;
+		}
+	}
+
+	async function forceReloadSong() {
+		if (room.type !== 'song' || !selectedRoundSong) return;
+		isPreparingSong = true;
+		try {
+			canModifyRoom(room, user, profile);
+			// Re-prepare with the same offset; the bumped prepareToken will force
+			// every connected client to discard its decoded buffer and refetch.
+			const result = await callSongPlayApi('prepare');
+			room = { ...room, settings: result.settings };
+			songReadyPlayers = new Set();
+			songReadyToken = result.prepareToken;
+			await loadHandRaiseResults();
+			toast.success('Wymuszono ponowne pobranie utworu u graczy.');
+		} catch (error) {
+			toast.error('Nie udało się wymusić odświeżenia: ' + error.message);
+		} finally {
+			isPreparingSong = false;
+		}
+	}
+
+	async function prepareSelectedSong() {
+		// Default to a random sample so the auto-prepare path always picks one.
+		await prepareSampleForCurrentRound('random');
+	}
+
+	async function playSelectedSong() {
+		if (room.type !== 'song' || !selectedRoundSong) return;
+		isStartingSong = true;
+		try {
+			canModifyRoom(room, user, profile);
+			const result = await callSongPlayApi('play');
+			room = { ...room, settings: result.settings };
+			songReadyToken = result.playToken;
+			await loadHandRaiseResults();
+			toast.success(`Utwór wystartuje za ${(result.playDelayMs / 1000).toFixed(1)}s. Wcześniejsze przejęcia nie liczą się.`);
+		} catch (error) {
+			toast.error('Nie udało się uruchomić utworu: ' + error.message);
+		} finally {
+			isStartingSong = false;
+		}
+	}
+
+	function getLatencyAdjustedTimestamp(result) {
+		const timestamp = new Date(result.server_timestamp).getTime();
+		const roundTripLatency = result.measured_latency || 0;
+		return timestamp - roundTripLatency / 2;
+	}
+
+	// For song rooms, the player records `client_timestamp` as the click time
+	// expressed in *server clock* (Date.now() + clock offset). That gives us a
+	// real reaction time relative to playAt.
+	function getReactionMs(result, playAtMs) {
+		if (!playAtMs) return null;
+		const clientTs = Number(result.client_timestamp);
+		if (!Number.isFinite(clientTs)) return null;
+		return clientTs - playAtMs;
 	}
 
 	function startEditing(player, type) {
@@ -76,6 +254,41 @@
 			}
 		} catch (error) {
 			console.error('Failed to update answer snapshots:', error);
+		}
+	}
+
+	function buildAnswerSnapshotUpdates(updatedPlayersByName, potentialPointAnswerIds = new Set()) {
+		return displayedAnswers
+			.map((answer) => {
+				const playerUpdate = updatedPlayersByName.get(answer.player_name);
+				if (!playerUpdate && !potentialPointAnswerIds.has(answer.id)) return null;
+
+				const updateData = { id: answer.id };
+
+				if (playerUpdate?.score !== undefined) updateData.score_snapshot = playerUpdate.score;
+				if (playerUpdate?.tiebreaker !== undefined) updateData.tiebreaker_snapshot = playerUpdate.tiebreaker;
+				if (potentialPointAnswerIds.has(answer.id)) updateData.potential_points = null;
+
+				return updateData;
+			})
+			.filter(Boolean);
+	}
+
+	async function applyBatchPointUpdates(playerUpdates, answerUpdates) {
+		const writes = [];
+
+		if (playerUpdates.length > 0) {
+			writes.push(supabase.from('players').upsert(playerUpdates, { onConflict: 'id', defaultToNull: false }));
+		}
+
+		if (answerUpdates.length > 0) {
+			writes.push(supabase.from('answers').upsert(answerUpdates, { onConflict: 'id', defaultToNull: false }));
+		}
+
+		const results = await Promise.all(writes);
+		const failedWrite = results.find((result) => result.error);
+		if (failedWrite) {
+			throw failedWrite.error;
 		}
 	}
 
@@ -425,8 +638,24 @@
 				selectedRoundId = newRound.id;
 				toast.success(`Utworzono i przesunięto do rundy ${nextRoundNumber}`);
 			}
+
+			await autoPrepareSongForSelectedRound();
 		} catch (error) {
 			toast.error(error.message);
+		}
+	}
+
+	// Automatically fire "Przygotuj utwór" when switching rounds in song rooms,
+	// so clients start preloading without an extra admin click.
+	async function autoPrepareSongForSelectedRound() {
+		if (room.type !== 'song') return;
+		// Wait for reactive `selectedRoundSong` to recompute against the new selectedRoundId.
+		await tick();
+		if (!selectedRoundSong?.audioUrl) return;
+		try {
+			await prepareSelectedSong();
+		} catch (error) {
+			console.warn('Auto-prepare failed:', error);
 		}
 	}
 
@@ -574,8 +803,12 @@
 				}
 			}
 
+			const playersByName = new Map(players.map((player) => [player.name, player]));
+			const updatedPlayersByName = new Map();
+			const potentialPointAnswerIds = new Set();
+
 			for (const answer of displayedAnswers) {
-				const player = players.find((p) => p.name === answer.player_name);
+				const player = playersByName.get(answer.player_name);
 				if (!player) continue;
 
 				let points = 0;
@@ -637,28 +870,26 @@
 					points = Math.ceil(points * 100) / 100;
 
 					// Calculate new values
-					const newScore = player.score + points;
-					const newTiebreaker = player.tiebreaker + tiebreaker;
+					const currentUpdate = updatedPlayersByName.get(player.name);
+					const newScore = (currentUpdate?.score ?? player.score) + points;
+					const newTiebreaker = (currentUpdate?.tiebreaker ?? player.tiebreaker) + tiebreaker;
 
-					const { error } = await supabase
-						.from('players')
-						.update({
-							score: newScore,
-							tiebreaker: newTiebreaker
-						})
-						.eq('id', player.id);
-
-					if (error) throw error;
-
-					// Update answer snapshots
-					await updateAnswerSnapshots(player.id, newScore, newTiebreaker);
+					updatedPlayersByName.set(player.name, {
+						id: player.id,
+						score: newScore,
+						tiebreaker: newTiebreaker
+					});
 
 					// Clear potential_points if it was used
 					if (quickGuessEnabled && answer.potential_points !== null) {
-						await supabase.from('answers').update({ potential_points: null }).eq('id', answer.id);
+						potentialPointAnswerIds.add(answer.id);
 					}
 				}
 			}
+
+			const playerUpdates = [...updatedPlayersByName.values()];
+			const answerUpdates = buildAnswerSnapshotUpdates(updatedPlayersByName, potentialPointAnswerIds);
+			await applyBatchPointUpdates(playerUpdates, answerUpdates);
 
 			// Mark that points have been added for this round
 			pointsAddedForRounds[selectedRoundId] = true;
@@ -713,8 +944,12 @@
 				}
 			}
 
+			const playersByName = new Map(players.map((player) => [player.name, player]));
+			const updatedPlayersByName = new Map();
+			const potentialPointAnswerIds = new Set();
+
 			for (const answer of displayedAnswers) {
-				const player = players.find((p) => p.name === answer.player_name);
+				const player = playersByName.get(answer.player_name);
 				if (!player) continue;
 
 				let points = 0;
@@ -764,26 +999,24 @@
 					points = Math.ceil(points * 100) / 100;
 
 					// Calculate new score (points are already negative here)
-					const newScore = player.score + points;
+					const currentUpdate = updatedPlayersByName.get(player.name);
+					const newScore = (currentUpdate?.score ?? player.score) + points;
 
-					const { error } = await supabase
-						.from('players')
-						.update({
-							score: newScore
-						})
-						.eq('id', player.id);
-
-					if (error) throw error;
-
-					// Update answer snapshots
-					await updateAnswerSnapshots(player.id, newScore, undefined);
+					updatedPlayersByName.set(player.name, {
+						id: player.id,
+						score: newScore
+					});
 
 					// Clear potential_points if it was used
 					if (quickGuessEnabled && answer.potential_points !== null) {
-						await supabase.from('answers').update({ potential_points: null }).eq('id', answer.id);
+						potentialPointAnswerIds.add(answer.id);
 					}
 				}
 			}
+
+			const playerUpdates = [...updatedPlayersByName.values()];
+			const answerUpdates = buildAnswerSnapshotUpdates(updatedPlayersByName, potentialPointAnswerIds);
+			await applyBatchPointUpdates(playerUpdates, answerUpdates);
 
 			// Mark that negative points have been added for this round
 			minusPointsAddedForRounds[selectedRoundId] = true;
@@ -939,22 +1172,61 @@
 
 			if (error) throw error;
 
-			if (data && data.length > 0) {
-				const firstTimestamp = new Date(data[0].server_timestamp).getTime();
-				const firstLatency = data[0].measured_latency || 0;
-				const adjustedFirstTime = firstTimestamp - firstLatency;
+			let rankedData = data || [];
+			const playAt = room.type === 'song' ? room.settings?.songQuiz?.playAt : null;
+			const playAtMs = playAt ? new Date(playAt).getTime() : null;
 
-				handRaiseResults = data.map((result, index) => {
-					const timestamp = new Date(result.server_timestamp).getTime();
+			if (room.type === 'song') {
+				if (!playAtMs) {
+					earlyHandRaiseResults = rankedData;
+					rankedData = [];
+				} else {
+					earlyHandRaiseResults = rankedData.filter((result) => {
+						const reaction = getReactionMs(result, playAtMs);
+						if (reaction !== null) return reaction < 0;
+						return new Date(result.server_timestamp).getTime() < playAtMs;
+					});
+					rankedData = rankedData.filter((result) => !earlyHandRaiseResults.includes(result));
+				}
+			} else {
+				earlyHandRaiseResults = [];
+			}
+
+			const useReactionRank = room.type === 'song' && !!playAtMs;
+
+			rankedData = [...rankedData].sort((a, b) => {
+				if (useReactionRank) {
+					const reactionA = getReactionMs(a, playAtMs);
+					const reactionB = getReactionMs(b, playAtMs);
+					if (reactionA !== null && reactionB !== null) {
+						return reactionA - reactionB;
+					}
+				}
+				const adjustedDifference = getLatencyAdjustedTimestamp(a) - getLatencyAdjustedTimestamp(b);
+				if (adjustedDifference !== 0) return adjustedDifference;
+				return new Date(a.server_timestamp).getTime() - new Date(b.server_timestamp).getTime();
+			});
+
+			if (rankedData.length > 0) {
+				const referenceFirst = useReactionRank ? getReactionMs(rankedData[0], playAtMs) : getLatencyAdjustedTimestamp(rankedData[0]);
+				handRaiseResults = rankedData.map((result, index) => {
 					const latency = result.measured_latency || 0;
-					const adjustedTime = timestamp - latency;
-					const timeDifferenceMs = index === 0 ? 0 : adjustedTime - adjustedFirstTime;
+					let timeDifferenceMs;
+					let reactionMs = null;
+					if (useReactionRank) {
+						reactionMs = getReactionMs(result, playAtMs);
+						timeDifferenceMs = reactionMs !== null && referenceFirst !== null ? reactionMs - referenceFirst : 0;
+					} else {
+						const adjusted = getLatencyAdjustedTimestamp(result);
+						timeDifferenceMs = index === 0 ? 0 : adjusted - referenceFirst;
+					}
 
 					return {
 						name: result.player_name,
 						position: index + 1,
 						timestamp: result.server_timestamp,
 						timeDifferenceMs,
+						reactionMs,
 						latency
 					};
 				});
@@ -1046,9 +1318,12 @@
 					filter: `id=eq.${room.id}`
 				},
 				async (payload) => {
+					room = { ...room, ...payload.new };
+					takeoverModeActive = !!payload.new.takeover_mode;
 					if (payload.new.current_round !== payload.old?.current_round) {
 						selectedRoundId = payload.new.current_round;
 					}
+					await loadHandRaiseResults();
 					await invalidateAll();
 				}
 			)
@@ -1102,10 +1377,42 @@
 			)
 			.subscribe();
 
+		songPlayChannel = supabase
+			.channel(`song-play:${room.id}`, {
+				config: { broadcast: { self: false, ack: false } }
+			})
+			.on('broadcast', { event: 'ready' }, ({ payload }) => {
+				if (!payload?.token) return;
+				if (payload.token !== activePrepareOrPlayToken) return;
+				if (songReadyToken !== payload.token) {
+					songReadyToken = payload.token;
+					songReadyPlayers = new Set();
+				}
+				if (payload.playerName) {
+					const next = new Set(songReadyPlayers);
+					next.add(payload.playerName);
+					songReadyPlayers = next;
+				}
+			})
+			.subscribe();
+
 		return () => {
 			invalidate('room');
 		};
 	});
+
+	// Reset readiness tracking when the active token changes (new prepare/play).
+	$: {
+		const token = activePrepareOrPlayToken;
+		if (token && songReadyToken !== token) {
+			songReadyToken = token;
+			songReadyPlayers = new Set();
+		}
+		if (!token && songReadyPlayers.size > 0) {
+			songReadyToken = null;
+			songReadyPlayers = new Set();
+		}
+	}
 
 	$: if (selectedRoundId) {
 		loadCorrectAnswers(selectedRoundId);
@@ -1113,6 +1420,7 @@
 
 	onDestroy(() => {
 		if (channel) channel.unsubscribe();
+		if (songPlayChannel) songPlayChannel.unsubscribe();
 	});
 </script>
 
@@ -1466,10 +1774,18 @@
 													</button>
 												</div>
 											{:else}
-												<div class="flex items-center gap-1">
-													{player.score}
+												<div class="flex items-center gap-2">
+													<span class="min-w-[2ch] text-right">{player.score}</span>
 													<!-- svelte-ignore a11y_consider_explicit_label -->
-													<button class="ml-2 text-gray-400 hover:text-gray-300" on:click={() => startEditing(player, 'score')}>
+													<button title="-1" class="rounded border border-gray-700 bg-gray-800 px-2 py-0.5 text-red-300 hover:bg-gray-700 disabled:opacity-40" disabled={!isCurrentRound || player.score <= 0} on:click={() => adjustScore(player.id, 'score', -1)}>
+														<Minus class="h-3 w-3" />
+													</button>
+													<!-- svelte-ignore a11y_consider_explicit_label -->
+													<button title="+1" class="rounded border border-gray-700 bg-gray-800 px-2 py-0.5 text-green-300 hover:bg-gray-700 disabled:opacity-40" disabled={!isCurrentRound} on:click={() => adjustScore(player.id, 'score', 1)}>
+														<Plus class="h-3 w-3" />
+													</button>
+													<!-- svelte-ignore a11y_consider_explicit_label -->
+													<button class="ml-1 text-gray-400 hover:text-gray-300" on:click={() => startEditing(player, 'score')}>
 														<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 															<path d="M12 20h9"></path>
 															<path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
@@ -1535,6 +1851,67 @@
 					</Tabs.Content>
 
 					<Tabs.Content value="takeover">
+						{#if room.type === 'song'}
+							<div class="mb-6 rounded-lg border border-gray-800 bg-gray-800/40 p-4">
+								<div class="mb-3 flex items-start justify-between gap-4">
+									<div>
+										<h3 class="text-lg font-semibold text-white">Utwór dla rundy</h3>
+										<p class="text-sm text-gray-400">Utwór ładuje się automatycznie po przejściu do nowej rundy. Wybierz sample (lub "Losowo") aby przelosować start, a gdy gracze są gotowi naciśnij "Odtwórz". Jeśli któryś klient utknął, kliknij "Wymuś ponowne ładowanie".</p>
+									</div>
+									{#if selectedRoundSongIsPlaying}
+										<span class="rounded-md bg-green-900/30 px-2 py-1 text-sm text-green-400">Odtwarzanie zaplanowane</span>
+									{:else if selectedRoundIsPrepared}
+										<span class="rounded-md bg-blue-900/30 px-2 py-1 text-sm text-blue-300">Przygotowane</span>
+									{/if}
+								</div>
+
+								{#if selectedRoundSong}
+									<div class="flex flex-wrap items-center gap-3">
+										<span class="text-sm text-gray-300">{selectedRoundSong.fileName}</span>
+										<audio src={selectedRoundSong.audioUrl} controls class="h-9 max-w-xs"></audio>
+										<Button on:click={playSelectedSong} disabled={isStartingSong || isPreparingSong || !isCurrentRound || !selectedRoundIsPrepared} class="bg-blue-600/60 text-white hover:bg-blue-500/60">
+											{isStartingSong ? 'Uruchamianie...' : 'Odtwórz'}
+										</Button>
+										<Button href="/admin/rooms/{room.id}/songs" variant="outline" class="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700">Kreator utworów</Button>
+									</div>
+
+									<div class="mt-3 flex flex-wrap items-center gap-2">
+										<span class="text-xs uppercase tracking-wide text-gray-400">Sample:</span>
+										<Button size="sm" variant="outline" on:click={() => prepareSampleForCurrentRound('first')} disabled={isPreparingSong || isStartingSong || !isCurrentRound} class="border-gray-700 bg-gray-800 text-gray-200 hover:bg-gray-700">Pierwsze 20s</Button>
+										<Button size="sm" variant="outline" on:click={() => prepareSampleForCurrentRound('mid')} disabled={isPreparingSong || isStartingSong || !isCurrentRound} class="border-gray-700 bg-gray-800 text-gray-200 hover:bg-gray-700">Środek</Button>
+										<Button size="sm" variant="outline" on:click={() => prepareSampleForCurrentRound('last')} disabled={isPreparingSong || isStartingSong || !isCurrentRound} class="border-gray-700 bg-gray-800 text-gray-200 hover:bg-gray-700">Ostatnie 20s</Button>
+										<Button size="sm" on:click={() => prepareSampleForCurrentRound('random')} disabled={isPreparingSong || isStartingSong || !isCurrentRound} class="bg-purple-700/70 text-white hover:bg-purple-600/70">
+											<Shuffle class="mr-1 h-3 w-3" /> Losowo
+										</Button>
+										<Button size="sm" variant="outline" on:click={forceReloadSong} disabled={isPreparingSong || isStartingSong || !isCurrentRound} class="border-amber-700 bg-amber-900/30 text-amber-200 hover:bg-amber-900/50">
+											<RefreshCw class="mr-1 h-3 w-3" /> Wymuś ponowne ładowanie
+										</Button>
+									</div>
+
+									{#if songQuizState.startOffsetMs !== undefined && songQuizState.startOffsetMs !== null && songQuizState.activeRoundId === selectedRoundId}
+										<p class="mt-2 text-xs text-gray-400">
+											Aktualny sample: <span class="font-semibold text-gray-200">{SAMPLE_LABELS[songQuizState.sampleType] || 'własny'}</span>
+											· start <span class="font-mono">{(songQuizState.startOffsetMs / 1000).toFixed(1)}s</span>
+										</p>
+									{/if}
+								{:else}
+									<div class="flex flex-wrap items-center gap-3">
+										<span class="text-sm text-gray-500">Brak wgranego utworu dla tej rundy</span>
+										<Button href="/admin/rooms/{room.id}/songs" variant="outline" class="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700">Kreator utworów</Button>
+									</div>
+								{/if}
+
+								{#if (selectedRoundIsPrepared || selectedRoundSongIsPlaying) && totalPlayerCount > 0}
+									<p class="mt-3 text-sm {readyCount >= totalPlayerCount ? 'text-green-300' : 'text-gray-300'}">
+										Gotowi gracze: <span class="font-semibold">{readyCount}</span> / {totalPlayerCount}
+										{#if readyCount < totalPlayerCount}
+											<span class="text-gray-400">(czekaj, aż klienci załadują plik lub wymuś ponowne ładowanie)</span>
+										{/if}
+									</p>
+								{/if}
+							</div>
+						{/if}
+
 						<div class="mb-6">
 							<Button on:click={toggleTakeoverMode} class={takeoverModeActive ? 'bg-red-600/50 text-white hover:bg-red-500/50' : 'bg-green-600/50 text-white hover:bg-green-500/50'}>
 								{takeoverModeActive ? 'Wyłącz Tryb Przejęć ' : 'Włącz Tryb Przejęć'}
@@ -1552,6 +1929,13 @@
 							{/if}
 						</div>
 
+						{#if room.type === 'song' && earlyHandRaiseResults.length > 0}
+							<div class="mb-4 rounded-lg border border-yellow-700/60 bg-yellow-900/20 p-3 text-yellow-200">
+								<p class="font-semibold">Za wczesne przejęcia: {earlyHandRaiseResults.length}</p>
+								<p class="text-sm text-yellow-100/80">Te kliknięcia były przed zaplanowanym startem utworu i nie liczą się do pierwszego miejsca.</p>
+							</div>
+						{/if}
+
 						{#if takeoverModeActive || handRaiseResults.length > 0}
 							<Table.Root>
 								<Table.Header>
@@ -1560,6 +1944,9 @@
 										<Table.Head class="text-gray-300">Gracz</Table.Head>
 										<Table.Head class="text-gray-300">Czas</Table.Head>
 										<Table.Head class="text-gray-300">Różnica</Table.Head>
+										{#if room.type === 'song'}
+											<Table.Head class="text-gray-300">Reakcja</Table.Head>
+										{/if}
 										<Table.Head class="text-gray-300">Ping</Table.Head>
 									</Table.Row>
 								</Table.Header>
@@ -1579,6 +1966,11 @@
 											<Table.Cell class="text-gray-200">
 												{result.position === 1 ? '-' : `+${(result.timeDifferenceMs / 1000).toFixed(3)}s`}
 											</Table.Cell>
+											{#if room.type === 'song'}
+												<Table.Cell class="text-gray-200">
+													{result.reactionMs !== null && result.reactionMs !== undefined ? `${Math.round(result.reactionMs)}ms` : '-'}
+												</Table.Cell>
+											{/if}
 											<Table.Cell class="text-gray-200">
 												{result.latency || 0}ms
 											</Table.Cell>
@@ -1587,7 +1979,7 @@
 
 									{#if handRaiseResults.length === 0}
 										<Table.Row class="border-gray-800">
-											<Table.Cell colspan="5" class="py-8 text-center text-gray-400">Brak przejęć</Table.Cell>
+											<Table.Cell colspan={room.type === 'song' ? 6 : 5} class="py-8 text-center text-gray-400">Brak przejęć</Table.Cell>
 										</Table.Row>
 									{/if}
 								</Table.Body>

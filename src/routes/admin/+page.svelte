@@ -331,6 +331,7 @@
 										<Button variant="outline" size="sm" class="ml-2 border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700" href="/admin/rooms/{room.id}/screen/answers">Konfiguruj odpowiedzi rund</Button>
 									{:else}
 										<Button variant="outline" size="sm" class="ml-2 border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700" href="/admin/rooms/{room.id}/answers">Konfiguruj odpowiedzi rund</Button>
+										<Button variant="outline" size="sm" class="ml-2 border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700" href="/admin/rooms/{room.id}/songs">Kreator utworów</Button>
 									{/if}
 								</Table.Cell>
 								<Table.Cell>
