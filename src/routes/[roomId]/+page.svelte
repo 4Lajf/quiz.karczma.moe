@@ -23,7 +23,6 @@
 	let measuringLatency = false;
 	let hintRequested = false;
 	let maskedAnswer = '';
-	let isSubmittingHandRaise = false;
 	let currentSongUrl = '';
 	let currentSongRoundId = '';
 	let currentPrepareToken = '';
@@ -1393,26 +1392,25 @@
 			inTakeoverMode = true;
 			await tick();
 			ensureSongPlayback();
+			// Initial multi-sample sync while we wait for the user to settle in.
 			syncServerClock().catch(() => {});
-			handleSongQuizSettings();
+			await handleSongQuizSettings();
+
+			// Start monitoring latency
 			setupLatencyMonitoring();
 
-			supabase
-				.from('hand_raises')
-				.select('*')
-				.eq('room_id', room.id)
-				.eq('player_name', playerName)
-				.maybeSingle()
-				.then(({ data, error }) => {
-					if (error) {
-						console.error('Error checking hand raise status:', error);
-						return;
-					}
-					if (data) {
-						handRaised = true;
-						loadHandRaiseResults();
-					}
-				});
+			// Check if user already raised hand in this room
+			try {
+				const { data, error } = await supabase.from('hand_raises').select('*').eq('room_id', room.id).eq('player_name', playerName).maybeSingle();
+
+				if (data) {
+					// User already raised hand, set flag and load results
+					handRaised = true;
+					await loadHandRaiseResults();
+				}
+			} catch (error) {
+				console.error('Error checking hand raise status:', error);
+			}
 		} catch (error) {
 			console.error('Error checking takeover mode status:', error);
 			toast.error('Wystąpił błąd podczas włączania trybu przejęć');
@@ -1420,19 +1418,34 @@
 	}
 
 	async function raiseHand() {
-		if (isSubmittingHandRaise || handRaiseResults) return;
+		if (handRaised) return;
+
+		if (!room.takeover_mode) {
+			toast.error('Tryb przejęć jest obecnie wyłączony');
+			return;
+		}
+
+		// In song rooms, refuse to record a hand-raise if the audio never loaded.
+		if (room.type === 'song' && !songIsReady) {
+			toast.error('Utwór nie jest załadowany - nie możesz brać udziału.');
+			return;
+		}
 
 		const hadNoTakeoversYet = playerPositions.length === 0;
 		if (hadNoTakeoversYet) {
 			stopLocalSongPlayback();
 		}
 
+		// Force a fresh latency measurement before submission
 		if (!measuringLatency) {
 			await measureNetworkLatency();
 		}
 
+		// For song rooms we record click time in *server clock* so the admin can
+		// compute a real reaction-time relative to playAt. For other rooms keep
+		// the legacy behaviour (Date.now()).
 		const clientTimestamp = room.type === 'song' ? clockSync.serverNow() : Date.now();
-		isSubmittingHandRaise = true;
+		handRaised = true;
 
 		try {
 			const { error } = await supabase.from('hand_raises').insert({
@@ -1444,23 +1457,23 @@
 
 			if (error) {
 				if (error.code === '23505') {
+					// Already raised hand
 					await loadHandRaiseResults();
 				} else {
 					throw error;
 				}
 			} else {
+				// Add this to load results after successful insert
 				await loadHandRaiseResults();
 				if (hadNoTakeoversYet) {
 					broadcastTakeoverSongStop();
 				}
 			}
 
-			handRaised = true;
 		} catch (error) {
 			console.error('Failed to raise hand:', error);
 			toast.error('Nie udało się przejąć');
-		} finally {
-			isSubmittingHandRaise = false;
+			handRaised = false;
 		}
 	}
 
@@ -2112,12 +2125,23 @@
 					</div>
 				</div>
 
-				{#if room.type === 'song' && songLoadError}
+				{#if room.type === 'song' && songIsLoading}
+					<div class="flex flex-col items-center justify-center">
+						<div class="mb-4 h-12 w-12 animate-spin rounded-full border-4 border-amber-500 border-t-transparent"></div>
+						<p class="text-xl text-white">Ładowanie utworu...</p>
+						<p class="mt-2 text-sm text-gray-400">Czekaj, aż plik się załaduje. Klikanie się nie liczy.</p>
+					</div>
+				{:else if room.type === 'song' && songLoadError}
 					<div class="max-w-lg rounded-lg border border-red-700 bg-red-900/30 p-8 text-center">
 						<h2 class="mb-3 text-2xl font-bold text-red-300">Nie udało się załadować utworu</h2>
 						<p class="mb-2 text-base text-red-100">Twoja przeglądarka nie zdołała pobrać i zdekodować pliku audio.</p>
 						<p class="text-sm text-red-100/80">Powód: {songLoadError}</p>
-						<p class="mt-4 text-sm text-red-100/80">Spróbuj odświeżyć stronę.</p>
+						<p class="mt-4 text-sm text-red-100/80">Nie możesz brać udziału w tej rundzie. Spróbuj odświeżyć stronę.</p>
+					</div>
+				{:else if !room.takeover_mode}
+					<div class="max-w-lg rounded-lg border border-gray-700 bg-gray-800/80 p-8 text-center">
+						<h2 class="mb-3 text-2xl font-bold text-white">Czekamy na start przejęć</h2>
+						<p class="text-base text-gray-300">Prowadzący jeszcze nie włączył trybu przejęć. Zostań na tym ekranie — przycisk pojawi się automatycznie.</p>
 					</div>
 				{:else if handRaiseResults}
 					<div class="flex flex-col items-center justify-center rounded-lg bg-gray-800 p-8">
@@ -2180,22 +2204,7 @@
 						<Button on:click={closeLeaderboardView} class="mt-6 border border-gray-700 bg-gray-800 text-white hover:bg-gray-700">Wróć</Button>
 					</div>
 				{:else}
-					<div class="relative flex h-full w-full flex-col">
-						{#if room.type === 'song' && songIsLoading}
-							<p class="absolute left-0 right-0 top-4 z-10 text-center text-sm text-amber-300">Ładowanie utworu w tle…</p>
-						{/if}
-						{#if !room.takeover_mode}
-							<p class="absolute left-0 right-0 top-4 z-10 text-center text-sm text-gray-300">Tryb przejęć jeszcze nieaktywny — możesz kliknąć, gdy prowadzący go włączy</p>
-						{/if}
-						<button
-							on:mousedown={raiseHand}
-							on:touchstart|preventDefault={raiseHand}
-							disabled={isSubmittingHandRaise}
-							class="flex h-full w-full flex-1 items-center justify-center bg-blue-600 text-4xl font-bold text-white active:bg-blue-800 disabled:cursor-wait disabled:opacity-70"
-						>
-							{isSubmittingHandRaise ? 'ZAPISYWANIE…' : 'DOTKNIJ BY PODNIEŚĆ ŁAPĘ'}
-						</button>
-					</div>
+					<button on:mousedown={raiseHand} on:touchstart|preventDefault={raiseHand} class="flex h-full w-full items-center justify-center bg-blue-600 text-4xl font-bold text-white active:bg-blue-800"> DOTKNIJ BY PODNIEŚĆ ŁAPĘ </button>
 				{/if}
 			</div>
 		{/if}
