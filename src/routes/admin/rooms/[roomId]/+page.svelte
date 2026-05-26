@@ -8,7 +8,7 @@
 	import * as Tabs from '$lib/components/ui/tabs';
 	import { Button } from '$lib/components/ui/button';
 	import { toast } from 'svelte-sonner';
-	import { Check, X, Circle, Minus, Shuffle, RefreshCw } from 'lucide-svelte';
+	import { Check, X, Circle, Minus, Shuffle, RefreshCw, Square } from 'lucide-svelte';
 	import PointsConfigModal from '$lib/components/admin/PointsConfigModal.svelte';
 	import { Plus } from 'lucide-svelte';
 	import { Input } from '$lib/components/ui/input';
@@ -48,6 +48,9 @@
 	$: activePrepareOrPlayToken = songQuizState.playToken || songQuizState.prepareToken || null;
 	$: readyCount = songReadyToken === activePrepareOrPlayToken ? songReadyPlayers.size : 0;
 	$: totalPlayerCount = Array.isArray(players) ? players.length : 0;
+	$: notReadyPlayers = songReadyToken === activePrepareOrPlayToken && Array.isArray(players)
+		? players.filter(p => !songReadyPlayers.has(p.name)).map(p => p.name)
+		: [];
 
 	async function callSongPlayApi(phase, extras = {}) {
 		const response = await fetch(`/api/rooms/${room.id}/song-play`, {
@@ -188,9 +191,23 @@
 			room = { ...room, settings: result.settings };
 			songReadyToken = result.playToken;
 			await loadHandRaiseResults();
-			toast.success(`Utwór wystartuje za ${(result.playDelayMs / 1000).toFixed(1)}s. Wcześniejsze przejęcia nie liczą się.`);
 		} catch (error) {
 			toast.error('Nie udało się uruchomić utworu: ' + error.message);
+		} finally {
+			isStartingSong = false;
+		}
+	}
+
+	async function stopSelectedSong() {
+		if (room.type !== 'song') return;
+		isStartingSong = true;
+		try {
+			canModifyRoom(room, user, profile);
+			const result = await callSongPlayApi('stop');
+			room = { ...room, settings: result.settings };
+			songReadyToken = null;
+		} catch (error) {
+			toast.error('Nie udało się zatrzymać utworu: ' + error.message);
 		} finally {
 			isStartingSong = false;
 		}
@@ -1872,6 +1889,9 @@
 										<Button on:click={playSelectedSong} disabled={isStartingSong || isPreparingSong || !isCurrentRound || !selectedRoundIsPrepared} class="bg-blue-600/60 text-white hover:bg-blue-500/60">
 											{isStartingSong ? 'Uruchamianie...' : 'Odtwórz'}
 										</Button>
+										<Button on:click={stopSelectedSong} disabled={isStartingSong || isPreparingSong || !selectedRoundSongIsPlaying} class="bg-red-600/60 text-white hover:bg-red-500/60">
+											<Square class="mr-1 h-3 w-3" /> Stop
+										</Button>
 										<Button href="/admin/rooms/{room.id}/songs" variant="outline" class="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700">Kreator utworów</Button>
 									</div>
 
@@ -1908,6 +1928,11 @@
 											<span class="text-gray-400">(czekaj, aż klienci załadują plik lub wymuś ponowne ładowanie)</span>
 										{/if}
 									</p>
+									{#if notReadyPlayers.length > 0}
+										<p class="mt-1 text-sm text-red-400">
+											Nie załadowali: <span class="font-medium">{notReadyPlayers.join(', ')}</span>
+										</p>
+									{/if}
 								{/if}
 							</div>
 						{/if}

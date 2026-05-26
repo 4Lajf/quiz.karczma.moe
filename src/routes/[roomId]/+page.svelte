@@ -29,6 +29,7 @@
 	let currentSongRoundId = '';
 	let currentPrepareToken = '';
 	let currentPlayToken = '';
+	let currentStopToken = '';
 	let songIsLoading = false;
 	let songIsReady = false;
 	let songLoadError = '';
@@ -663,6 +664,17 @@
 		if (room.type !== 'song') return;
 		const songQuiz = getSongQuizSettings();
 		const activeSong = getActiveSong();
+
+		const stopToken = songQuiz.stopToken || null;
+		if (stopToken && stopToken !== currentStopToken) {
+			currentStopToken = stopToken;
+			currentPlayToken = '';
+			if (songPlayback) {
+				songPlayback.cancelScheduled();
+			}
+			return;
+		}
+
 		if (!activeSong?.audioUrl) return;
 
 		const prepareToken = songQuiz.prepareToken || null;
@@ -719,12 +731,6 @@
 				serverNowProvider: () => clockSync.serverNow(),
 				offsetSec
 			});
-
-			if (result.delayMs <= 0) {
-				toast.success('Utwór wystartował. Teraz przejęcia się liczą!');
-			} else {
-				toast.info(`Utwór wystartuje za ${(result.delayMs / 1000).toFixed(1)}s`);
-			}
 
 			console.info('Song scheduled', {
 				delayMs: result.delayMs,
@@ -909,7 +915,9 @@
 					console.log('Room change detected:', payload);
 					room = { ...room, ...payload.new };
 					if (payload.new.current_round !== payload.old?.current_round) {
-						toast.info('Rozpoczęła się nowa runda!');
+						if (room.type !== 'song') {
+							toast.info('Rozpoczęła się nowa runda!');
+						}
 						resetAnswerStateWithHint();
 						// Fetch current points value for the new round if it's a screen room
 						if (room.type === 'screen') {
@@ -932,7 +940,7 @@
 
 					const newSong = payload.new.settings?.songQuiz || {};
 					const oldSong = payload.old?.settings?.songQuiz || {};
-					if (newSong.prepareToken !== oldSong.prepareToken || newSong.playToken !== oldSong.playToken || newSong.activeRoundId !== oldSong.activeRoundId) {
+					if (newSong.prepareToken !== oldSong.prepareToken || newSong.playToken !== oldSong.playToken || newSong.activeRoundId !== oldSong.activeRoundId || newSong.stopToken !== oldSong.stopToken) {
 						await loadHandRaiseResults();
 						if (inTakeoverMode) {
 							await handleSongQuizSettings();

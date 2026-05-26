@@ -8,10 +8,13 @@ export const POST = async ({ request, params, locals: { supabase, user, profile 
 
 	const body = await request.json().catch(() => ({}));
 	const { roundId, phase = 'play', startOffsetMs, sampleType } = body;
-	if (!roundId) {
+
+	if (phase === 'stop') {
+		// Stop clears playback state without needing a roundId
+	} else if (!roundId) {
 		throw error(400, { message: 'Missing roundId' });
 	}
-	if (phase !== 'prepare' && phase !== 'play') {
+	if (phase !== 'prepare' && phase !== 'play' && phase !== 'stop') {
 		throw error(400, { message: 'Invalid phase' });
 	}
 	if (startOffsetMs !== undefined && (typeof startOffsetMs !== 'number' || !Number.isFinite(startOffsetMs) || startOffsetMs < 0)) {
@@ -26,10 +29,12 @@ export const POST = async ({ request, params, locals: { supabase, user, profile 
 	}
 
 	const songQuiz = room.settings?.songQuiz || {};
-	const selectedSong = songQuiz.rounds?.[roundId];
 
-	if (!selectedSong?.audioUrl) {
-		throw error(400, { message: 'No audio uploaded for this round' });
+	if (phase !== 'stop') {
+		const selectedSong = songQuiz.rounds?.[roundId];
+		if (!selectedSong?.audioUrl) {
+			throw error(400, { message: 'No audio uploaded for this round' });
+		}
 	}
 
 	const nowMs = Date.now();
@@ -40,7 +45,17 @@ export const POST = async ({ request, params, locals: { supabase, user, profile 
 	const resolvedStartOffsetMs = startOffsetMs !== undefined ? Math.round(startOffsetMs) : (songQuiz.startOffsetMs ?? 0);
 	const resolvedSampleType = sampleType !== undefined ? sampleType : (songQuiz.sampleType ?? null);
 
-	if (phase === 'prepare') {
+	if (phase === 'stop') {
+		nextSongQuiz = {
+			...songQuiz,
+			playIssuedAt: null,
+			playAt: null,
+			playToken: null,
+			playDelayMs: null,
+			stoppedAt: new Date(nowMs).toISOString(),
+			stopToken: `stop-${nowMs}`
+		};
+	} else if (phase === 'prepare') {
 		nextSongQuiz = {
 			...songQuiz,
 			activeRoundId: roundId,
@@ -83,6 +98,7 @@ export const POST = async ({ request, params, locals: { supabase, user, profile 
 		playDelayMs: nextSongQuiz.playDelayMs ?? null,
 		prepareToken: nextSongQuiz.prepareToken ?? null,
 		playToken: nextSongQuiz.playToken ?? null,
+		stopToken: nextSongQuiz.stopToken ?? null,
 		startOffsetMs: nextSongQuiz.startOffsetMs ?? 0,
 		sampleType: nextSongQuiz.sampleType ?? null
 	});
