@@ -1064,7 +1064,9 @@
 						}
 
 						// Force Svelte to update by creating new references
-						handRaiseResults = { ...handRaiseResults };
+						if (handRaiseResults) {
+							handRaiseResults = { ...handRaiseResults };
+						}
 						playerPositions = [...playerPositions];
 					} catch (error) {
 						console.error('Error updating hand raise data:', error);
