@@ -18,7 +18,6 @@
 	let takeoverModeActive = false;
 	let quickGuessEnabled = false;
 	let handRaiseResults = [];
-	let earlyHandRaiseResults = [];
 	let lastUpdated = '';
 	let lastChangedPlayer = null;
 	let currentCorrectAnswers = [];
@@ -31,6 +30,9 @@
 	let isAddingMinusPoints = false;
 	let isPreparingSong = false;
 	let isStartingSong = false;
+	let globalSongVolume = 100;
+	let savingGlobalVolume = false;
+	let editingGlobalVolume = false;
 	let songReadyPlayers = new Set();
 	let songReadyToken = null;
 	let songPlayChannel = null;
@@ -51,6 +53,47 @@
 	$: notReadyPlayers = songReadyToken === activePrepareOrPlayToken && Array.isArray(players)
 		? players.filter(p => !songReadyPlayers.has(p.name)).map(p => p.name)
 		: [];
+	$: if (room?.type === 'song' && !editingGlobalVolume) {
+		globalSongVolume = getGlobalSongVolumePercent(room?.settings);
+	}
+
+	function getGlobalSongVolumePercent(settings) {
+		const raw = settings?.songQuiz?.globalVolume;
+		const normalized = Number.isFinite(raw) ? Math.max(0, Math.min(1, raw)) : 1;
+		return Math.round(normalized * 100);
+	}
+
+	async function saveGlobalSongVolume() {
+		if (room.type !== 'song') return;
+		savingGlobalVolume = true;
+		try {
+			canModifyRoom(room, user, profile);
+			const normalizedPercent = Number.isFinite(globalSongVolume) ? Math.max(0, Math.min(100, globalSongVolume)) : 100;
+			const normalizedVolume = Math.round((normalizedPercent / 100) * 100) / 100;
+			const nextSettings = {
+				...(room.settings || {}),
+				songQuiz: {
+					...(room.settings?.songQuiz || {}),
+					globalVolume: normalizedVolume
+				}
+			};
+			const { error } = await supabase
+				.from('rooms')
+				.update({
+					settings: nextSettings
+				})
+				.eq('id', room.id);
+			if (error) throw error;
+			room = { ...room, settings: nextSettings };
+			globalSongVolume = Math.round(normalizedVolume * 100);
+			toast.success(`Zapisano globalną głośność: ${globalSongVolume}%`);
+		} catch (error) {
+			toast.error('Nie udało się zapisać globalnej głośności: ' + error.message);
+		} finally {
+			savingGlobalVolume = false;
+			editingGlobalVolume = false;
+		}
+	}
 
 	async function callSongPlayApi(phase, extras = {}) {
 		const response = await fetch(`/api/rooms/${room.id}/song-play`, {
@@ -1192,23 +1235,6 @@
 			let rankedData = data || [];
 			const playAt = room.type === 'song' ? room.settings?.songQuiz?.playAt : null;
 			const playAtMs = playAt ? new Date(playAt).getTime() : null;
-
-			if (room.type === 'song') {
-				if (!playAtMs) {
-					earlyHandRaiseResults = rankedData;
-					rankedData = [];
-				} else {
-					earlyHandRaiseResults = rankedData.filter((result) => {
-						const reaction = getReactionMs(result, playAtMs);
-						if (reaction !== null) return reaction < 0;
-						return new Date(result.server_timestamp).getTime() < playAtMs;
-					});
-					rankedData = rankedData.filter((result) => !earlyHandRaiseResults.includes(result));
-				}
-			} else {
-				earlyHandRaiseResults = [];
-			}
-
 			const useReactionRank = room.type === 'song' && !!playAtMs;
 
 			rankedData = [...rankedData].sort((a, b) => {
@@ -1354,6 +1380,7 @@
 				},
 				async (payload) => {
 					try {
+						const isFirstTakeover = payload.eventType === 'INSERT' && handRaiseResults.length === 0;
 						// Show update indicator
 						const takeoverTab = document.querySelector('[data-value="takeover"]');
 						if (takeoverTab) {
@@ -1365,6 +1392,10 @@
 
 						// Immediately reload the data
 						await loadHandRaiseResults();
+
+						if (isFirstTakeover && room.type === 'song' && takeoverModeActive && selectedRoundSongIsPlaying) {
+							await stopSelectedSong();
+						}
 
 						// Add a timestamp to show when the data was last updated
 						const now = new Date();
@@ -1908,6 +1939,34 @@
 										</Button>
 									</div>
 
+									<div class="mt-4 rounded-md border border-gray-700 bg-gray-900/40 p-3">
+										<div class="mb-2 flex items-center justify-between gap-3">
+											<p class="text-sm text-gray-200">Globalna głośność odtwarzania</p>
+											<span class="text-sm font-semibold text-gray-100">{globalSongVolume}%</span>
+										</div>
+										<div class="flex flex-wrap items-center gap-3">
+											<input
+												type="range"
+												min="0"
+												max="100"
+												step="1"
+												bind:value={globalSongVolume}
+												on:input={() => (editingGlobalVolume = true)}
+												on:change={() => (editingGlobalVolume = false)}
+												class="h-2 w-52 cursor-pointer accent-blue-500"
+											/>
+											<Button
+												size="sm"
+												variant="outline"
+												on:click={saveGlobalSongVolume}
+												disabled={savingGlobalVolume}
+												class="border-gray-700 bg-gray-800 text-gray-200 hover:bg-gray-700"
+											>
+												{savingGlobalVolume ? 'Zapisywanie...' : 'Zapisz głośność'}
+											</Button>
+										</div>
+									</div>
+
 									{#if songQuizState.startOffsetMs !== undefined && songQuizState.startOffsetMs !== null && songQuizState.activeRoundId === selectedRoundId}
 										<p class="mt-2 text-xs text-gray-400">
 											Aktualny sample: <span class="font-semibold text-gray-200">{SAMPLE_LABELS[songQuizState.sampleType] || 'własny'}</span>
@@ -1953,13 +2012,6 @@
 								<span class="ml-4 text-sm text-gray-400">Ostatnia aktualizacja: {lastUpdated}</span>
 							{/if}
 						</div>
-
-						{#if room.type === 'song' && earlyHandRaiseResults.length > 0}
-							<div class="mb-4 rounded-lg border border-yellow-700/60 bg-yellow-900/20 p-3 text-yellow-200">
-								<p class="font-semibold">Za wczesne przejęcia: {earlyHandRaiseResults.length}</p>
-								<p class="text-sm text-yellow-100/80">Te kliknięcia były przed zaplanowanym startem utworu i nie liczą się do pierwszego miejsca.</p>
-							</div>
-						{/if}
 
 						{#if takeoverModeActive || handRaiseResults.length > 0}
 							<Table.Root>

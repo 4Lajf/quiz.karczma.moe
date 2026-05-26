@@ -36,6 +36,7 @@
 	let deleteConfirmationText = '';
 	let deletingRoom = false;
 	let savingScreenMode = false;
+	let savingRoomVolume = {};
 
 	$: ({ supabase, user, profile, rooms } = data);
 
@@ -160,6 +161,44 @@
 			}
 		} catch (validationError) {
 			toast.error('Nie masz uprawnień do modyfikacji tego pokoju');
+		}
+	}
+
+	function getRoomGlobalVolumePercent(room) {
+		const raw = Number(room?.settings?.songQuiz?.globalVolume);
+		const normalized = Number.isFinite(raw) ? Math.max(0, Math.min(1, raw)) : 1;
+		return Math.round(normalized * 100);
+	}
+
+	async function saveRoomGlobalVolume(room, event) {
+		if (room.type !== 'song') return;
+		const target = event.currentTarget;
+		const nextPercent = Number(target.value);
+		if (!Number.isFinite(nextPercent)) return;
+		const normalizedVolume = Math.round((Math.max(0, Math.min(100, nextPercent)) / 100) * 100) / 100;
+		savingRoomVolume = { ...savingRoomVolume, [room.id]: true };
+		try {
+			canModifyRoom(room, user, profile);
+			const nextSettings = {
+				...(room.settings || {}),
+				songQuiz: {
+					...(room.settings?.songQuiz || {}),
+					globalVolume: normalizedVolume
+				}
+			};
+			const { error } = await supabase
+				.from('rooms')
+				.update({
+					settings: nextSettings
+				})
+				.eq('id', room.id);
+			if (error) throw error;
+			toast.success(`Ustawiono głośność globalną dla "${room.name}" na ${Math.round(normalizedVolume * 100)}%`);
+			await invalidateAll();
+		} catch (error) {
+			toast.error('Nie udało się zapisać głośności: ' + error.message);
+		} finally {
+			savingRoomVolume = { ...savingRoomVolume, [room.id]: false };
 		}
 	}
 
@@ -332,6 +371,21 @@
 									{:else}
 										<Button variant="outline" size="sm" class="ml-2 border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700" href="/admin/rooms/{room.id}/answers">Konfiguruj odpowiedzi rund</Button>
 										<Button variant="outline" size="sm" class="ml-2 border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700" href="/admin/rooms/{room.id}/songs">Kreator utworów</Button>
+										<div class="mt-2 flex items-center gap-2">
+											<label class="text-xs text-gray-400" for={`volume-${room.id}`}>Głośność globalna</label>
+											<input
+												id={`volume-${room.id}`}
+												type="range"
+												min="0"
+												max="100"
+												step="1"
+												value={getRoomGlobalVolumePercent(room)}
+												on:change={(event) => saveRoomGlobalVolume(room, event)}
+												disabled={savingRoomVolume[room.id]}
+												class="h-2 w-28 cursor-pointer accent-blue-500"
+											/>
+											<span class="text-xs text-gray-300">{getRoomGlobalVolumePercent(room)}%</span>
+										</div>
 									{/if}
 								</Table.Cell>
 								<Table.Cell>

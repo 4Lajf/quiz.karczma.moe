@@ -20,12 +20,19 @@ export class SongPlayback {
 		this.audioContext = null;
 		this.audioBuffer = null;
 		this.activeSource = null;
+		this.gainNode = null;
+		this.volume = 1;
 		this.lastUrl = null;
 	}
 
 	async ensureAudioContext() {
 		if (!this.audioContext) {
 			this.audioContext = createAudioContext();
+		}
+		if (!this.gainNode && this.audioContext) {
+			this.gainNode = this.audioContext.createGain();
+			this.gainNode.gain.value = this.volume;
+			this.gainNode.connect(this.audioContext.destination);
 		}
 		if (this.audioContext.state === 'suspended') {
 			await this.audioContext.resume();
@@ -69,6 +76,16 @@ export class SongPlayback {
 		}
 	}
 
+	setVolume(volume) {
+		const parsed = Number(volume);
+		const safeVolume = Number.isFinite(parsed) ? Math.max(0, Math.min(1, parsed)) : 1;
+		this.volume = safeVolume;
+		if (this.gainNode) {
+			this.gainNode.gain.value = safeVolume;
+		}
+		return safeVolume;
+	}
+
 	// Schedules sample-accurate Web Audio playback for the given server-clock
 	// timestamp (ms), starting `offsetSec` into the decoded buffer. Throws if
 	// the buffer is not loaded or the context is not running.
@@ -87,7 +104,11 @@ export class SongPlayback {
 
 		const source = ctx.createBufferSource();
 		source.buffer = this.audioBuffer;
-		source.connect(ctx.destination);
+		if (this.gainNode) {
+			source.connect(this.gainNode);
+		} else {
+			source.connect(ctx.destination);
+		}
 		source.start(startCtxTime, safeOffset);
 		this.activeSource = source;
 
@@ -102,6 +123,14 @@ export class SongPlayback {
 
 	dispose() {
 		this.unload();
+		if (this.gainNode) {
+			try {
+				this.gainNode.disconnect();
+			} catch {
+				// already disconnected
+			}
+			this.gainNode = null;
+		}
 		if (this.audioContext) {
 			try {
 				this.audioContext.close();

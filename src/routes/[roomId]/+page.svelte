@@ -24,12 +24,12 @@
 	let hintRequested = false;
 	let maskedAnswer = '';
 	let checkingHandRaiseStatus = false;
-	let earlyTakeoverMessage = '';
 	let currentSongUrl = '';
 	let currentSongRoundId = '';
 	let currentPrepareToken = '';
 	let currentPlayToken = '';
 	let currentStopToken = '';
+	let takeoverVolume = 100;
 	let songIsLoading = false;
 	let songIsReady = false;
 	let songLoadError = '';
@@ -584,9 +584,20 @@
 		return room?.settings?.songQuiz || {};
 	}
 
-	function hasSongPlaybackStarted() {
-		const playAt = getSongQuizSettings().playAt;
-		return room.type !== 'song' || (!!playAt && getEstimatedServerNow() >= new Date(playAt).getTime());
+	function getGlobalSongVolume() {
+		const globalVolume = Number(getSongQuizSettings().globalVolume);
+		if (!Number.isFinite(globalVolume)) return 1;
+		return Math.max(0, Math.min(1, globalVolume));
+	}
+
+	function getEffectiveSongVolume() {
+		const localVolume = Math.max(0, Math.min(1, takeoverVolume / 100));
+		return Math.max(0, Math.min(1, localVolume * getGlobalSongVolume()));
+	}
+
+	function applySongVolume() {
+		if (!songPlayback) return;
+		songPlayback.setVolume(getEffectiveSongVolume());
 	}
 
 	function getActiveSong() {
@@ -620,7 +631,33 @@
 		if (!songPlayback) {
 			songPlayback = new SongPlayback();
 		}
+		applySongVolume();
 		return songPlayback;
+	}
+
+	function shouldStopSongOnTakeover() {
+		if (room.type !== 'song' || !inTakeoverMode) return false;
+		const songQuiz = getSongQuizSettings();
+		return !!songQuiz.playAt || !!songQuiz.playToken;
+	}
+
+	function stopLocalSongPlayback() {
+		if (!shouldStopSongOnTakeover()) return;
+		ensureSongPlayback();
+		songPlayback?.cancelScheduled();
+	}
+
+	function broadcastTakeoverSongStop() {
+		if (!songPlayChannel) return;
+		try {
+			songPlayChannel.send({
+				type: 'broadcast',
+				event: 'takeover-stop',
+				payload: {}
+			});
+		} catch (error) {
+			console.warn('Failed to broadcast takeover stop', error);
+		}
 	}
 
 	function emitReady(token) {
@@ -662,6 +699,8 @@
 
 	async function handleSongQuizSettings() {
 		if (room.type !== 'song') return;
+		ensureSongPlayback();
+		applySongVolume();
 		const songQuiz = getSongQuizSettings();
 		const activeSong = getActiveSong();
 
@@ -691,7 +730,6 @@
 			currentSongRoundId = activeRoundId;
 			currentPrepareToken = prepareToken || '';
 			currentPlayToken = '';
-			earlyTakeoverMessage = '';
 			// Sync the clock while the file decodes.
 			syncServerClock().catch(() => {});
 			const ok = await preloadSong({ url, prepareToken, playToken });
@@ -899,6 +937,9 @@
 			.channel(`song-play:${room.id}`, {
 				config: { broadcast: { self: false, ack: false } }
 			})
+			.on('broadcast', { event: 'takeover-stop' }, () => {
+				stopLocalSongPlayback();
+			})
 			.subscribe();
 
 		channel = supabase
@@ -1006,8 +1047,13 @@
 				async (payload) => {
 					console.log('Hand raise change detected:', payload);
 					try {
+						const isFirstTakeover = payload.eventType === 'INSERT' && playerPositions.length === 0;
 						// Always update the leaderboard when any hand raise changes
 						await loadHandRaiseResults();
+
+						if (isFirstTakeover) {
+							stopLocalSongPlayback();
+						}
 
 						// Add visual indication of update
 						const leaderboardElement = document.querySelector('.leaderboard-table');
@@ -1331,19 +1377,19 @@
 	}
 
 	async function enterTakeoverMode() {
-		// First check if takeover mode is enabled for this room
+		if (!hasJoined) {
+			toast.error('Najpierw dołącz do pokoju');
+			return;
+		}
+
 		try {
 			const { data: roomData, error: roomError } = await supabase.from('rooms').select('takeover_mode').eq('id', room.id).single();
 
 			if (roomError) throw roomError;
-
-			// If takeover mode is disabled, show toast and return
-			if (!roomData.takeover_mode) {
-				toast.error('Tryb przejęć jest obecnie wyłączony');
-				return;
+			if (roomData) {
+				room = { ...room, takeover_mode: roomData.takeover_mode };
 			}
 
-			// Continue with normal takeover mode flow
 			inTakeoverMode = true;
 			checkingHandRaiseStatus = true; // Set loading state
 			await tick();
@@ -1378,13 +1424,21 @@
 	async function raiseHand() {
 		if (handRaised) return;
 
+		if (!room.takeover_mode) {
+			toast.error('Tryb przejęć jest obecnie wyłączony');
+			return;
+		}
+
 		// In song rooms, refuse to record a hand-raise if the audio never loaded.
 		if (room.type === 'song' && !songIsReady) {
 			toast.error('Utwór nie jest załadowany - nie możesz brać udziału.');
 			return;
 		}
 
-		const isTooEarly = !hasSongPlaybackStarted();
+		const hadNoTakeoversYet = playerPositions.length === 0;
+		if (hadNoTakeoversYet) {
+			stopLocalSongPlayback();
+		}
 
 		// Force a fresh latency measurement before submission
 		if (!measuringLatency) {
@@ -1415,12 +1469,11 @@
 			} else {
 				// Add this to load results after successful insert
 				await loadHandRaiseResults();
+				if (hadNoTakeoversYet) {
+					broadcastTakeoverSongStop();
+				}
 			}
 
-			if (isTooEarly) {
-				earlyTakeoverMessage = 'Za wcześnie! To przejęcie było przed zaplanowanym startem utworu i nie liczy się do pierwszego miejsca.';
-				toast.warning('Za wcześnie - poczekaj na start utworu');
-			}
 		} catch (error) {
 			console.error('Failed to raise hand:', error);
 			toast.error('Nie udało się przejąć');
@@ -1436,6 +1489,13 @@
 		cleanupLatencyMonitoring();
 	}
 
+	function handleTakeoverVolumeChange(event) {
+		const nextVolume = Number(event.currentTarget.value);
+		if (!Number.isFinite(nextVolume)) return;
+		takeoverVolume = Math.max(0, Math.min(100, nextVolume));
+		applySongVolume();
+	}
+
 	async function loadHandRaiseResults() {
 		try {
 			const { data, error } = await supabase.from('hand_raises').select('*').eq('room_id', room.id).order('server_timestamp', { ascending: true });
@@ -1443,34 +1503,8 @@
 			if (error) throw error;
 
 			let rankedData = data || [];
-			let playerHadEarlyTakeover = false;
 			const playAt = room.type === 'song' ? getSongQuizSettings().playAt : null;
 			const playAtMs = playAt ? new Date(playAt).getTime() : null;
-
-			if (room.type === 'song') {
-				if (!playAtMs) {
-					const hasEarlyRow = rankedData.some((d) => d.player_name === playerName);
-					if (hasEarlyRow) {
-						playerHadEarlyTakeover = true;
-						earlyTakeoverMessage = 'Za wcześnie! Utwór jeszcze nie został zaplanowany, więc to przejęcie nie liczy się do pierwszego miejsca.';
-					}
-					rankedData = [];
-				} else {
-					const earlyRows = rankedData.filter((d) => {
-						const reaction = getReactionMs(d, playAtMs);
-						if (reaction !== null) return reaction < 0;
-						return new Date(d.server_timestamp).getTime() < playAtMs;
-					});
-					const hasEarlyRow = earlyRows.some((d) => d.player_name === playerName);
-					playerHadEarlyTakeover = hasEarlyRow;
-					rankedData = rankedData.filter((d) => !earlyRows.includes(d));
-
-					if (hasEarlyRow && !rankedData.some((d) => d.player_name === playerName)) {
-						earlyTakeoverMessage = 'Twoje wcześniejsze przejęcie było za wcześnie i nie liczy się do pierwszego miejsca.';
-					}
-				}
-			}
-
 			const useReactionRank = room.type === 'song' && !!playAtMs;
 
 			if (rankedData.length > 0) {
@@ -1494,7 +1528,6 @@
 
 				if (playerIndex >= 0) {
 					const position = playerIndex + 1;
-					earlyTakeoverMessage = '';
 					const playerRow = rankedData[playerIndex];
 					const playerLatency = playerRow.measured_latency || 0;
 					let timeDifferenceMs;
@@ -1535,10 +1568,6 @@
 				playerPositions = [];
 				if (handRaised) {
 					handRaiseResults = null;
-				}
-				if (!playerHadEarlyTakeover && !rankedData.some((d) => d.player_name === playerName) && hasSongPlaybackStarted()) {
-					handRaised = false;
-					earlyTakeoverMessage = '';
 				}
 			}
 		} catch (error) {
@@ -2053,7 +2082,7 @@
 			</Card.Content>
 		</Card.Root>
 
-		{#if hasJoined && !inTakeoverMode}
+		{#if !inTakeoverMode}
 			<div class="fixed right-4 top-4 z-20">
 				<Button on:click={enterTakeoverMode} class="border border-gray-700 bg-gray-600 text-white hover:bg-gray-700">Tryb przejęć</Button>
 			</div>
@@ -2081,6 +2110,19 @@
 							</span>
 						</span>
 					</div>
+					{#if room.type === 'song'}
+						<div class="w-64 rounded-lg bg-gray-800 p-3">
+							<div class="mb-2 flex items-center justify-between text-xs text-gray-300">
+								<span>Globalna głośność</span>
+								<span>{Math.round(getGlobalSongVolume() * 100)}%</span>
+							</div>
+							<div class="mb-2 flex items-center justify-between text-xs text-gray-300">
+								<span>Twoja głośność</span>
+								<span>{takeoverVolume}%</span>
+							</div>
+							<input type="range" min="0" max="100" step="1" value={takeoverVolume} on:input={handleTakeoverVolumeChange} class="h-2 w-full cursor-pointer accent-blue-500" />
+						</div>
+					{/if}
 					<div class="flex gap-2">
 						<Button on:click={exitTakeoverMode} class="border border-gray-700 bg-gray-800 text-white hover:bg-gray-700">Wyjdź</Button>
 						<Button on:click={showLeaderboard} class="border border-gray-700 bg-gray-800 text-white hover:bg-gray-700">Wyniki</Button>
@@ -2106,14 +2148,13 @@
 						<p class="text-sm text-red-100/80">Powód: {songLoadError}</p>
 						<p class="mt-4 text-sm text-red-100/80">Nie możesz brać udziału w tej rundzie. Spróbuj odświeżyć stronę.</p>
 					</div>
+				{:else if !room.takeover_mode}
+					<div class="max-w-lg rounded-lg border border-gray-700 bg-gray-800/80 p-8 text-center">
+						<h2 class="mb-3 text-2xl font-bold text-white">Czekamy na start przejęć</h2>
+						<p class="text-base text-gray-300">Prowadzący jeszcze nie włączył trybu przejęć. Zostań na tym ekranie — przycisk pojawi się automatycznie.</p>
+					</div>
 				{:else if !handRaised}
 					<button on:mousedown={raiseHand} on:touchstart|preventDefault={raiseHand} class="flex h-full w-full items-center justify-center bg-blue-600 text-4xl font-bold text-white active:bg-blue-800"> DOTKNIJ BY PODNIEŚĆ ŁAPĘ </button>
-				{:else if earlyTakeoverMessage && !handRaiseResults}
-					<div class="max-w-lg rounded-lg border border-yellow-700 bg-yellow-900/30 p-8 text-center">
-						<h2 class="mb-4 text-3xl font-bold text-yellow-300">Za wcześnie!</h2>
-						<p class="mb-6 text-xl text-yellow-100">{earlyTakeoverMessage}</p>
-						<p class="text-sm text-yellow-100/80">Gdy admin naciśnie Play, ten klik zostanie wyczyszczony i będzie można spróbować ponownie.</p>
-					</div>
 				{:else if handRaiseResults}
 					<div class="flex flex-col items-center justify-center rounded-lg bg-gray-800 p-8">
 						<!-- Show player's position only if they participated -->
