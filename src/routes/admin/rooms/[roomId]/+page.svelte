@@ -138,31 +138,32 @@
 	}
 
 	// Pick a random start offset (in seconds) for the requested sample type.
-	// Constraint: at least 20s of audio must remain after the start point.
+	// The sample will play for ~20s from the returned offset.
 	function pickSampleOffsetSec(durationSec, sampleType) {
 		if (!Number.isFinite(durationSec) || durationSec <= 0) return 0;
-		const minRemaining = 20;
-		const maxStart = Math.max(0, durationSec - minRemaining);
+		const sampleLength = 20;
+		const maxStart = Math.max(0, durationSec - sampleLength);
 		if (maxStart <= 0) return 0;
 
 		if (sampleType === 'first') {
-			return Math.random() * Math.min(20, maxStart);
+			// Start within the first 10 seconds
+			return Math.random() * Math.min(10, maxStart);
 		}
 		if (sampleType === 'last') {
-			// Pick a start in the last 20-second window that still leaves
-			// 20 seconds of audio remaining: [duration-40, duration-20].
-			const lower = Math.max(0, durationSec - 40);
-			const upper = maxStart;
-			if (upper <= lower) return lower;
+			// Start so that the 20s sample ends at or near the end of the song.
+			// Pick randomly within [duration - 25, duration - 20] for slight variety.
+			const idealStart = durationSec - sampleLength;
+			const lower = Math.max(0, idealStart - 5);
+			const upper = idealStart;
 			return lower + Math.random() * (upper - lower);
 		}
 		if (sampleType === 'mid') {
-			// Anchor a 20-second-wide window around the middle, clamped so we
-			// never start in the first/last 20s and always leave 20s remaining.
+			// Center the sample around the middle of the song.
 			const center = durationSec / 2;
-			const lower = Math.max(20, center - 10);
-			const upper = Math.min(maxStart, center + 10);
-			if (upper <= lower) return Math.min(maxStart, Math.max(0, center));
+			const idealStart = center - sampleLength / 2;
+			const lower = Math.max(0, idealStart - 5);
+			const upper = Math.min(maxStart, idealStart + 5);
+			if (upper <= lower) return Math.max(0, Math.min(maxStart, idealStart));
 			return lower + Math.random() * (upper - lower);
 		}
 		return 0;
