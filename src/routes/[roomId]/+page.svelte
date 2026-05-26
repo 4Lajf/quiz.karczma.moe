@@ -583,20 +583,10 @@
 		return room?.settings?.songQuiz || {};
 	}
 
-	function getGlobalSongVolume() {
-		const globalVolume = Number(getSongQuizSettings().globalVolume);
-		if (!Number.isFinite(globalVolume)) return 1;
-		return Math.max(0, Math.min(1, globalVolume));
-	}
-
-	function getEffectiveSongVolume() {
-		const localVolume = Math.max(0, Math.min(1, takeoverVolume / 100));
-		return Math.max(0, Math.min(1, localVolume * getGlobalSongVolume()));
-	}
-
 	function applySongVolume() {
 		if (!songPlayback) return;
-		songPlayback.setVolume(getEffectiveSongVolume());
+		const volume = Math.max(0, Math.min(1, takeoverVolume / 100));
+		songPlayback.setVolume(volume);
 	}
 
 	function getActiveSong() {
@@ -659,17 +649,41 @@
 		}
 	}
 
+	let readyAckInterval = null;
+
 	function emitReady(token) {
 		if (!token || !songPlayChannel) return;
-		try {
-			songPlayChannel.send({
-				type: 'broadcast',
-				event: 'ready',
-				payload: { token, playerName }
-			});
-		} catch (error) {
-			console.warn('Failed to emit ready ack', error);
+		// Clear any existing interval
+		if (readyAckInterval) {
+			clearInterval(readyAckInterval);
+			readyAckInterval = null;
 		}
+
+		const sendReadyAck = () => {
+			try {
+				songPlayChannel.send({
+					type: 'broadcast',
+					event: 'ready',
+					payload: { token, playerName, timestamp: Date.now() }
+				});
+			} catch (error) {
+				console.warn('Failed to emit ready ack', error);
+			}
+		};
+
+		// Send immediately
+		sendReadyAck();
+
+		// Also send periodically to ensure admin sees we're ready
+		readyAckInterval = setInterval(sendReadyAck, 3000);
+
+		// Stop after 30 seconds to avoid infinite broadcasts
+		setTimeout(() => {
+			if (readyAckInterval) {
+				clearInterval(readyAckInterval);
+				readyAckInterval = null;
+			}
+		}, 30000);
 	}
 
 	async function preloadSong({ url, prepareToken, playToken }) {
@@ -1438,34 +1452,43 @@
 			stopLocalSongPlayback();
 		}
 
-		// Force a fresh latency measurement before submission
-		if (!measuringLatency) {
-			await measureNetworkLatency();
-		}
+		// Optimistic update - show results immediately
+		handRaised = true;
+		const optimisticPosition = playerPositions.length + 1;
+		handRaiseResults = {
+			position: optimisticPosition,
+			timeDifferenceMs: 0,
+			latency: networkLatency || 0
+		};
+		playerPositions = [...playerPositions, {
+			name: playerName,
+			position: optimisticPosition,
+			timeDifferenceMs: 0,
+			latency: networkLatency || 0
+		}];
 
 		// For song rooms we record click time in *server clock* so the admin can
 		// compute a real reaction-time relative to playAt. For other rooms keep
 		// the legacy behaviour (Date.now()).
 		const clientTimestamp = room.type === 'song' ? clockSync.serverNow() : Date.now();
-		handRaised = true;
 
 		try {
 			const { error } = await supabase.from('hand_raises').insert({
 				room_id: room.id,
 				player_name: playerName,
 				client_timestamp: clientTimestamp,
-				measured_latency: networkLatency // Use the latest latency measurement
+				measured_latency: networkLatency
 			});
 
 			if (error) {
 				if (error.code === '23505') {
-					// Already raised hand
+					// Already raised hand - load actual results
 					await loadHandRaiseResults();
 				} else {
 					throw error;
 				}
 			} else {
-				// Add this to load results after successful insert
+				// Load actual results to get correct position
 				await loadHandRaiseResults();
 				if (hadNoTakeoversYet) {
 					broadcastTakeoverSongStop();
@@ -1475,7 +1498,10 @@
 		} catch (error) {
 			console.error('Failed to raise hand:', error);
 			toast.error('Nie udało się przejąć');
+			// Revert optimistic update
 			handRaised = false;
+			handRaiseResults = null;
+			playerPositions = playerPositions.filter(p => p.name !== playerName);
 		}
 	}
 
@@ -1865,6 +1891,10 @@
 		if (countdownInterval) {
 			clearInterval(countdownInterval);
 		}
+		if (readyAckInterval) {
+			clearInterval(readyAckInterval);
+			readyAckInterval = null;
+		}
 		if (songPlayback) {
 			songPlayback.dispose();
 			songPlayback = null;
@@ -2111,11 +2141,7 @@
 					{#if room.type === 'song'}
 						<div class="w-64 rounded-lg bg-gray-800 p-3">
 							<div class="mb-2 flex items-center justify-between text-xs text-gray-300">
-								<span>Globalna głośność</span>
-								<span>{Math.round(getGlobalSongVolume() * 100)}%</span>
-							</div>
-							<div class="mb-2 flex items-center justify-between text-xs text-gray-300">
-								<span>Twoja głośność</span>
+								<span>Głośność</span>
 								<span>{takeoverVolume}%</span>
 							</div>
 							<input type="range" min="0" max="100" step="1" value={takeoverVolume} on:input={handleTakeoverVolumeChange} class="h-2 w-full cursor-pointer accent-blue-500" />

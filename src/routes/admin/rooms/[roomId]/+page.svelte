@@ -30,9 +30,6 @@
 	let isAddingMinusPoints = false;
 	let isPreparingSong = false;
 	let isStartingSong = false;
-	let globalSongVolume = 100;
-	let savingGlobalVolume = false;
-	let editingGlobalVolume = false;
 	let songReadyPlayers = new Set();
 	let songReadyToken = null;
 	let songPlayChannel = null;
@@ -53,47 +50,6 @@
 	$: notReadyPlayers = songReadyToken === activePrepareOrPlayToken && Array.isArray(players)
 		? players.filter(p => !songReadyPlayers.has(p.name)).map(p => p.name)
 		: [];
-	$: if (room?.type === 'song' && !editingGlobalVolume) {
-		globalSongVolume = getGlobalSongVolumePercent(room?.settings);
-	}
-
-	function getGlobalSongVolumePercent(settings) {
-		const raw = settings?.songQuiz?.globalVolume;
-		const normalized = Number.isFinite(raw) ? Math.max(0, Math.min(1, raw)) : 1;
-		return Math.round(normalized * 100);
-	}
-
-	async function saveGlobalSongVolume() {
-		if (room.type !== 'song') return;
-		savingGlobalVolume = true;
-		try {
-			canModifyRoom(room, user, profile);
-			const normalizedPercent = Number.isFinite(globalSongVolume) ? Math.max(0, Math.min(100, globalSongVolume)) : 100;
-			const normalizedVolume = Math.round((normalizedPercent / 100) * 100) / 100;
-			const nextSettings = {
-				...(room.settings || {}),
-				songQuiz: {
-					...(room.settings?.songQuiz || {}),
-					globalVolume: normalizedVolume
-				}
-			};
-			const { error } = await supabase
-				.from('rooms')
-				.update({
-					settings: nextSettings
-				})
-				.eq('id', room.id);
-			if (error) throw error;
-			room = { ...room, settings: nextSettings };
-			globalSongVolume = Math.round(normalizedVolume * 100);
-			toast.success(`Zapisano globalną głośność: ${globalSongVolume}%`);
-		} catch (error) {
-			toast.error('Nie udało się zapisać globalnej głośności: ' + error.message);
-		} finally {
-			savingGlobalVolume = false;
-			editingGlobalVolume = false;
-		}
-	}
 
 	async function callSongPlayApi(phase, extras = {}) {
 		const response = await fetch(`/api/rooms/${room.id}/song-play`, {
@@ -700,23 +656,8 @@
 				toast.success(`Utworzono i przesunięto do rundy ${nextRoundNumber}`);
 			}
 
-			await autoPrepareSongForSelectedRound();
 		} catch (error) {
 			toast.error(error.message);
-		}
-	}
-
-	// Automatically fire "Przygotuj utwór" when switching rounds in song rooms,
-	// so clients start preloading without an extra admin click.
-	async function autoPrepareSongForSelectedRound() {
-		if (room.type !== 'song') return;
-		// Wait for reactive `selectedRoundSong` to recompute against the new selectedRoundId.
-		await tick();
-		if (!selectedRoundSong?.audioUrl) return;
-		try {
-			await prepareSelectedSong();
-		} catch (error) {
-			console.warn('Auto-prepare failed:', error);
 		}
 	}
 
@@ -1183,11 +1124,23 @@
 	}
 
 	async function toggleTakeoverMode() {
+		// Validate room ownership first (sync check)
 		try {
-			// Validate room ownership
 			canModifyRoom(room, user, profile);
+		} catch (error) {
+			toast.error('Nie masz uprawnień do modyfikacji tego pokoju');
+			return;
+		}
 
-			if (takeoverModeActive) {
+		const wasActive = takeoverModeActive;
+		// Optimistic update
+		takeoverModeActive = !wasActive;
+		if (wasActive) {
+			handRaiseResults = [];
+		}
+
+		try {
+			if (wasActive) {
 				// Deactivate takeover mode
 				const { error } = await supabase
 					.from('rooms')
@@ -1204,8 +1157,6 @@
 
 				if (clearError) throw clearError;
 
-				takeoverModeActive = false;
-				handRaiseResults = [];
 				toast.success('Tryb przejęcia dezaktywowany');
 			} else {
 				// Activate takeover mode
@@ -1219,10 +1170,11 @@
 
 				if (error) throw error;
 
-				takeoverModeActive = true;
 				toast.success('Tryb przejęcia aktywowany');
 			}
 		} catch (error) {
+			// Revert optimistic update
+			takeoverModeActive = wasActive;
 			toast.error('Nie udało się przełączyć trybu przejęcia: ' + error.message);
 		}
 	}
@@ -1938,34 +1890,6 @@
 										<Button size="sm" variant="outline" on:click={forceReloadSong} disabled={isPreparingSong || isStartingSong || !isCurrentRound} class="border-amber-700 bg-amber-900/30 text-amber-200 hover:bg-amber-900/50">
 											<RefreshCw class="mr-1 h-3 w-3" /> Wymuś ponowne ładowanie
 										</Button>
-									</div>
-
-									<div class="mt-4 rounded-md border border-gray-700 bg-gray-900/40 p-3">
-										<div class="mb-2 flex items-center justify-between gap-3">
-											<p class="text-sm text-gray-200">Globalna głośność odtwarzania</p>
-											<span class="text-sm font-semibold text-gray-100">{globalSongVolume}%</span>
-										</div>
-										<div class="flex flex-wrap items-center gap-3">
-											<input
-												type="range"
-												min="0"
-												max="100"
-												step="1"
-												bind:value={globalSongVolume}
-												on:input={() => (editingGlobalVolume = true)}
-												on:change={() => (editingGlobalVolume = false)}
-												class="h-2 w-52 cursor-pointer accent-blue-500"
-											/>
-											<Button
-												size="sm"
-												variant="outline"
-												on:click={saveGlobalSongVolume}
-												disabled={savingGlobalVolume}
-												class="border-gray-700 bg-gray-800 text-gray-200 hover:bg-gray-700"
-											>
-												{savingGlobalVolume ? 'Zapisywanie...' : 'Zapisz głośność'}
-											</Button>
-										</div>
 									</div>
 
 									{#if songQuizState.startOffsetMs !== undefined && songQuizState.startOffsetMs !== null && songQuizState.activeRoundId === selectedRoundId}
