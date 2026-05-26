@@ -29,7 +29,10 @@
 </script>
 
 <script>
+	import { createEventDispatcher } from "svelte";
 	import { cn } from "$lib/utils.js";
+
+	const dispatch = createEventDispatcher();
 
 	let {
 		class: className,
@@ -38,9 +41,15 @@
 		ref = $bindable(null),
 		href = undefined,
 		type = "button",
+		onclick,
 		children,
 		...restProps
 	} = $props();
+
+	function handleClick(event) {
+		onclick?.(event);
+		dispatch("click", event);
+	}
 </script>
 
 {#if href}
@@ -48,6 +57,7 @@
 		bind:this={ref}
 		class={cn(buttonVariants({ variant, size }), className)}
 		{href}
+		onclick={handleClick}
 		{...restProps}
 	>
 		{@render children?.()}
@@ -57,6 +67,7 @@
 		bind:this={ref}
 		class={cn(buttonVariants({ variant, size }), className)}
 		{type}
+		onclick={handleClick}
 		{...restProps}
 	>
 		{@render children?.()}
