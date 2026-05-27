@@ -15,6 +15,8 @@
 	let handRaised = false;
 	let handRaiseResults = null;
 	let playerPositions = [];
+	let raiseHandInProgress = false;
+	let showTakeoverLeaderboard = false;
 	let networkLatency = 0;
 	let latencyMeasured = false;
 	let latencyInterval = null;
@@ -564,19 +566,27 @@
 		{ input: 'l', replace: '[l˥]' }
 	];
 
-	function closeLeaderboardView() {
+	function resetTakeoverClaimState() {
+		handRaised = false;
 		handRaiseResults = null;
+		playerPositions = [];
+		showTakeoverLeaderboard = false;
+		raiseHandInProgress = false;
+	}
+
+	function closeLeaderboardView() {
+		showTakeoverLeaderboard = false;
+		handRaiseResults = null;
+		// Safe to reset — raiseHand() re-checks the database before inserting.
 		handRaised = false;
 	}
 
-	function showLeaderboard() {
-		// Set handRaised to true to show the leaderboard
-		handRaised = true;
-		// If we don't have results yet, load them
-		if (!handRaiseResults) {
-			loadHandRaiseResults();
+	async function showLeaderboard() {
+		await loadHandRaiseResults();
+		showTakeoverLeaderboard = true;
+		if (playerPositions.some((p) => p.name === playerName)) {
+			handRaised = true;
 		}
-		console.log(handRaiseResults);
 	}
 
 	function getSongQuizSettings() {
@@ -866,9 +876,6 @@
 	let hasSubmitted = false;
 
 	$: ({ supabase, room } = data);
-	$: if (hasJoined && channel) {
-		subscribeToChanges();
-	}
 
 	function resetAnswerState() {
 		hasSubmitted = false;
@@ -972,6 +979,7 @@
 						if (room.type !== 'song') {
 							toast.info('Rozpoczęła się nowa runda!');
 						}
+						resetTakeoverClaimState();
 						resetAnswerStateWithHint();
 						// Fetch current points value for the new round if it's a screen room
 						if (room.type === 'screen') {
@@ -994,11 +1002,18 @@
 
 					const newSong = payload.new.settings?.songQuiz || {};
 					const oldSong = payload.old?.settings?.songQuiz || {};
-					if (newSong.prepareToken !== oldSong.prepareToken || newSong.playToken !== oldSong.playToken || newSong.activeRoundId !== oldSong.activeRoundId || newSong.stopToken !== oldSong.stopToken) {
-						await loadHandRaiseResults();
+					
+					const isNewRound = newSong.activeRoundId !== oldSong.activeRoundId;
+					const hasSongSettingsChanged = newSong.prepareToken !== oldSong.prepareToken || newSong.playToken !== oldSong.playToken || newSong.stopToken !== oldSong.stopToken;
+					
+					if (isNewRound) {
+						resetTakeoverClaimState();
 						if (inTakeoverMode) {
+							toast.info('Nowa runda! Przygotuj się do przejęcia.');
 							await handleSongQuizSettings();
 						}
+					} else if (hasSongSettingsChanged && inTakeoverMode) {
+						await handleSongQuizSettings();
 					}
 				}
 			)
@@ -1060,6 +1075,11 @@
 				async (payload) => {
 					console.log('Hand raise change detected:', payload);
 					try {
+						if (payload.eventType === 'DELETE' && !payload.new) {
+							resetTakeoverClaimState();
+							return;
+						}
+
 						const isFirstTakeover = payload.eventType === 'INSERT' && playerPositions.length === 0;
 						// Always update the leaderboard when any hand raise changes
 						await loadHandRaiseResults();
@@ -1098,10 +1118,8 @@
 				(payload) => {
 					room = { ...room, ...payload.new };
 					if (payload.new.takeover_mode === false && inTakeoverMode) {
-						// Admin disabled takeover mode
 						inTakeoverMode = false;
-						handRaised = false;
-						handRaiseResults = null;
+						resetTakeoverClaimState();
 						toast.info('Tryb przejęcia został wyłączony');
 					}
 				}
@@ -1398,6 +1416,8 @@
 		}
 
 		try {
+			resetTakeoverClaimState();
+
 			const { data: roomData, error: roomError } = await supabase.from('rooms').select('takeover_mode').eq('id', room.id).single();
 
 			if (roomError) throw roomError;
@@ -1419,9 +1439,12 @@
 			try {
 				const { data, error } = await supabase.from('hand_raises').select('*').eq('room_id', room.id).eq('player_name', playerName).maybeSingle();
 
+				if (error) throw error;
+
 				if (data) {
-					// User already raised hand, set flag and load results
 					handRaised = true;
+					await loadHandRaiseResults();
+				} else {
 					await loadHandRaiseResults();
 				}
 			} catch (error) {
@@ -1433,8 +1456,21 @@
 		}
 	}
 
+	async function reloadHandRaiseResultsWithRetry(maxAttempts = 5) {
+		for (let attempt = 0; attempt < maxAttempts; attempt++) {
+			await loadHandRaiseResults();
+			if (playerPositions.some((p) => p.name === playerName)) {
+				return true;
+			}
+			if (attempt < maxAttempts - 1) {
+				await new Promise((r) => setTimeout(r, 300 * (attempt + 1)));
+			}
+		}
+		return false;
+	}
+
 	async function raiseHand() {
-		if (handRaised) return;
+		if (raiseHandInProgress) return;
 
 		if (!room.takeover_mode) {
 			toast.error('Tryb przejęć jest obecnie wyłączony');
@@ -1447,32 +1483,60 @@
 			return;
 		}
 
-		const hadNoTakeoversYet = playerPositions.length === 0;
-		if (hadNoTakeoversYet) {
-			stopLocalSongPlayback();
-		}
-
-		// Optimistic update - show results immediately
-		handRaised = true;
-		const optimisticPosition = playerPositions.length + 1;
-		handRaiseResults = {
-			position: optimisticPosition,
-			timeDifferenceMs: 0,
-			latency: networkLatency || 0
-		};
-		playerPositions = [...playerPositions, {
-			name: playerName,
-			position: optimisticPosition,
-			timeDifferenceMs: 0,
-			latency: networkLatency || 0
-		}];
-
-		// For song rooms we record click time in *server clock* so the admin can
-		// compute a real reaction-time relative to playAt. For other rooms keep
-		// the legacy behaviour (Date.now()).
-		const clientTimestamp = room.type === 'song' ? clockSync.serverNow() : Date.now();
+		raiseHandInProgress = true;
 
 		try {
+			const { data: existingRaise, error: existingError } = await supabase
+				.from('hand_raises')
+				.select('id')
+				.eq('room_id', room.id)
+				.eq('player_name', playerName)
+				.maybeSingle();
+
+			if (existingError) throw existingError;
+
+			if (existingRaise) {
+				handRaised = true;
+				const loaded = await reloadHandRaiseResultsWithRetry();
+				if (!loaded) {
+					toast.error('Przejęcie jest zapisane, ale wyniki jeszcze się synchronizują.');
+				}
+				return;
+			}
+
+			// Recover from a stale syncing state without blocking future attempts
+			if (handRaised && !handRaiseResults) {
+				handRaised = false;
+			}
+
+			const hadNoTakeoversYet = playerPositions.length === 0;
+			if (hadNoTakeoversYet) {
+				stopLocalSongPlayback();
+			}
+
+			// Optimistic update - show results immediately
+			handRaised = true;
+			const optimisticPosition = playerPositions.length + 1;
+			handRaiseResults = {
+				position: optimisticPosition,
+				timeDifferenceMs: 0,
+				latency: networkLatency || 0
+			};
+			playerPositions = [
+				...playerPositions,
+				{
+					name: playerName,
+					position: optimisticPosition,
+					timeDifferenceMs: 0,
+					latency: networkLatency || 0
+				}
+			];
+
+			// For song rooms we record click time in *server clock* so the admin can
+			// compute a real reaction-time relative to playAt. For other rooms keep
+			// the legacy behaviour (Date.now()).
+			const clientTimestamp = room.type === 'song' ? clockSync.serverNow() : Date.now();
+
 			const { error } = await supabase.from('hand_raises').insert({
 				room_id: room.id,
 				player_name: playerName,
@@ -1482,33 +1546,37 @@
 
 			if (error) {
 				if (error.code === '23505') {
-					// Already raised hand - load actual results
-					await loadHandRaiseResults();
+					handRaiseResults = null;
+					playerPositions = playerPositions.filter((p) => p.name !== playerName);
+					handRaised = true;
+					const loaded = await reloadHandRaiseResultsWithRetry();
+					if (!loaded) {
+						handRaised = false;
+						toast.error('Przejęcie zarejestrowane, ale nie udało się załadować wyników. Spróbuj ponownie.');
+					}
 				} else {
 					throw error;
 				}
 			} else {
-				// Load actual results to get correct position
 				await loadHandRaiseResults();
 				if (hadNoTakeoversYet) {
 					broadcastTakeoverSongStop();
 				}
 			}
-
 		} catch (error) {
 			console.error('Failed to raise hand:', error);
 			toast.error('Nie udało się przejąć');
-			// Revert optimistic update
 			handRaised = false;
 			handRaiseResults = null;
-			playerPositions = playerPositions.filter(p => p.name !== playerName);
+			playerPositions = playerPositions.filter((p) => p.name !== playerName);
+		} finally {
+			raiseHandInProgress = false;
 		}
 	}
 
 	function exitTakeoverMode() {
 		inTakeoverMode = false;
-		handRaised = false;
-		handRaiseResults = null;
+		resetTakeoverClaimState();
 		// Stop monitoring latency
 		cleanupLatencyMonitoring();
 	}
@@ -1563,11 +1631,14 @@
 						timeDifferenceMs = adjustedPlayerTime - referenceFirst;
 					}
 
+					handRaised = true;
 					handRaiseResults = {
 						position,
 						timeDifferenceMs,
 						latency: playerLatency
 					};
+				} else if (handRaised && !handRaiseResults) {
+					// Claim is still syncing; keep the syncing UI until data arrives.
 				}
 
 				playerPositions = rankedData.map((d, index) => {
@@ -1590,9 +1661,9 @@
 				});
 			} else {
 				playerPositions = [];
-				if (handRaised) {
-					handRaiseResults = null;
-				}
+				// Don't reset handRaiseResults here - this prevents race conditions
+				// where the user raised hand but data hasn't synced yet (replication lag).
+				// The state is properly managed by raiseHand() and exitTakeoverMode().
 			}
 		} catch (error) {
 			console.error('Failed to load hand raise results:', error);
@@ -2171,32 +2242,51 @@
 						<h2 class="mb-3 text-2xl font-bold text-white">Czekamy na start przejęć</h2>
 						<p class="text-base text-gray-300">Prowadzący jeszcze nie włączył trybu przejęć. Zostań na tym ekranie — przycisk pojawi się automatycznie.</p>
 					</div>
-				{:else if handRaiseResults}
-					<div class="flex flex-col items-center justify-center rounded-lg bg-gray-800 p-8">
-						<!-- Show player's position only if they participated -->
-						{#if playerPositions.some((p) => p.name === playerName)}
-							<h2 class="mb-4 text-3xl font-bold text-white">
-								Jesteś #{handRaiseResults.position}
-							</h2>
+			{:else if handRaised && !handRaiseResults}
+				<!-- Syncing state - hand raised but waiting for results to load -->
+				<div class="flex flex-col items-center justify-center rounded-lg bg-gray-800 p-8">
+					<div class="mb-4 h-12 w-12 animate-spin rounded-full border-4 border-blue-500 border-t-transparent"></div>
+					<h2 class="mb-3 text-2xl font-bold text-white">Przejęcie zarejestrowane</h2>
+					<p class="text-base text-gray-300">Synchronizacja wyników...</p>
+					<p class="mt-2 text-sm text-gray-400">Twoja pozycja pojawi się za chwilę.</p>
+					<Button
+						on:click={reloadHandRaiseResultsWithRetry}
+						class="mt-6 border border-gray-700 bg-gray-800 text-white hover:bg-gray-700"
+					>
+						Spróbuj ponownie
+					</Button>
+				</div>
+			{:else if room.type === 'song' && !songIsReady}
+				<div class="max-w-lg rounded-lg border border-amber-700 bg-amber-900/20 p-8 text-center">
+					<h2 class="mb-3 text-2xl font-bold text-amber-200">Czekamy na utwór</h2>
+					<p class="text-base text-amber-100/90">Utwór jeszcze się ładuje. Przycisk przejęcia pojawi się, gdy będzie gotowy.</p>
+				</div>
+			{:else if handRaiseResults || (showTakeoverLeaderboard && playerPositions.length > 0)}
+				<div class="flex flex-col items-center justify-center rounded-lg bg-gray-800 p-8">
+					<!-- Show player's position only if they participated -->
+					{#if playerPositions.some((p) => p.name === playerName) && handRaiseResults}
+						<h2 class="mb-4 text-3xl font-bold text-white">
+							Jesteś #{handRaiseResults.position}
+						</h2>
 
-							{#if handRaiseResults.position > 1}
-								<p class="mb-2 text-xl text-white">
-									{(handRaiseResults.timeDifferenceMs / 1000).toFixed(3)}s za pierwszym miejscem
-								</p>
-								<p class="mb-6 text-sm text-gray-400">
-									Twój ping: <span class={getLatencyColorClass(handRaiseResults.latency)}>{handRaiseResults.latency}ms</span>
-								</p>
-							{:else}
-								<p class="mb-2 text-xl text-green-400">Jesteś pierwszy!</p>
-								<p class="mb-6 text-sm text-gray-400">
-									Twój ping: <span class={getLatencyColorClass(handRaiseResults.latency)}>{handRaiseResults.latency}ms</span>
-								</p>
-							{/if}
+						{#if handRaiseResults.position > 1}
+							<p class="mb-2 text-xl text-white">
+								{(handRaiseResults.timeDifferenceMs / 1000).toFixed(3)}s za pierwszym miejscem
+							</p>
+							<p class="mb-6 text-sm text-gray-400">
+								Twój ping: <span class={getLatencyColorClass(handRaiseResults.latency)}>{handRaiseResults.latency}ms</span>
+							</p>
 						{:else}
-							<!-- Spectator mode message -->
-							<h2 class="mb-4 text-3xl font-bold text-white">Wyniki przejęć</h2>
-							<p class="mb-6 text-xl text-gray-300">Jesteś obserwatorem</p>
+							<p class="mb-2 text-xl text-green-400">Jesteś pierwszy!</p>
+							<p class="mb-6 text-sm text-gray-400">
+								Twój ping: <span class={getLatencyColorClass(handRaiseResults.latency)}>{handRaiseResults.latency}ms</span>
+							</p>
 						{/if}
+					{:else}
+						<!-- Spectator mode message -->
+						<h2 class="mb-4 text-3xl font-bold text-white">Wyniki przejęć</h2>
+						<p class="mb-6 text-xl text-gray-300">Jesteś obserwatorem</p>
+					{/if}
 
 						<h3 class="mb-2 text-xl font-semibold text-white">Kto był pierwszy?</h3>
 						<div class="max-h-96 w-full overflow-y-auto">
@@ -2227,12 +2317,16 @@
 								</tbody>
 							</table>
 						</div>
-						<p class="mb-2 text-center text-base text-yellow-400">Pamiętaj by wyjść z tego ekranu<br /> przed rozpoczęciem kolejnej rundy!</p>
 
 						<Button on:click={closeLeaderboardView} class="mt-6 border border-gray-700 bg-gray-800 text-white hover:bg-gray-700">Wróć</Button>
 					</div>
 				{:else}
-					<button on:mousedown={raiseHand} on:touchstart|preventDefault={raiseHand} class="flex h-full w-full items-center justify-center bg-blue-600 text-4xl font-bold text-white active:bg-blue-800"> DOTKNIJ BY PODNIEŚĆ ŁAPĘ </button>
+					<button
+						on:pointerdown|preventDefault={raiseHand}
+						class="flex h-full w-full touch-none items-center justify-center bg-blue-600 text-4xl font-bold text-white active:bg-blue-800"
+					>
+						DOTKNIJ BY PODNIEŚĆ ŁAPĘ
+					</button>
 				{/if}
 			</div>
 		{/if}
