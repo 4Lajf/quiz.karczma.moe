@@ -48,16 +48,51 @@
 		}
 	}
 
+	function normalizeAnswerTitle(title) {
+		return title.trim().toLowerCase();
+	}
+
+	function uniqueAnswerTitles(titles) {
+		const seen = new Set();
+		const uniqueTitles = [];
+
+		for (const title of titles) {
+			if (!title?.trim()) continue;
+
+			const normalizedTitle = normalizeAnswerTitle(title);
+			if (seen.has(normalizedTitle)) continue;
+
+			seen.add(normalizedTitle);
+			uniqueTitles.push(title.trim());
+		}
+
+		return uniqueTitles;
+	}
+
+	async function fetchRelatedTitles(selectedTitle) {
+		try {
+			const response = await fetch(`/api/search/substring?q=${encodeURIComponent(selectedTitle)}&type=anime`);
+			if (!response.ok) throw new Error('Failed to fetch related titles');
+
+			const data = await response.json();
+			const hits = data.hits || [];
+
+			const matchingAnime = hits.find((hit) => hit.document.displayTitle.toLowerCase() === selectedTitle.toLowerCase() || hit.document.romajiTitle?.toLowerCase() === selectedTitle.toLowerCase() || hit.document.englishTitle?.toLowerCase() === selectedTitle.toLowerCase() || (hit.document.altTitles || []).some((alt) => alt.toLowerCase() === selectedTitle.toLowerCase()));
+
+			if (!matchingAnime) return [];
+
+			return uniqueAnswerTitles([matchingAnime.document.englishTitle, matchingAnime.document.romajiTitle, ...(matchingAnime.document.altTitles || [])]).filter((title) => normalizeAnswerTitle(title) !== normalizeAnswerTitle(selectedTitle));
+		} catch (error) {
+			console.error('Error fetching related titles:', error);
+			return [];
+		}
+	}
+
 	// Function to award points based on potential_points
 	async function awardPotentialPoints(answerId, playerName, potentialPoints) {
 		try {
 			// Get current player score
-			const { data: playerData, error: playerError } = await supabase
-				.from('players')
-				.select('score')
-				.eq('room_id', room.id)
-				.eq('name', playerName)
-				.single();
+			const { data: playerData, error: playerError } = await supabase.from('players').select('score').eq('room_id', room.id).eq('name', playerName).single();
 
 			if (playerError) throw playerError;
 
@@ -65,19 +100,12 @@
 			const newScore = playerData.score + potentialPoints;
 
 			// Update player score
-			const { error: updateError } = await supabase
-				.from('players')
-				.update({ score: newScore })
-				.eq('room_id', room.id)
-				.eq('name', playerName);
+			const { error: updateError } = await supabase.from('players').update({ score: newScore }).eq('room_id', room.id).eq('name', playerName);
 
 			if (updateError) throw updateError;
 
 			// Clear potential_points from the answer
-			const { error: answerError } = await supabase
-				.from('answers')
-				.update({ potential_points: null })
-				.eq('id', answerId);
+			const { error: answerError } = await supabase.from('answers').update({ potential_points: null }).eq('id', answerId);
 
 			if (answerError) throw answerError;
 
@@ -92,12 +120,7 @@
 	async function deductPotentialPoints(answerId, playerName, potentialPoints) {
 		try {
 			// Get current player score
-			const { data: playerData, error: playerError } = await supabase
-				.from('players')
-				.select('score')
-				.eq('room_id', room.id)
-				.eq('name', playerName)
-				.single();
+			const { data: playerData, error: playerError } = await supabase.from('players').select('score').eq('room_id', room.id).eq('name', playerName).single();
 
 			if (playerError) throw playerError;
 
@@ -105,19 +128,12 @@
 			const newScore = playerData.score - potentialPoints;
 
 			// Update player score
-			const { error: updateError } = await supabase
-				.from('players')
-				.update({ score: newScore })
-				.eq('room_id', room.id)
-				.eq('name', playerName);
+			const { error: updateError } = await supabase.from('players').update({ score: newScore }).eq('room_id', room.id).eq('name', playerName);
 
 			if (updateError) throw updateError;
 
 			// Clear potential_points from the answer
-			const { error: answerError } = await supabase
-				.from('answers')
-				.update({ potential_points: null })
-				.eq('id', answerId);
+			const { error: answerError } = await supabase.from('answers').update({ potential_points: null }).eq('id', answerId);
 
 			if (answerError) throw answerError;
 
@@ -132,10 +148,7 @@
 	async function clearPotentialPoints(answerId) {
 		try {
 			// Clear potential_points from the answer
-			const { error: answerError } = await supabase
-				.from('answers')
-				.update({ potential_points: null })
-				.eq('id', answerId);
+			const { error: answerError } = await supabase.from('answers').update({ potential_points: null }).eq('id', answerId);
 
 			if (answerError) throw answerError;
 
@@ -157,27 +170,59 @@
 		savingAnswers = { ...savingAnswers }; // Trigger reactivity
 
 		try {
-			// Check if answer already exists
 			const { data: existingAnswers, error: fetchError } = await supabase.from('correct_answers').select('*').eq('round_id', roundId);
 
 			if (fetchError) throw fetchError;
 
-			if (existingAnswers && existingAnswers.length > 0) {
-				// Update existing answer
-				const { error: updateError } = await supabase.from('correct_answers').update({ content: answers[roundId].trim() }).eq('round_id', roundId);
+			const primaryTitle = answers[roundId].trim();
+			const relatedTitles = await fetchRelatedTitles(primaryTitle);
+			const answerTitles = uniqueAnswerTitles([primaryTitle, ...relatedTitles]);
+			const primaryAnswer = existingAnswers?.[0];
+			const existingImage = existingAnswers?.find((answer) => answer.image)?.image || null;
+
+			if (primaryAnswer) {
+				const updatePayload = {
+					content: answerTitles[0],
+					image: primaryAnswer.image || existingImage
+				};
+
+				const { error: updateError } = await supabase.from('correct_answers').update(updatePayload).eq('id', primaryAnswer.id);
 
 				if (updateError) throw updateError;
 			} else {
-				// Create new answer
 				const { error: insertError } = await supabase.from('correct_answers').insert({
 					round_id: roundId,
-					content: answers[roundId].trim()
+					content: answerTitles[0]
 				});
 
 				if (insertError) throw insertError;
 			}
 
-			toast.success('Zapisano odpowiedź');
+			if (primaryAnswer) {
+				const { error: deleteError } = await supabase.from('correct_answers').delete().eq('round_id', roundId).neq('id', primaryAnswer.id);
+				if (deleteError) throw deleteError;
+			}
+
+			const additionalAnswers = answerTitles.slice(1).map((title) => ({
+				round_id: roundId,
+				content: title
+			}));
+
+			if (additionalAnswers.length > 0) {
+				const { error: insertRelatedError } = await supabase.from('correct_answers').insert(additionalAnswers);
+				if (insertRelatedError) throw insertRelatedError;
+			}
+
+			answers[roundId] = answerTitles[0];
+			answers = { ...answers };
+
+			if (additionalAnswers.length > 0) {
+				toast.success(`Zapisano odpowiedź i ${additionalAnswers.length} wariantów`);
+			} else {
+				toast.success('Zapisano odpowiedź');
+			}
+
+			await invalidateAll();
 		} catch (error) {
 			toast.error('Błąd: ' + error.message);
 		} finally {
@@ -237,37 +282,29 @@
 			const fileName = `round_${roundNumber}.${fileExt}`;
 
 			// Find the correct answer for this round
-			const roundId = rounds.find(r => r.round_number === roundNumber)?.id;
+			const roundId = rounds.find((r) => r.round_number === roundNumber)?.id;
 			if (!roundId) {
 				throw new Error(`Round with number ${roundNumber} not found`);
 			}
 
-			const { data: existingAnswers, error: fetchError } = await supabase
-				.from('correct_answers')
-				.select('*')
-				.eq('round_id', roundId);
+			const { data: existingAnswers, error: fetchError } = await supabase.from('correct_answers').select('*').eq('round_id', roundId);
 
 			if (fetchError) throw fetchError;
 
 			if (existingAnswers && existingAnswers.length > 0) {
 				// Update existing answer with the image URL
 				console.log(`Updating existing answer (ID: ${existingAnswers[0].id}) with image URL`);
-				const { error: updateError } = await supabase
-					.from('correct_answers')
-					.update({ image: url })
-					.eq('id', existingAnswers[0].id);
+				const { error: updateError } = await supabase.from('correct_answers').update({ image: url }).eq('id', existingAnswers[0].id);
 
 				if (updateError) throw updateError;
 			} else {
 				// Create new answer with the image URL
 				console.log(`Creating new answer for round ${roundId} with image URL`);
-				const { error: insertError } = await supabase
-					.from('correct_answers')
-					.insert({
-						round_id: roundId,
-						content: '',
-						image: url
-					});
+				const { error: insertError } = await supabase.from('correct_answers').insert({
+					round_id: roundId,
+					content: '',
+					image: url
+				});
 
 				if (insertError) throw insertError;
 			}
@@ -303,16 +340,13 @@
 			const { data: existingAnswers, error: fetchError } = await supabase
 				.from('correct_answers')
 				.select('*')
-				.eq('round_id', rounds.find(r => r.round_number === roundNumber).id);
+				.eq('round_id', rounds.find((r) => r.round_number === roundNumber).id);
 
 			if (fetchError) throw fetchError;
 
 			if (existingAnswers && existingAnswers.length > 0) {
 				// Update existing answer to clear the image URL
-				const { error: updateError } = await supabase
-					.from('correct_answers')
-					.update({ image: null })
-					.eq('id', existingAnswers[0].id);
+				const { error: updateError } = await supabase.from('correct_answers').update({ image: null }).eq('id', existingAnswers[0].id);
 
 				if (updateError) throw updateError;
 			}
@@ -432,8 +466,8 @@
 </script>
 
 <div class="min-h-screen bg-gray-950">
-	<div class="container p-6 mx-auto">
-		<Card.Root class="mb-6 bg-gray-900 border-gray-800">
+	<div class="container mx-auto p-6">
+		<Card.Root class="mb-6 border-gray-800 bg-gray-900">
 			<Card.Header>
 				<div class="flex items-center justify-between">
 					<div class="!-mt-4 mb-2 flex items-center gap-4">
@@ -441,7 +475,7 @@
 					</div>
 
 					<div class="!-mt-4 mb-2 flex items-center gap-2">
-						<Button href="/admin" variant="outline" class="text-gray-300 bg-gray-800 border-gray-700 hover:bg-gray-700">Powrót</Button>
+						<Button href="/admin" variant="outline" class="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700">Powrót</Button>
 					</div>
 				</div>
 			</Card.Header>
@@ -450,7 +484,7 @@
 		<!-- Display all rounds -->
 		<div class="space-y-8">
 			{#each sortedRounds as round (round.id)}
-				<Card.Root class="bg-gray-900 border border-gray-800">
+				<Card.Root class="border border-gray-800 bg-gray-900">
 					<Card.Header>
 						<Card.Title class="text-white">Runda {round.round_number}</Card.Title>
 					</Card.Header>
@@ -461,16 +495,16 @@
 								<h3 class="text-lg font-medium text-gray-300">Screen</h3>
 
 								{#if roundImages[round.round_number]}
-									<div class="relative overflow-hidden border border-gray-700 rounded-lg">
+									<div class="relative overflow-hidden rounded-lg border border-gray-700">
 										<img src={roundImages[round.round_number].url} alt={`Round ${round.round_number}`} class="w-full" />
 										<Button on:click={() => deleteImage(round.round_number)} class="absolute right-2 top-2 bg-red-600/70 hover:bg-red-700" size="sm">
-											<Trash2 class="w-4 h-4" />
+											<Trash2 class="h-4 w-4" />
 										</Button>
 									</div>
 								{:else}
-									<div class="flex items-center justify-center border border-gray-700 border-dashed rounded-lg h-52 bg-gray-800/50">
+									<div class="flex h-52 items-center justify-center rounded-lg border border-dashed border-gray-700 bg-gray-800/50">
 										<div class="text-center">
-											<Image class="w-12 h-12 mx-auto text-gray-500" />
+											<Image class="mx-auto h-12 w-12 text-gray-500" />
 											<p class="mt-2 text-sm text-gray-400">Nie załadowano żadnego pliku</p>
 										</div>
 									</div>
@@ -478,15 +512,15 @@
 
 								<div class="flex flex-col gap-2">
 									<input type="file" id="file-{round.round_number}" accept="image/*" on:change={(e) => handleFileSelect(round.round_number, e)} class="hidden" />
-									<label for="file-{round.round_number}" class="inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-gray-200 transition-colors bg-gray-800 rounded-md cursor-pointer ring-offset-background hover:bg-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50">
-										<Upload class="w-4 h-4 mr-2" />
+									<label for="file-{round.round_number}" class="inline-flex cursor-pointer items-center justify-center rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-gray-200 ring-offset-background transition-colors hover:bg-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50">
+										<Upload class="mr-2 h-4 w-4" />
 										Wybierz plik
 									</label>
 
 									{#if files[round.round_number]}
-										<Button on:click={() => uploadImage(round.round_number)} disabled={uploading[round.round_number]} class="text-white bg-gray-800 border border-gray-700 hover:bg-gray-700">
+										<Button on:click={() => uploadImage(round.round_number)} disabled={uploading[round.round_number]} class="border border-gray-700 bg-gray-800 text-white hover:bg-gray-700">
 											{#if uploading[round.round_number]}
-												<div class="w-4 h-4 mr-2 border-2 border-gray-400 rounded-full animate-spin border-t-transparent"></div>
+												<div class="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-gray-400 border-t-transparent"></div>
 												Przesyłanie...
 											{:else}
 												Prześlij {files[round.round_number].name}
@@ -503,9 +537,9 @@
 									<div class="space-y-4">
 										<Autocomplete bind:value={answers[round.id]} placeholder="Nazwa anime" index="animeTitles" searchKey="animeTitle" type="anime" />
 
-										<Button on:click={() => saveAnswer(round.id)} disabled={savingAnswers[round.id]} class="w-full text-white bg-gray-800 border border-gray-700 hover:bg-gray-700">
+										<Button on:click={() => saveAnswer(round.id)} disabled={savingAnswers[round.id]} class="w-full border border-gray-700 bg-gray-800 text-white hover:bg-gray-700">
 											{#if savingAnswers[round.id]}
-												<div class="w-4 h-4 mr-2 border-2 border-gray-400 rounded-full animate-spin border-t-transparent"></div>
+												<div class="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-gray-400 border-t-transparent"></div>
 												Zapisywanie...
 											{:else}
 												Zapisz odpowiedź
@@ -522,7 +556,7 @@
 
 		<!-- Player Answers Section -->
 		{#if playerAnswers && playerAnswers.length > 0}
-			<Card.Root class="mt-8 bg-gray-900 border-gray-800">
+			<Card.Root class="mt-8 border-gray-800 bg-gray-900">
 				<Card.Header>
 					<Card.Title class="text-white">Odpowiedzi graczy</Card.Title>
 				</Card.Header>
@@ -553,7 +587,7 @@
 									</Table.Cell>
 									<Table.Cell>
 										{#if answer.potential_points}
-											<span class="px-2 py-1 rounded-md bg-amber-900/30 text-amber-400">{answer.potential_points} pkt</span>
+											<span class="rounded-md bg-amber-900/30 px-2 py-1 text-amber-400">{answer.potential_points} pkt</span>
 										{:else}
 											<span class="text-gray-400">-</span>
 										{/if}
@@ -561,17 +595,15 @@
 									<Table.Cell>
 										{#if answer.potential_points}
 											<div class="flex gap-2">
-												<Button size="sm" on:click={() => awardPotentialPoints(answer.id, answer.player_name, answer.potential_points)} class="text-white bg-green-600/50 hover:bg-green-500/50">
-													<Check class="w-3 h-3 mr-1" />
+												<Button size="sm" on:click={() => awardPotentialPoints(answer.id, answer.player_name, answer.potential_points)} class="bg-green-600/50 text-white hover:bg-green-500/50">
+													<Check class="mr-1 h-3 w-3" />
 													Przyznaj
 												</Button>
-												<Button size="sm" on:click={() => deductPotentialPoints(answer.id, answer.player_name, answer.potential_points)} class="text-white bg-red-600/50 hover:bg-red-500/50">
-													<X class="w-3 h-3 mr-1" />
+												<Button size="sm" on:click={() => deductPotentialPoints(answer.id, answer.player_name, answer.potential_points)} class="bg-red-600/50 text-white hover:bg-red-500/50">
+													<X class="mr-1 h-3 w-3" />
 													Odejmij
 												</Button>
-												<Button size="sm" on:click={() => clearPotentialPoints(answer.id)} class="text-white bg-gray-600/50 hover:bg-gray-500/50">
-													Pomiń
-												</Button>
+												<Button size="sm" on:click={() => clearPotentialPoints(answer.id)} class="bg-gray-600/50 text-white hover:bg-gray-500/50">Pomiń</Button>
 											</div>
 										{:else}
 											<span class="text-gray-400">-</span>
@@ -586,14 +618,14 @@
 		{/if}
 
 		<!-- Add and Delete Last Round buttons -->
-		<div class="flex justify-between mt-8">
-			<Button on:click={createNewRound} class="text-white bg-gray-800 border border-gray-700 hover:bg-gray-700">
-				<Plus class="w-4 h-4 mr-2" />
+		<div class="mt-8 flex justify-between">
+			<Button on:click={createNewRound} class="border border-gray-700 bg-gray-800 text-white hover:bg-gray-700">
+				<Plus class="mr-2 h-4 w-4" />
 				Dodaj nową rundę
 			</Button>
 
 			<Button on:click={deleteLastRound} class={`border ${confirmingDelete ? 'border-red-700 bg-red-900/30' : 'border-gray-700 bg-gray-800'} text-white hover:bg-gray-700`}>
-				<Trash2 class="w-4 h-4 mr-2" />
+				<Trash2 class="mr-2 h-4 w-4" />
 				{confirmingDelete ? 'Potwierdź usunięcie ostatniej rundy' : 'Usuń ostatnią rundę'}
 			</Button>
 		</div>

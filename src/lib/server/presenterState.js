@@ -8,7 +8,8 @@ let presenterState = {
   currentSong: null,
   showMetadata: false,
   timeLeft: 0,
-  videoSrc: null
+  videoSrc: null,
+  updatedAt: 0
 };
 
 /**
@@ -27,7 +28,8 @@ export function getPresenterState() {
 export function updatePresenterState(updates) {
   presenterState = {
     ...presenterState,
-    ...updates
+    ...updates,
+    updatedAt: Date.now()
   };
   return { ...presenterState };
 }
@@ -68,7 +70,8 @@ export function resetPresenterState() {
     currentSong: null,
     showMetadata: false,
     timeLeft: 0,
-    videoSrc: null
+    videoSrc: null,
+    updatedAt: Date.now()
   };
   return { ...presenterState };
 }

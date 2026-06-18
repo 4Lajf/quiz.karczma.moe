@@ -24,14 +24,20 @@ export const load = async ({ data, depends, fetch }) => {
     })
 
   // Only use getUser() for verified user data
-  const {
-    data: { user },
-    error: userError
-  } = await supabase.auth.getUser()
+  let verifiedUser = null
+  try {
+    const {
+      data: { user },
+      error: userError
+    } = await supabase.auth.getUser()
+    verifiedUser = userError ? null : user
+  } catch (error) {
+    console.error('Failed to verify Supabase user:', error)
+  }
 
   return {
     supabase,
-    user: userError ? null : user,
+    user: verifiedUser,
     // Get session and profile from the server-passed data
     session: data.session,
     profile: data.profile

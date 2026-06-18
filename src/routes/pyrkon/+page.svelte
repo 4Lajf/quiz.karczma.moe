@@ -367,7 +367,9 @@
 		// Save metadata off state immediately
 		const metadataOffState = {
 			currentSong: currentSong, // Keep current song temporarily
-			showMetadata: false
+			showMetadata: false,
+			videoSrc: currentVideoSrc,
+			timestamp: Date.now()
 		};
 		localStorage.setItem('pyrkon_local_state', JSON.stringify(metadataOffState));
 
@@ -412,7 +414,9 @@
 		// Save final state with new song
 		const finalState = {
 			currentSong: song,
-			showMetadata: false // Keep metadata off
+			showMetadata: false, // Keep metadata off
+			videoSrc: currentVideoSrc,
+			timestamp: Date.now()
 		};
 		localStorage.setItem('pyrkon_local_state', JSON.stringify(finalState));
 
@@ -428,13 +432,13 @@
 		// Dispatch event for local state management (for Odpowiedzi tab) - browser only
 		if (typeof window !== 'undefined') {
 			window.dispatchEvent(new CustomEvent('pyrkon-song-loaded', {
-				detail: { song }
+				detail: { song, videoSrc: currentVideoSrc }
 			}));
 
 			// Also trigger storage events for cross-tab communication
 			window.dispatchEvent(new StorageEvent('storage', {
 				key: 'pyrkon_local_state',
-				newValue: JSON.stringify(state),
+				newValue: JSON.stringify(finalState),
 				storageArea: localStorage
 			}));
 
@@ -459,7 +463,9 @@
 		// Update local state and notify other tabs about metadata toggle reset
 		const localState = {
 			currentSong: song,
-			showMetadata: false
+			showMetadata: false,
+			videoSrc: currentVideoSrc,
+			timestamp: Date.now()
 		};
 		localStorage.setItem('pyrkon_local_state', JSON.stringify(localState));
 
@@ -512,17 +518,35 @@
 	function handlePlay() {
 		isPlaying = true;
 		startPlaybackSync();
+		void updatePresenterState({
+			currentSong,
+			currentTime: currentPlaybackTime,
+			isPlaying: true,
+			videoSrc: currentVideoSrc
+		});
 	}
 
 	function handlePause() {
 		isPlaying = false;
 		stopPlaybackSync();
+		void updatePresenterState({
+			currentSong,
+			currentTime: currentPlaybackTime,
+			isPlaying: false,
+			videoSrc: currentVideoSrc
+		});
 	}
 
 	function handleEnded() {
 		isPlaying = false;
 		currentPlaybackTime = 0;
 		stopPlaybackSync();
+		void updatePresenterState({
+			currentSong,
+			currentTime: 0,
+			isPlaying: false,
+			videoSrc: currentVideoSrc
+		});
 	}
 
 	function startPlaybackSync() {
@@ -533,6 +557,7 @@
 			if (currentSong && isPlaying) {
 				// Update local state with playback info for presenter sync
 				const playbackState = {
+					currentSong,
 					currentTime: currentPlaybackTime,
 					isPlaying: true,
 					videoSrc: currentVideoSrc,
@@ -549,6 +574,8 @@
 						newValue: JSON.stringify(playbackState),
 						storageArea: localStorage
 					}));
+
+					void updatePresenterState(playbackState);
 				}
 			}
 		}, 1000); // Update every second
@@ -563,6 +590,7 @@
 		// Update playback state to stopped
 		if (typeof window !== 'undefined') {
 			const playbackState = {
+				currentSong,
 				currentTime: currentPlaybackTime,
 				isPlaying: false,
 				videoSrc: currentVideoSrc,
@@ -576,6 +604,8 @@
 				newValue: JSON.stringify(playbackState),
 				storageArea: localStorage
 			}));
+
+			void updatePresenterState(playbackState);
 		}
 	}
 
@@ -629,9 +659,18 @@
 			// Save to local state
 			const state = {
 				currentSong,
-				showMetadata
+				showMetadata,
+				videoSrc: currentVideoSrc,
+				timestamp: Date.now()
 			};
 			localStorage.setItem('pyrkon_local_state', JSON.stringify(state));
+			void updatePresenterState({
+				currentSong,
+				showMetadata,
+				currentTime: currentPlaybackTime,
+				isPlaying,
+				videoSrc: currentVideoSrc
+			});
 
 			// Dispatch event to notify other tabs (presenter view, answers tab) - browser only
 			if (typeof window !== 'undefined') {

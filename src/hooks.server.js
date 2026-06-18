@@ -21,28 +21,33 @@ const supabase = async ({ event, resolve }) => {
   })
 
   event.locals.safeGetSession = async () => {
-    const {
-      data: { session },
-    } = await event.locals.supabase.auth.getSession()
-    if (!session) {
+    try {
+      const {
+        data: { session },
+      } = await event.locals.supabase.auth.getSession()
+      if (!session) {
+        return { session: null, user: null, profile: null }
+      }
+
+      const {
+        data: { user },
+        error: userError,
+      } = await event.locals.supabase.auth.getUser()
+      if (userError) {
+        return { session: null, user: null, profile: null }
+      }
+
+      // Fetch user profile after confirming valid session
+      const { data: profile } = await event.locals.supabase
+        .from('profiles')
+        .select('id, username, avatar_url, role')
+        .eq('id', user.id)
+        .single()
+      return { session, user, profile }
+    } catch (err) {
+      console.error('Failed to verify Supabase session:', err)
       return { session: null, user: null, profile: null }
     }
-
-    const {
-      data: { user },
-      error: userError,
-    } = await event.locals.supabase.auth.getUser()
-    if (userError) {
-      return { session: null, user: null, profile: null }
-    }
-
-    // Fetch user profile after confirming valid session
-    const { data: profile } = await event.locals.supabase
-      .from('profiles')
-      .select('id, username, avatar_url, role')
-      .eq('id', user.id)
-      .single()
-    return { session, user, profile }
   }
 
   return resolve(event, {

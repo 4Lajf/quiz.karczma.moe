@@ -4,6 +4,7 @@
 	import { Badge } from '$lib/components/ui/badge';
 	import { Monitor, Music } from 'lucide-svelte';
 	import LeaderboardDisplay from '$lib/components/pyrkon/LeaderboardDisplay.svelte';
+	import { fileSystemClient } from '$lib/utils/fileSystemAPI.js';
 
 	export let data;
 	$: ({ session, user, profile } = data);
@@ -16,6 +17,11 @@
 	let currentTime = 0;
 	let isPlaying = false;
 	let videoElement;
+	let presenterStateSyncInterval;
+	let lastPresenterStateTimestamp = 0;
+	let resolvedVideoFileName = null;
+	let ownedVideoSrc = null;
+	let failedVideoSrc = null;
 
 	// Local state management - no global polling
 
@@ -52,6 +58,7 @@
 		// Load local state from localStorage
 		loadLocalState();
 		loadPlaybackState();
+		fetchPresenterState();
 
 		// Listen for custom events from other tabs (browser only)
 		if (typeof window !== 'undefined') {
@@ -62,13 +69,11 @@
 			window.addEventListener('storage', handleStorageChange);
 
 			// Poll for state changes every 500ms for real-time updates
-			const pollInterval = setInterval(() => {
+			presenterStateSyncInterval = setInterval(() => {
 				loadLocalState();
 				loadPlaybackState();
-			}, 500);
-
-			// Store interval reference for cleanup
-			window.pyrkonPollInterval = pollInterval;
+				fetchPresenterState();
+			}, 1000);
 		}
 
 		// Listen for keyboard shortcuts
@@ -77,7 +82,7 @@
 
 			// Make fullscreen on load
 			if (document.documentElement.requestFullscreen) {
-				document.documentElement.requestFullscreen().catch(console.error);
+				document.documentElement.requestFullscreen().catch(() => {});
 			}
 		}
 	});
@@ -88,11 +93,12 @@
 			window.removeEventListener('pyrkon-metadata-toggled', handleMetadataToggled);
 			window.removeEventListener('storage', handleStorageChange);
 
-			// Clean up polling interval
-			if (window.pyrkonPollInterval) {
-				clearInterval(window.pyrkonPollInterval);
-				window.pyrkonPollInterval = null;
-			}
+			clearInterval(presenterStateSyncInterval);
+		}
+
+		if (ownedVideoSrc) {
+			URL.revokeObjectURL(ownedVideoSrc);
+			ownedVideoSrc = null;
 		}
 
 		if (typeof document !== 'undefined') {
@@ -111,17 +117,17 @@
 				// Only update if there are actual changes to avoid unnecessary re-renders
 				if (JSON.stringify(currentSong) !== JSON.stringify(newCurrentSong)) {
 					currentSong = newCurrentSong;
+					failedVideoSrc = null;
 				}
 
 				if (showMetadata !== newShowMetadata) {
 					showMetadata = newShowMetadata;
 				}
 
-				// Set video source if we have a current song
-				if (currentSong && currentSong.FileName) {
-					// For local files, we need to recreate the file URL
-					// This might not work perfectly across tabs, but it's the best we can do
-					videoSrc = null; // Will be handled by the video element's src attribute
+				if (state.videoSrc && setSyncedVideoSource(state.videoSrc)) {
+					// Synced source applied.
+				} else if (currentSong?.FileName) {
+					void resolveVideoSource();
 				}
 			}
 		} catch (error) {
@@ -143,7 +149,9 @@
 
 	function handleSongLoaded(event) {
 		currentSong = event.detail.song;
+		failedVideoSrc = null;
 		showMetadata = false; // Reset metadata display when new song is loaded
+		void resolveVideoSource(event.detail.videoSrc);
 		saveLocalState();
 	}
 
@@ -171,6 +179,17 @@
 				const now = Date.now();
 				if (playbackState.timestamp && (now - playbackState.timestamp) < 5000) {
 					// Update video playback state
+					if (playbackState.currentSong && JSON.stringify(currentSong) !== JSON.stringify(playbackState.currentSong)) {
+						currentSong = playbackState.currentSong;
+						failedVideoSrc = null;
+					}
+
+					if (playbackState.videoSrc && setSyncedVideoSource(playbackState.videoSrc)) {
+						// Synced source applied.
+					} else if (currentSong?.FileName) {
+						void resolveVideoSource();
+					}
+
 					if (playbackState.currentTime !== undefined) {
 						currentTime = playbackState.currentTime;
 						syncVideoTime();
@@ -185,6 +204,130 @@
 		} catch (error) {
 			console.error('Failed to load playback state:', error);
 		}
+	}
+
+	async function fetchPresenterState() {
+		try {
+			const response = await fetch('/api/pyrkon/presenter-state');
+			if (!response.ok) return;
+
+			const state = await response.json();
+			applyPresenterState(state);
+		} catch (error) {
+			console.error('Failed to fetch presenter state:', error);
+		}
+	}
+
+	function applyPresenterState(state) {
+		if (!state) return;
+
+		const hasTimestamp = typeof state.updatedAt === 'number';
+		if (hasTimestamp && state.updatedAt <= lastPresenterStateTimestamp) return;
+		if (hasTimestamp) {
+			lastPresenterStateTimestamp = state.updatedAt;
+		} else if (!state.currentSong) {
+			return;
+		}
+
+		if ('currentSong' in state) {
+			const nextSong = state.currentSong || null;
+			if (JSON.stringify(currentSong) !== JSON.stringify(nextSong)) {
+				currentSong = nextSong;
+				failedVideoSrc = null;
+			}
+		}
+
+		if (state.videoSrc && setSyncedVideoSource(state.videoSrc)) {
+			// Synced source applied.
+		} else if (currentSong?.FileName) {
+			void resolveVideoSource();
+		}
+
+		if ('showMetadata' in state) {
+			showMetadata = Boolean(state.showMetadata);
+		}
+
+		if (typeof state.currentTime === 'number') {
+			currentTime = state.currentTime;
+			syncVideoTime();
+		}
+
+		if (typeof state.isPlaying === 'boolean') {
+			isPlaying = state.isPlaying;
+			syncVideoPlayState();
+		}
+	}
+
+	function getServerVideoSource(song) {
+		return song?.FileName ? `/api/pyrkon/play?file=${encodeURIComponent(song.FileName)}` : '';
+	}
+
+	function setSyncedVideoSource(src) {
+		if (!src || videoSrc === src || failedVideoSrc === src) return false;
+
+		if (ownedVideoSrc) {
+			URL.revokeObjectURL(ownedVideoSrc);
+			ownedVideoSrc = null;
+		}
+
+		videoSrc = src;
+		resolvedVideoFileName = currentSong?.FileName || null;
+		return true;
+	}
+
+	async function resolveVideoSource(preferredSrc = null) {
+		if (preferredSrc) {
+			setSyncedVideoSource(preferredSrc);
+			return;
+		}
+
+		if (!currentSong?.FileName) {
+			videoSrc = '';
+			resolvedVideoFileName = null;
+			return;
+		}
+
+		if (videoSrc && resolvedVideoFileName === currentSong.FileName && !videoSrc.startsWith('/api/pyrkon/play')) {
+			return;
+		}
+
+		try {
+			if (!fileSystemClient.hasDirectory()) {
+				await fileSystemClient.restoreDirectoryHandle();
+			}
+
+			if (fileSystemClient.hasDirectory()) {
+				const localSrc = await fileSystemClient.createFileURL(currentSong.FileName);
+
+				if (ownedVideoSrc) {
+					URL.revokeObjectURL(ownedVideoSrc);
+				}
+
+				ownedVideoSrc = localSrc;
+				videoSrc = localSrc;
+				resolvedVideoFileName = currentSong.FileName;
+				return;
+			}
+		} catch (error) {
+			console.warn('Presenter could not create a local video URL, falling back to server stream:', error);
+		}
+
+		if (ownedVideoSrc) {
+			URL.revokeObjectURL(ownedVideoSrc);
+			ownedVideoSrc = null;
+		}
+
+		videoSrc = getServerVideoSource(currentSong);
+		resolvedVideoFileName = currentSong.FileName;
+	}
+
+	async function handleVideoError() {
+		if (!currentSong?.FileName || !videoSrc?.startsWith('blob:')) return;
+
+		failedVideoSrc = videoSrc;
+		videoSrc = '';
+		resolvedVideoFileName = null;
+		await resolveVideoSource();
 	}
 
 	function syncVideoTime() {
@@ -283,13 +426,17 @@
 					<div class="absolute inset-0 bg-gradient-to-r from-purple-500/20 to-blue-500/20 rounded-2xl blur-xl"></div>
 					<video
 						bind:this={videoElement}
-						src={`/api/pyrkon/play?file=${encodeURIComponent(currentSong.FileName)}`}
+						src={videoSrc || getServerVideoSource(currentSong)}
 						autoplay
 						loop
 						muted
 						class="relative max-w-6xl max-h-[60vh] rounded-2xl shadow-2xl border-2 border-gray-700"
-						on:loadedmetadata={syncVideoTime}
+						on:loadedmetadata={() => {
+							syncVideoTime();
+							syncVideoPlayState();
+						}}
 						on:seeked={syncVideoTime}
+						on:error={handleVideoError}
 					>
 						<track kind="captions" />
 					</video>
